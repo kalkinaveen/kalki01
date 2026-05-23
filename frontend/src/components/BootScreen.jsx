@@ -77,7 +77,10 @@ const BootScreen = ({ onDone }) => {
           {/* Top header bar */}
           <div className="flex items-center justify-between text-[10px] sm:text-xs eh-mono mb-6" style={{ color: 'var(--eh-green)' }}>
             <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-current animate-pulse" style={{ boxShadow: '0 0 8px currentColor' }} /> &gt;_ errorhacker_boot.sh</div>
-            <span className="opacity-70">{SITE.version}</span>
+            <div className="flex items-center gap-3">
+              <span className="opacity-70">{SITE.version}</span>
+              <button onClick={() => onDone && onDone()} className="opacity-60 hover:opacity-100 underline-offset-2 hover:underline tracking-widest">[SKIP]</button>
+            </div>
           </div>
 
           {/* Centered logo + ring */}

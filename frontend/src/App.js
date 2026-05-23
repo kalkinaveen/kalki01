@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './App.css';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout';
@@ -20,14 +20,26 @@ import AdminPanel from './pages/AdminPanel';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
 
-function App() {
+const BootGate = () => {
+  const location = useLocation();
   const [booted, setBooted] = useState(() => sessionStorage.getItem('eh_booted') === '1');
-  useEffect(() => { if(booted) sessionStorage.setItem('eh_booted','1'); }, [booted]);
+  // Auto-skip boot for admin route
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin') && !booted) {
+      sessionStorage.setItem('eh_booted', '1');
+      setBooted(true);
+    }
+  }, [location.pathname, booted]);
+  if (booted) return null;
+  return <BootScreen onDone={() => { sessionStorage.setItem('eh_booted', '1'); setBooted(true); }} />;
+};
+
+function App() {
   return (
     <ThemeProvider>
       <div className="App">
-        {!booted && <BootScreen onDone={() => setBooted(true)} />}
         <BrowserRouter>
+          <BootGate />
           <Routes>
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/" element={<SiteShell><Home /></SiteShell>} />
