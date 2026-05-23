@@ -1,0 +1,76 @@
+// All mock data for ERRORHACKER frontend
+export const SITE = {
+  name: 'ERRORHACKER',
+  tagline: 'Your Naughty Don Is Back',
+  description: 'Your Premier Destination for Advanced Tech Insights, Custom Automation Architecture, and Trusted Cybersecurity Intelligence.',
+  marquee: 'POST UPDATE WILL COME SOON!  ·  📡  ERRORHACKER',
+  telegram: 'https://t.me/errorhacker',
+  email: 'root@errorhacker.site',
+  version: 'v2.6.1',
+};
+
+export const NAV = [
+  { label: 'Home', to: '/' },
+  { label: 'Services', to: '/services' },
+  { label: 'Books', to: '/books' },
+  { label: 'Memberships', to: '/memberships' },
+  { label: 'Blogs', to: '/blogs' },
+  { label: 'Tools', to: '/tools' },
+  { label: 'Info', to: '/info' },
+];
+
+export const SERVICES = [
+  { id: 'yt-subs', name: 'YouTube Subscribers - Boost Your Channel', short: 'Hit YouTube monetization milestone faster with real subs from our verified network.', price: 19, delivery: '24-72 hours', guarantee: '30-Day Refill', icon: 'youtube', tag: 'POPULAR', long: 'Hit the YouTube monetization milestone faster with real subscribers from our verified network. Our dedicated team handles every order manually with verified, premium accounts to ensure 100% safe delivery. We never compromise quality and our methodology has been refined over thousands of successful campaigns.' },
+  { id: 'ig-followers', name: 'Instagram Followers - Premium Real', short: 'Premium real followers, safe and instant delivery to grow your influence.', price: 9, delivery: '12-48 hours', guarantee: '60-Day Refill', icon: 'instagram', tag: 'NEW', long: 'Premium real followers from active accounts. Safe, secure and perfect for content creators, brands and businesses. Drip-feed available.' },
+  { id: 'tg-members', name: 'Telegram Members - Channel & Group', short: 'Organic engagement, verified members, encrypted delivery pipeline.', price: 12, delivery: '24-72 hours', guarantee: '30-Day Refill', icon: 'send', tag: 'HOT', long: 'Whether you are an influencer, business or brand, our service ensures organic engagement and enhances your credibility.' },
+  { id: 'fb-page', name: 'Facebook Page Likes - Boost Reach', short: 'Boost page authority and reach with real likes and followers.', price: 14, delivery: '24-72 hours', guarantee: '30-Day Refill', icon: 'facebook', tag: 'STABLE', long: 'Boost your page authority. Safe, secure, and 100% real followers. Order now and see instant traction.' },
+  { id: 'tt-views', name: 'TikTok Views & Likes Pack', short: 'Algorithm-boost pack with views, likes and saves.', price: 7, delivery: '6-24 hours', guarantee: 'No Refill', icon: 'music', tag: 'FAST', long: 'Speed pack for algorithm boost - views + likes + saves, optimized for the TikTok For You page.' },
+  { id: 'web-pentest', name: 'Web Penetration Testing - Pro', short: 'OWASP top-10 audit with detailed remediation report.', price: 299, delivery: '5-10 days', guarantee: 'Re-test included', icon: 'shield', tag: 'PRO', long: 'Full OWASP top-10 audit, manual exploitation, detailed remediation report and a free re-test after fixes.' },
+];
+
+export const BOOKS = [
+  { id: 'b1', title: 'The Underground Termux Handbook', author: 'ERRORHACKER', price: 9, pages: 184, level: 'Beginner', cover: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&q=80', tag: 'Bestseller' },
+  { id: 'b2', title: 'Ethical Hacking with Kali Linux 2025', author: 'R. Karim', price: 19, pages: 312, level: 'Intermediate', cover: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80', tag: 'New' },
+  { id: 'b3', title: 'OSINT Field Manual', author: 'N. Hossain', price: 14, pages: 220, level: 'All', cover: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&q=80', tag: 'Hot' },
+  { id: 'b4', title: 'Bug Bounty Playbook Vol. II', author: 'A. Rahman', price: 24, pages: 408, level: 'Advanced', cover: 'https://images.unsplash.com/photo-1550063873-ab792950096b?w=600&q=80', tag: 'Pro' },
+  { id: 'b5', title: 'Social Engineering Tactics', author: 'S. Islam', price: 12, pages: 196, level: 'Intermediate', cover: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=600&q=80', tag: '' },
+  { id: 'b6', title: 'Practical Cryptography in 2025', author: 'M. Hasan', price: 21, pages: 276, level: 'Advanced', cover: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=600&q=80', tag: 'New' },
+];
+
+export const MEMBERSHIPS = [
+  { id: 'm1', name: 'ROOKIE', price: 5, period: 'mo', perks: ['Access to weekly blogs','Basic tool downloads','Community Telegram','Limited support'], color: 'cyan' },
+  { id: 'm2', name: 'OPERATOR', price: 19, period: 'mo', perks: ['Everything in Rookie','Premium tools & scripts','All eBooks unlocked','24/7 priority support','Live AMA sessions'], color: 'green', popular: true },
+  { id: 'm3', name: 'ELITE', price: 49, period: 'mo', perks: ['Everything in Operator','1-on-1 mentorship call','Custom automation builds','Private red-team labs','Lifetime updates'], color: 'red' },
+];
+
+export const BLOGS = [
+  { id: 'p1', title: 'Telegram Kamal Member Adder Script For 2025', cover: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80', date: '2025-03-12', tag: 'ARTICLE', excerpt: 'A new working method to add members in Telegram using Termux. The script is tested on Android 12+...' },
+  { id: 'p2', title: 'Create Unlimited Fake Telegram Account Without Phone Number', cover: 'https://images.unsplash.com/photo-1611605698335-8b1569810432?w=800&q=80', date: '2025-03-10', tag: 'ARTICLE', excerpt: 'Step by step method to create free Telegram numbers for testing purposes only.' },
+  { id: 'p3', title: 'How to install Termux On Android 2025', cover: 'https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=800&q=80', date: '2025-03-05', tag: 'ARTICLE', excerpt: 'Termux basic command + install Termux easy way. Part 2.' },
+  { id: 'p4', title: 'Bug Bounty: From $0 to $10k in 6 months', cover: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&q=80', date: '2025-02-22', tag: 'STORY', excerpt: 'A field journal of methodologies, payouts and recon stacks that worked for me.' },
+  { id: 'p5', title: 'OWASP Top 10 — 2025 Quick Refresher', cover: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=800&q=80', date: '2025-02-15', tag: 'GUIDE', excerpt: 'A condensed printable cheatsheet for the working pentester.' },
+  { id: 'p6', title: 'Phishing Simulation Lab Setup in 30 mins', cover: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=800&q=80', date: '2025-02-01', tag: 'LAB', excerpt: 'Self-host a phishing simulation lab for your team using free OSS tools.' },
+];
+
+export const TOOLS = [
+  { id: 't1', name: 'Termux Auto Installer', desc: 'One-tap installer for Termux with curated security packages', category: 'Termux', size: '4.2 MB', downloads: 18244 },
+  { id: 't2', name: 'Recon-Pro Suite', desc: 'Automated subdomain + asset discovery + port mapping', category: 'Recon', size: '12 MB', downloads: 6921 },
+  { id: 't3', name: 'OSINT Scout', desc: 'Username + email + leak DB lookup utility', category: 'OSINT', size: '8 MB', downloads: 11203 },
+  { id: 't4', name: 'Payload Generator', desc: 'MSF style payload generator with encoders', category: 'Exploit', size: '6 MB', downloads: 4421 },
+  { id: 't5', name: 'WiFi Auditor Lite', desc: 'Wireless network auditor (lab use only)', category: 'Wireless', size: '14 MB', downloads: 9032 },
+  { id: 't6', name: 'Phish-Sim Trainer', desc: 'Safe phishing simulation framework for awareness training', category: 'Awareness', size: '22 MB', downloads: 2811 },
+];
+
+export const STATS = [
+  { label: 'Active Clients', value: '12,400+' },
+  { label: 'Orders Delivered', value: '48,920+' },
+  { label: 'Years Experience', value: '7+' },
+  { label: 'Avg. Rating', value: '4.9/5' },
+];
+
+export const TESTIMONIALS = [
+  { name: 'Alex Carter', role: 'YT Creator', text: 'Hit my YT monetization milestone within 9 days. Delivery was clean and consistent.' },
+  { name: 'Maria L.', role: 'Brand Manager', text: 'Their IG growth pack changed our campaign. Reach jumped 320% in two weeks.' },
+  { name: 'Tom B.', role: 'Pentester', text: 'The bug bounty playbook alone paid for my entire membership. Worth it.' },
+  { name: 'Sara P.', role: 'Startup Founder', text: 'Telegram channel growth was the best ROI we made this quarter.' },
+];
