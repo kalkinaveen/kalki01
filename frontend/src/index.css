@@ -91,6 +91,17 @@ html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
   letter-spacing: 0.04em;
 }
 
+/* Brand title \u2014 unique futuristic look for ERRORHACKER */
+.eh-brand {
+  font-family: 'Audiowide', 'Orbitron', sans-serif;
+  letter-spacing: 0.08em;
+  font-weight: 400;
+}
+.eh-brand-alt {
+  font-family: 'Black Ops One', 'Orbitron', sans-serif;
+  letter-spacing: 0.06em;
+}
+
 .eh-mono { font-family: 'Share Tech Mono', monospace; letter-spacing: 0.02em; }
 
 /* Panel with corner brackets */
@@ -177,6 +188,30 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 /* Glitch */
 @keyframes eh-glitch { 0%,100%{ transform: translate(0,0);} 20%{transform: translate(-1px,1px);} 40%{transform: translate(1px,-1px);} 60%{transform: translate(-1px,0);} 80%{transform: translate(1px,1px);} }
 .eh-glitch:hover { animation: eh-glitch .35s linear; }
+
+/* Title chromatic glitch (ERRORHACKER) */
+.eh-title-glitch { position: relative; display: inline-block; }
+.eh-title-main {
+  color: var(--eh-green);
+  text-shadow:
+    0 0 6px rgba(0,255,157,.9),
+    0 0 22px rgba(0,255,157,.55),
+    0 0 60px rgba(0,255,157,.35);
+  position: relative;
+  display: inline-block;
+}
+.eh-title-main::before, .eh-title-main::after {
+  content: attr(data-text);
+  position: absolute; left: 0; top: 0; width: 100%; pointer-events: none;
+}
+.eh-title-main .eh-chrom-r, .eh-title-main .eh-chrom-c {
+  position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; mix-blend-mode: screen;
+}
+.eh-title-main .eh-chrom-r { color: #ff2a3a; text-shadow: 0 0 6px rgba(255,42,58,.6); animation: eh-chrom-r 2.6s infinite steps(8); opacity:.7; }
+.eh-title-main .eh-chrom-c { color: #4de0ff; text-shadow: 0 0 6px rgba(77,224,255,.6); animation: eh-chrom-c 3.4s infinite steps(8); opacity:.55; }
+html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { display:none; }
+@keyframes eh-chrom-r { 0%,100%{ transform: translate(0,0);} 20%{transform: translate(2px,-1px);} 40%{transform: translate(-2px,1px);} 60%{transform: translate(1px,2px);} 80%{transform: translate(-1px,-2px);} }
+@keyframes eh-chrom-c { 0%,100%{ transform: translate(0,0);} 25%{transform: translate(-2px,1px);} 50%{transform: translate(2px,-1px);} 75%{transform: translate(-1px,-2px);} }
 
 /* Hide scrollbar inside admin sidebar */
 .eh-scroll::-webkit-scrollbar { width:8px; height:8px; }

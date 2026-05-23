@@ -37,14 +37,11 @@ const BootScreen = ({ onDone }) => {
           <span>{SITE.version}</span>
         </div>
         <div className="flex flex-col items-center gap-5 py-3">
-          <div className="relative">
-            <div className="eh-ring" />
-            <Logo size={68} />
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-[160px] h-[160px]" />
-            </div>
+          <div className="relative w-[160px] h-[160px] flex items-center justify-center">
+            <div className="eh-ring absolute inset-0" />
+            <div className="relative z-10"><Logo size={88} /></div>
           </div>
-          <h1 className="eh-display eh-neon text-4xl md:text-5xl font-black tracking-widest">{SITE.name}</h1>
+          <h1 className="eh-brand eh-neon text-4xl md:text-5xl font-black tracking-widest">{SITE.name}</h1>
           <div className="w-full max-w-sm h-[3px] rounded overflow-hidden bg-white/5">
             <div style={{ width: `${progress}%`, background: 'var(--eh-green)', boxShadow: '0 0 10px var(--eh-green)' }} className="h-full transition-all duration-300" />
           </div>

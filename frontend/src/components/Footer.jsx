@@ -8,7 +8,7 @@ const Footer = () => (
   <footer className="mt-20 border-t border-[var(--eh-border)] eh-grid-bg">
     <div className="max-w-7xl mx-auto px-4 md:px-6 py-14 grid md:grid-cols-4 gap-10">
       <div>
-        <div className="flex items-center gap-3 mb-4"><Logo size={40} /><div className="eh-display font-black tracking-widest eh-neon-soft">{SITE.name}</div></div>
+        <div className="flex items-center gap-3 mb-4"><Logo size={40} /><div className="eh-brand font-black tracking-widest eh-neon-soft">{SITE.name}</div></div>
         <p className="text-sm opacity-70 leading-7">{SITE.description}</p>
       </div>
       <div>

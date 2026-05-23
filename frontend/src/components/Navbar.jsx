@@ -14,7 +14,7 @@ const Navbar = () => {
         <Link to="/" className="flex items-center gap-3 group">
           <Logo size={42} />
           <div className="hidden sm:block">
-            <div className="eh-display font-black tracking-widest text-base eh-neon-soft">{SITE.name}</div>
+            <div className="eh-brand font-black tracking-widest text-base eh-neon-soft">{SITE.name}</div>
             <div className="text-[10px] eh-mono opacity-60">// underground tech intel</div>
           </div>
         </Link>
