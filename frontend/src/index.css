@@ -68,21 +68,19 @@ html.light .eh-scanlines::before { display:none; }
 .eh-neon {
   color: var(--eh-green);
   text-shadow:
-    0 0 4px rgba(0,255,157,0.85),
-    0 0 12px rgba(0,255,157,0.55),
-    0 0 28px rgba(0,255,157,0.35);
+    0 0 2px rgba(0,255,157,.5),
+    0 0 8px rgba(0,255,157,.25);
 }
 html.light .eh-neon { text-shadow: 0 0 1px rgba(0,158,98,0.4); }
 
-.eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 6px rgba(0,255,157,0.5); }
+.eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 4px rgba(0,255,157,.25); }
 
 .eh-script {
   font-family: 'Pacifico', cursive;
   color: var(--eh-green);
   text-shadow:
-    0 0 6px rgba(0,255,157,0.9),
-    0 0 18px rgba(0,255,157,0.6),
-    0 0 40px rgba(0,255,157,0.4);
+    0 0 3px rgba(0,255,157,.5),
+    0 0 12px rgba(0,255,157,.25);
 }
 html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
 
@@ -91,15 +89,16 @@ html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
   letter-spacing: 0.04em;
 }
 
-/* Brand title \u2014 unique futuristic look for ERRORHACKER */
+/* Brand title \u2014 unique pleasant cyber look for ERRORHACKER */
 .eh-brand {
-  font-family: 'Audiowide', 'Orbitron', sans-serif;
-  letter-spacing: 0.08em;
-  font-weight: 400;
+  font-family: 'Tektur', 'Chakra Petch', 'Orbitron', sans-serif;
+  letter-spacing: 0.06em;
+  font-weight: 800;
 }
 .eh-brand-alt {
-  font-family: 'Black Ops One', 'Orbitron', sans-serif;
-  letter-spacing: 0.06em;
+  font-family: 'Chakra Petch', 'Orbitron', sans-serif;
+  letter-spacing: 0.04em;
+  font-weight: 700;
 }
 
 .eh-mono { font-family: 'Share Tech Mono', monospace; letter-spacing: 0.02em; }
@@ -170,8 +169,16 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-ring { width:100%; height:100%; border-radius: 50%; border: 3px solid var(--eh-green); animation: eh-pulse 1.6s ease-in-out infinite; }
 
 @keyframes eh-spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
-.eh-spin-slow { animation: eh-spin 14s linear infinite; }
+.eh-spin-slow { animation: eh-spin 6s linear infinite; }
 .eh-spin-rev { animation: eh-spin 8s linear infinite reverse; }
+
+/* Scanning beam inside ring */
+@keyframes eh-scan { 0% { transform: translateY(-110%);} 100% { transform: translateY(110%);} }
+.eh-scan-beam {
+  position: absolute; left: 0; right: 0; height: 28%;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,255,157,.18) 50%, transparent 100%);
+  animation: eh-scan 2.6s linear infinite;
+}
 
 /* Blink caret */
 @keyframes eh-blink { 50% { opacity: 0; } }
@@ -199,9 +206,8 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-title-main {
   color: var(--eh-green);
   text-shadow:
-    0 0 6px rgba(0,255,157,.9),
-    0 0 22px rgba(0,255,157,.55),
-    0 0 60px rgba(0,255,157,.35);
+    0 0 2px rgba(0,255,157,.55),
+    0 0 10px rgba(0,255,157,.22);
   position: relative;
   display: inline-block;
 }
@@ -212,8 +218,8 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-title-main .eh-chrom-r, .eh-title-main .eh-chrom-c {
   position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; mix-blend-mode: screen;
 }
-.eh-title-main .eh-chrom-r { color: #ff2a3a; text-shadow: 0 0 6px rgba(255,42,58,.6); animation: eh-chrom-r 2.6s infinite steps(8); opacity:.7; }
-.eh-title-main .eh-chrom-c { color: #4de0ff; text-shadow: 0 0 6px rgba(77,224,255,.6); animation: eh-chrom-c 3.4s infinite steps(8); opacity:.55; }
+.eh-title-main .eh-chrom-r { color: #ff2a3a; text-shadow: none; animation: eh-chrom-r 4s infinite steps(12); opacity:.35; }
+.eh-title-main .eh-chrom-c { color: #4de0ff; text-shadow: none; animation: eh-chrom-c 5s infinite steps(12); opacity:.3; }
 html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { display:none; }
 @keyframes eh-chrom-r { 0%,100%{ transform: translate(0,0);} 20%{transform: translate(2px,-1px);} 40%{transform: translate(-2px,1px);} 60%{transform: translate(1px,2px);} 80%{transform: translate(-1px,-2px);} }
 @keyframes eh-chrom-c { 0%,100%{ transform: translate(0,0);} 25%{transform: translate(-2px,1px);} 50%{transform: translate(2px,-1px);} 75%{transform: translate(-1px,-2px);} }

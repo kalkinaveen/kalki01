@@ -81,28 +81,34 @@ const BootScreen = ({ onDone }) => {
           </div>
 
           {/* Centered logo + ring */}
-          <div className="flex flex-col items-center gap-5 py-3">
-            <div className="relative w-[140px] h-[140px] sm:w-[170px] sm:h-[170px] flex items-center justify-center">
-              {/* outer rotating ring */}
-              <div className="absolute inset-0 rounded-full border border-[rgba(0,255,157,.25)] eh-spin-slow" />
-              {/* dashed mid ring */}
-              <div className="absolute inset-3 rounded-full border-2 border-dashed border-[rgba(0,255,157,.45)] eh-spin-rev" />
-              {/* inner pulsing ring */}
-              <div className="absolute inset-6 rounded-full eh-ring" />
-              {/* corner ticks */}
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-3 bg-[var(--eh-green)]" style={{ boxShadow: '0 0 8px var(--eh-green)' }} />
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-3 bg-[var(--eh-green)]" style={{ boxShadow: '0 0 8px var(--eh-green)' }} />
-              <span className="absolute top-1/2 -left-1 -translate-y-1/2 w-3 h-2 bg-[var(--eh-green)]" style={{ boxShadow: '0 0 8px var(--eh-green)' }} />
-              <span className="absolute top-1/2 -right-1 -translate-y-1/2 w-3 h-2 bg-[var(--eh-green)]" style={{ boxShadow: '0 0 8px var(--eh-green)' }} />
-              <div className="relative z-10"><Logo size={84} /></div>
+          <div className="flex flex-col items-center gap-6 py-3">
+            <div className="relative w-[150px] h-[150px] sm:w-[180px] sm:h-[180px] flex items-center justify-center">
+              {/* Outer rotating ring with gradient arc */}
+              <svg className="absolute inset-0 w-full h-full eh-spin-slow" viewBox="0 0 100 100" fill="none">
+                <defs>
+                  <linearGradient id="ehArc" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#00ff9d" stopOpacity="0" />
+                    <stop offset="60%" stopColor="#00ff9d" stopOpacity=".55" />
+                    <stop offset="100%" stopColor="#00ff9d" stopOpacity="1" />
+                  </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="48" stroke="rgba(0,255,157,.15)" strokeWidth="0.6" />
+                <circle cx="50" cy="50" r="48" stroke="url(#ehArc)" strokeWidth="1.4" strokeLinecap="round" strokeDasharray="80 220" />
+              </svg>
+              {/* Subtle inner ring */}
+              <div className="absolute inset-5 rounded-full" style={{ border: '1px solid rgba(0,255,157,.35)' }} />
+              {/* Logo */}
+              <div className="relative z-10 rounded-full overflow-hidden" style={{ boxShadow: '0 0 20px rgba(0,255,157,.25)' }}>
+                <Logo size={96} />
+              </div>
+              {/* Scanning beam */}
+              <div className="absolute inset-5 rounded-full overflow-hidden pointer-events-none">
+                <div className="eh-scan-beam" />
+              </div>
             </div>
 
-            <h1 className="eh-brand eh-neon font-black tracking-widest text-3xl sm:text-5xl text-center eh-title-glitch">
-              <span className="eh-title-main inline-block" data-text={SITE.name}>
-                <span className="eh-chrom-r" aria-hidden="true">{SITE.name}</span>
-                <span className="eh-chrom-c" aria-hidden="true">{SITE.name}</span>
-                {SITE.name}
-              </span>
+            <h1 className="eh-brand font-black tracking-wider text-2xl sm:text-4xl text-center" style={{ color: 'var(--eh-green)', textShadow: '0 0 2px rgba(0,255,157,.5), 0 0 10px rgba(0,255,157,.2)' }}>
+              {SITE.name}
             </h1>
 
             {/* Progress bar with percentage */}
@@ -112,7 +118,7 @@ const BootScreen = ({ onDone }) => {
                 <span>{progress}%</span>
               </div>
               <div className="h-[3px] rounded overflow-hidden bg-white/5 relative">
-                <div style={{ width: `${progress}%`, background: 'var(--eh-green)', boxShadow: '0 0 10px var(--eh-green)' }} className="h-full transition-all duration-300" />
+                <div style={{ width: `${progress}%`, background: 'var(--eh-green)', boxShadow: '0 0 6px var(--eh-green)' }} className="h-full transition-all duration-300" />
               </div>
             </div>
 
