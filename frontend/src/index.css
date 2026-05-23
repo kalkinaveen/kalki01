@@ -160,13 +160,18 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 
 /* Marquee */
 .eh-marquee { overflow:hidden; background: var(--eh-green); color:#001a10; }
-.eh-marquee-track { display:inline-flex; white-space:nowrap; animation: eh-scroll 28s linear infinite; padding: 8px 0; }
-.eh-marquee-track span { padding: 0 2rem; font-weight:700; letter-spacing:.16em; }
+.eh-marquee-track { display:inline-flex; white-space:nowrap; animation: eh-scroll 28s linear infinite; padding: 7px 0; font-size: 11px; letter-spacing: .14em; }
+.eh-marquee-track span { padding: 0 1rem; font-weight:700; }
+@media (min-width: 640px) { .eh-marquee-track { font-size: 13px; } .eh-marquee-track span { padding: 0 2rem; } }
 @keyframes eh-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* Boot ring pulse */
 @keyframes eh-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,255,157,.6), inset 0 0 30px rgba(0,255,157,.3); } 50% { box-shadow: 0 0 0 14px rgba(0,255,157,0), inset 0 0 40px rgba(0,255,157,.5); } }
-.eh-ring { width:160px; height:160px; border-radius: 50%; border: 3px solid var(--eh-green); animation: eh-pulse 1.6s ease-in-out infinite; }
+.eh-ring { width:100%; height:100%; border-radius: 50%; border: 3px solid var(--eh-green); animation: eh-pulse 1.6s ease-in-out infinite; }
+
+@keyframes eh-spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+.eh-spin-slow { animation: eh-spin 14s linear infinite; }
+.eh-spin-rev { animation: eh-spin 8s linear infinite reverse; }
 
 /* Blink caret */
 @keyframes eh-blink { 50% { opacity: 0; } }
