@@ -3,10 +3,11 @@ import { Link, NavLink } from 'react-router-dom';
 import { Moon, Sun, Menu, X, Search } from 'lucide-react';
 import Logo from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
-import { NAV, SITE } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const Navbar = () => {
   const { theme, toggle } = useTheme();
+  const { config } = useSiteConfig();
   const [open, setOpen] = useState(false);
   return (
     <header className="sticky top-0 z-40 backdrop-blur-md" style={{ background: 'rgba(5,6,8,.78)', borderBottom: '1px solid var(--eh-border)' }}>
@@ -14,20 +15,13 @@ const Navbar = () => {
         <Link to="/" className="flex items-center gap-3 group">
           <Logo size={42} />
           <div className="hidden sm:block">
-            <div className="eh-brand font-black tracking-widest text-base eh-neon-soft">{SITE.name}</div>
+            <div className="eh-brand font-black tracking-widest text-base eh-neon-soft">{config.site.name}</div>
             <div className="text-[10px] eh-mono opacity-60">// underground tech intel</div>
           </div>
         </Link>
         <nav className="hidden lg:flex items-center gap-1">
-          {NAV.map(n => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.to === '/'}
-              className={({ isActive }) => `eh-mono px-3 py-2 text-sm tracking-widest uppercase transition-colors ${isActive ? 'text-[var(--eh-green)]' : 'text-[var(--eh-text)] hover:text-[var(--eh-green)]'}`}
-            >
-              {n.label}
-            </NavLink>
+          {config.nav.map(n => (
+            <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `eh-mono px-3 py-2 text-sm tracking-widest uppercase transition-colors ${isActive ? 'text-[var(--eh-green)]' : 'text-[var(--eh-text)] hover:text-[var(--eh-green)]'}`}>{n.label}</NavLink>
           ))}
         </nav>
         <div className="flex items-center gap-2">
@@ -45,10 +39,8 @@ const Navbar = () => {
       {open && (
         <div className="lg:hidden border-t border-[var(--eh-border)]">
           <div className="px-4 py-3 flex flex-col">
-            {NAV.map(n => (
-              <NavLink key={n.to} to={n.to} end={n.to === '/'} onClick={() => setOpen(false)} className={({ isActive }) => `eh-mono py-3 text-sm tracking-widest uppercase border-b border-[var(--eh-border)] ${isActive ? 'text-[var(--eh-green)]' : ''}`}>
-                {n.label}
-              </NavLink>
+            {config.nav.map(n => (
+              <NavLink key={n.to} to={n.to} end={n.to === '/'} onClick={() => setOpen(false)} className={({ isActive }) => `eh-mono py-3 text-sm tracking-widest uppercase border-b border-[var(--eh-border)] ${isActive ? 'text-[var(--eh-green)]' : ''}`}>{n.label}</NavLink>
             ))}
           </div>
         </div>

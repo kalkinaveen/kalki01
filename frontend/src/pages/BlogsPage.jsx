@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { BLOGS } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { FileText, Calendar, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const BlogsPage = () => {
+  const { config } = useSiteConfig();
   const [q, setQ] = useState('');
-  const filtered = BLOGS.filter(b => b.title.toLowerCase().includes(q.toLowerCase()));
+  const filtered = config.blogs.filter(b => b.title.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="pt-10 pb-20">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="text-center mb-10">
           <div className="eh-kicker justify-center mb-3">// BLOG ARCHIVE</div>
-          <h1 className="eh-display text-4xl md:text-6xl font-black">LATEST <span className="eh-neon">INTEL</span></h1>
+          <h1 className="eh-display font-black" style={{ fontSize: 'clamp(2rem, 6vw, 4rem)' }}>LATEST <span className="eh-neon">INTEL</span></h1>
           <div className="mt-6 max-w-md mx-auto"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="&gt; search articles..." className="eh-input text-center" /></div>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">

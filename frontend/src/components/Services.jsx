@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Youtube, Instagram, Send, Facebook, Music2, Shield, ArrowRight, DollarSign, Clock, ShieldCheck } from 'lucide-react';
-import { SERVICES } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const ICONS = { youtube: Youtube, instagram: Instagram, send: Send, facebook: Facebook, music: Music2, shield: Shield };
 
@@ -34,7 +34,8 @@ const ServiceCard = ({ s }) => {
 };
 
 const Services = ({ limit }) => {
-  const data = limit ? SERVICES.slice(0, limit) : SERVICES;
+  const { config } = useSiteConfig();
+  const data = limit ? config.services.slice(0, limit) : config.services;
   return (
     <section className="py-16 sm:py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">

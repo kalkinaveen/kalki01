@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, X, Send as SendIcon, Bot } from 'lucide-react';
-import { SITE } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const REPLIES = {
   default: 'An operator will join in ~2 mins. For instant response ping us on Telegram.',
@@ -19,10 +19,9 @@ const detect = (s) => {
 };
 
 const HelpChat = () => {
+  const { config } = useSiteConfig();
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState([
-    { from: 'bot', text: 'Hi operator. I am ERR0R-BOT. How can I help today?' },
-  ]);
+  const [msgs, setMsgs] = useState([{ from: 'bot', text: 'Hi operator. I am ERR0R-BOT. How can I help today?' }]);
   const [input, setInput] = useState('');
   const scrollRef = useRef(null);
   useEffect(() => { scrollRef.current?.scrollTo({ top: 99999, behavior: 'smooth' }); }, [msgs, open]);
@@ -70,7 +69,7 @@ const HelpChat = () => {
             <input value={input} onChange={e=>setInput(e.target.value)} placeholder="&gt; type your message..." className="eh-input flex-1 text-sm py-2" />
             <button className="w-10 h-10 rounded grid place-items-center bg-[var(--eh-green)]" type="submit"><SendIcon size={16} color="#001a10" /></button>
           </form>
-          <a href={SITE.telegram} target="_blank" rel="noreferrer" className="eh-mono text-[10px] text-center py-2 opacity-70 hover:opacity-100 border-t border-[var(--eh-border)]">PREFER LIVE OPERATOR? OPEN ON TELEGRAM →</a>
+          <a href={config.site.telegram} target="_blank" rel="noreferrer" className="eh-mono text-[10px] text-center py-2 opacity-70 hover:opacity-100 border-t border-[var(--eh-border)]">PREFER LIVE OPERATOR? OPEN ON TELEGRAM →</a>
         </div>
       )}
     </>

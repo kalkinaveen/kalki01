@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Plus, Minus } from 'lucide-react';
-import { FAQS } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const FAQ = ({ limit }) => {
-  const data = limit ? FAQS.slice(0, limit) : FAQS;
+  const { config } = useSiteConfig();
+  const data = limit ? (config.faqs || []).slice(0, limit) : (config.faqs || []);
   const [open, setOpen] = useState(0);
+  if (data.length === 0) return null;
   return (
     <section className="py-16 sm:py-20">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">

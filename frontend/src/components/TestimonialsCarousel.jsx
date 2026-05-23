@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { TESTIMONIALS } from '../mock';
 import { Star, ChevronLeft, ChevronRight, Quote } from 'lucide-react';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const TestimonialsCarousel = () => {
+  const { config } = useSiteConfig();
+  const list = config.testimonials || [];
+  const total = list.length;
   const [i, setI] = useState(0);
-  const total = TESTIMONIALS.length;
   useEffect(() => {
+    if (total === 0) return;
     const id = setInterval(() => setI(v => (v + 1) % total), 5500);
     return () => clearInterval(id);
   }, [total]);
-  const t = TESTIMONIALS[i];
+  if (total === 0) return null;
+  const t = list[i % total];
   return (
     <section className="py-16 sm:py-20 eh-grid-bg">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">

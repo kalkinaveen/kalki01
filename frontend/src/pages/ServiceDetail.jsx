@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { SERVICES } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { DollarSign, Clock, ShieldCheck, ArrowLeft, User, AtSign, MessageCircle, Package, Link2, FileText, Send, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -13,7 +13,8 @@ const Field = ({ icon: Icon, label, children }) => (
 
 const ServiceDetail = () => {
   const { id } = useParams();
-  const s = SERVICES.find(x => x.id === id);
+  const { config } = useSiteConfig();
+  const s = config.services.find(x => x.id === id);
   const [form, setForm] = useState({ name:'', email:'', tg:'', size:'', target:'', notes:'' });
   if (!s) return <div className="max-w-3xl mx-auto px-6 py-20"><div className="opacity-70">Service not found.</div><Link to="/services" className="eh-btn-ghost mt-4">Back to services</Link></div>;
 
@@ -21,7 +22,7 @@ const ServiceDetail = () => {
   const onSubmit = e => {
     e.preventDefault();
     const orders = JSON.parse(localStorage.getItem('eh_orders') || '[]');
-    orders.unshift({ id: 'ORD-' + Date.now(), service: s.id, serviceName: s.name, ...form, status: 'pending', createdAt: new Date().toISOString() });
+    orders.unshift({ id: 'ORD-' + Date.now(), service: s.id, serviceName: s.name, ...form, status: 'received', createdAt: new Date().toISOString() });
     localStorage.setItem('eh_orders', JSON.stringify(orders));
     toast.success('Order placed successfully', { description: 'Our team will contact you on Telegram shortly.' });
     setForm({ name:'', email:'', tg:'', size:'', target:'', notes:'' });

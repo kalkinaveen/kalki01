@@ -3,6 +3,7 @@ import './App.css';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SiteConfigProvider } from './contexts/SiteConfigContext';
 import Layout from './components/Layout';
 import BootScreen from './components/BootScreen';
 import Home from './pages/Home';
@@ -37,26 +38,28 @@ const BootGate = () => {
 function App() {
   return (
     <ThemeProvider>
-      <div className="App">
-        <BrowserRouter>
-          <BootGate />
-          <Routes>
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/" element={<SiteShell><Home /></SiteShell>} />
-            <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
-            <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
-            <Route path="/books" element={<SiteShell><BooksPage /></SiteShell>} />
-            <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
-            <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
-            <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
-            <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
-            <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
-            <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
-            <Route path="*" element={<SiteShell><NotFound /></SiteShell>} />
-          </Routes>
-        </BrowserRouter>
-        <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
-      </div>
+      <SiteConfigProvider>
+        <div className="App">
+          <BrowserRouter>
+            <BootGate />
+            <Routes>
+              <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/" element={<SiteShell><Home /></SiteShell>} />
+              <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
+              <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
+              <Route path="/books" element={<SiteShell><BooksPage /></SiteShell>} />
+              <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
+              <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
+              <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
+              <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
+              <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
+              <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
+              <Route path="*" element={<SiteShell><NotFound /></SiteShell>} />
+            </Routes>
+          </BrowserRouter>
+          <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
+        </div>
+      </SiteConfigProvider>
     </ThemeProvider>
   );
 }

@@ -1,9 +1,10 @@
 import React from 'react';
-import { BOOKS } from '../mock';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { ShoppingCart, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BooksPage = () => {
+  const { config } = useSiteConfig();
   const addToCart = (b) => {
     const cart = JSON.parse(localStorage.getItem('eh_cart') || '[]');
     cart.unshift({ ...b, addedAt: new Date().toISOString() });
@@ -14,11 +15,11 @@ const BooksPage = () => {
     <div className="pt-10 pb-20">
       <div className="max-w-7xl mx-auto px-4 md:px-6 text-center mb-10">
         <div className="eh-kicker justify-center mb-3">// LIBRARY</div>
-        <h1 className="eh-display text-4xl md:text-6xl font-black">HACKING <span className="eh-neon">EBOOKS</span></h1>
+        <h1 className="eh-display font-black" style={{ fontSize: 'clamp(2rem, 6vw, 4rem)' }}>HACKING <span className="eh-neon">EBOOKS</span></h1>
         <p className="opacity-70 mt-4 max-w-xl mx-auto text-sm">Curated handbooks for ethical hackers, pentesters and curious minds. Instant PDF delivery.</p>
       </div>
       <div className="max-w-7xl mx-auto px-4 md:px-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {BOOKS.map(b => (
+        {config.books.map(b => (
           <div key={b.id} className="eh-card eh-panel p-5">
             <div className="relative aspect-[3/4] rounded overflow-hidden mb-4 bg-black">
               <img src={b.cover} alt={b.title} className="w-full h-full object-cover opacity-90" />

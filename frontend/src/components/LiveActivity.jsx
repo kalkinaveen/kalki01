@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { ACTIVITY } from '../mock';
 import { Send } from 'lucide-react';
+import { useSiteConfig } from '../contexts/SiteConfigContext';
 
 const LiveActivity = () => {
-  const [items, setItems] = useState(() => ACTIVITY.slice(0, 1));
+  const { config } = useSiteConfig();
+  const feed = config.activity || [];
+  const [items, setItems] = useState(() => feed.slice(0, 1));
   useEffect(() => {
+    if (feed.length === 0) return;
     let i = 1;
     const id = setInterval(() => {
-      setItems(prev => {
-        const next = [ACTIVITY[i % ACTIVITY.length], ...prev].slice(0, 4);
-        return next;
-      });
+      setItems(prev => [feed[i % feed.length], ...prev].slice(0, 4));
       i += 1;
     }, 3500);
     return () => clearInterval(id);
-  }, []);
+  }, [feed]);
+  if (feed.length === 0) return null;
   return (
     <section className="py-14">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
