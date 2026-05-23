@@ -16,6 +16,8 @@ export const NAV = [
   { label: 'Memberships', to: '/memberships' },
   { label: 'Blogs', to: '/blogs' },
   { label: 'Tools', to: '/tools' },
+  { label: 'Track', to: '/track' },
+  { label: 'FAQ', to: '/faq' },
   { label: 'Info', to: '/info' },
 ];
 
@@ -73,4 +75,27 @@ export const TESTIMONIALS = [
   { name: 'Maria L.', role: 'Brand Manager', text: 'Their IG growth pack changed our campaign. Reach jumped 320% in two weeks.' },
   { name: 'Tom B.', role: 'Pentester', text: 'The bug bounty playbook alone paid for my entire membership. Worth it.' },
   { name: 'Sara P.', role: 'Startup Founder', text: 'Telegram channel growth was the best ROI we made this quarter.' },
+];
+
+export const FAQS = [
+  { q: 'Is what you do legal?', a: 'All our growth services use real accounts with full consent. Our cybersecurity services (pentesting, OSINT, audits) are strictly authorized engagements only. We never accept malicious work.' },
+  { q: 'How fast is delivery?', a: 'Most social packages start within minutes and complete in 12-72 hours. Pentest/audit engagements take 5-10 business days depending on scope.' },
+  { q: 'Do you offer refunds or refills?', a: 'Yes. Every package ships with a 30-60 day refill warranty. If counts drop below the promised threshold, we replenish for free.' },
+  { q: 'Which payment methods do you accept?', a: 'We accept BTC, USDT (TRC20/ERC20), local bank transfer in selected regions, and major e-wallets. All channels are routed through encrypted endpoints.' },
+  { q: 'Is my data safe?', a: 'We never store more than the operation requires. Order metadata is purged 30 days after delivery. All communication uses E2E encrypted channels.' },
+  { q: 'Can I become a reseller?', a: 'Yes. Operators on the ELITE tier get a private dashboard with wholesale pricing, white-label invoices, and API access on request.' },
+  { q: 'Do you teach hacking?', a: 'Our ebooks and Operator tier include guided learning paths. ELITE members get 1-on-1 mentorship and access to a private red-team lab.' },
+];
+
+export const PARTNERS = ['DARKNET-DAILY', 'HACKWAVE', 'CRYPT0LABS', 'NULL-BYTE', 'SHELL//WIRE', 'PHISHNET', 'X-FORCE'];
+
+export const ACTIVITY = [
+  { id: 'a1', user: '@n3on_dr1ft',  service: 'YouTube Subscribers 1000', location: 'Tokyo, JP',   ago: '14s ago', amount: 19 },
+  { id: 'a2', user: '@ghostpr0t0',  service: 'Telegram Members 5000',    location: 'Berlin, DE',  ago: '38s ago', amount: 49 },
+  { id: 'a3', user: '@vandal.x',    service: 'Web Pentest - Pro',        location: 'Sao Paulo',   ago: '1m ago',  amount: 299 },
+  { id: 'a4', user: '@k0ldfront',   service: 'Instagram Followers 2k',   location: 'Dhaka, BD',   ago: '2m ago',  amount: 14 },
+  { id: 'a5', user: '@matr1xrunner',service: 'TikTok Views & Likes',     location: 'Lagos, NG',   ago: '3m ago',  amount: 7 },
+  { id: 'a6', user: '@deltafox',    service: 'Facebook Page Likes',      location: 'Cairo, EG',   ago: '4m ago',  amount: 14 },
+  { id: 'a7', user: '@b1nary.echo', service: 'ELITE Membership',         location: 'NYC, US',     ago: '6m ago',  amount: 49 },
+  { id: 'a8', user: '@signal.lost', service: 'OSINT Field Manual',       location: 'Mumbai, IN',  ago: '8m ago',  amount: 14 },
 ];

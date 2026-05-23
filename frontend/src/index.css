@@ -38,6 +38,20 @@ body {
   overflow-x: hidden;
 }
 
+html { scroll-behavior: smooth; }
+
+/* Custom green scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--eh-bg); }
+::-webkit-scrollbar-thumb { background: rgba(0,255,157,.18); border-radius: 8px; border: 2px solid var(--eh-bg); }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,255,157,.35); }
+
+/* Selection */
+::selection { background: rgba(0,255,157,.35); color: #001a10; }
+
+/* Flash highlight (used by LiveActivity new entry) */
+@keyframes eh-flash { 0% { background: rgba(0,255,157,.18); border-color: rgba(0,255,157,.55); } 100% { background: var(--eh-panel); } }
+
 code, pre { font-family: 'Share Tech Mono', monospace; }
 
 /* Terminal grid background */

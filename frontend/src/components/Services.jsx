@@ -36,18 +36,18 @@ const ServiceCard = ({ s }) => {
 const Services = ({ limit }) => {
   const data = limit ? SERVICES.slice(0, limit) : SERVICES;
   return (
-    <section className="py-20">
-      <div className="max-w-7xl mx-auto px-4 md:px-6">
-        <div className="text-center mb-12">
+    <section className="py-16 sm:py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="text-center mb-10 sm:mb-12">
           <div className="eh-kicker justify-center mb-3">// OUR SERVICES</div>
-          <h2 className="eh-display text-3xl md:text-5xl font-black">DISCOVER OUR MOST <span className="eh-neon">POPULAR SERVICES</span></h2>
+          <h2 className="eh-display font-black" style={{ fontSize: 'clamp(1.6rem, 5vw, 3.2rem)' }}>DISCOVER OUR MOST <span className="eh-neon">POPULAR SERVICES</span></h2>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {data.map(s => <ServiceCard key={s.id} s={s} />)}
         </div>
         {limit && (
           <div className="text-center mt-10">
-            <Link to="/services" className="eh-btn-ghost">SEE MORE SERVICES <ArrowRight size={16} /></Link>
+            <Link to="/services" className="eh-btn-ghost text-xs">SEE MORE SERVICES <ArrowRight size={14} /></Link>
           </div>
         )}
       </div>

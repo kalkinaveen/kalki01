@@ -13,6 +13,9 @@ import MembershipsPage from './pages/MembershipsPage';
 import BlogsPage from './pages/BlogsPage';
 import ToolsPage from './pages/ToolsPage';
 import InfoPage from './pages/InfoPage';
+import OrderTracker from './pages/OrderTracker';
+import FAQPage from './pages/FAQPage';
+import NotFound from './pages/NotFound';
 import AdminPanel from './pages/AdminPanel';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
@@ -34,7 +37,10 @@ function App() {
             <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
             <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
             <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
+            <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
+            <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
             <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
+            <Route path="*" element={<SiteShell><NotFound /></SiteShell>} />
           </Routes>
         </BrowserRouter>
         <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
