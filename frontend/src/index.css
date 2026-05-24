@@ -90,11 +90,11 @@ html.light .eh-neon { text-shadow: 0 0 1px rgba(0,158,98,0.4); }
 .eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 4px rgba(0,255,157,.25); }
 
 .eh-script {
-  font-family: 'Kaushan Script', 'Caveat Brush', 'Permanent Marker', cursive;
+  font-family: 'Caveat Brush', 'Permanent Marker', 'Kaushan Script', cursive;
   color: var(--eh-green);
   font-weight: 400;
-  font-style: italic;
-  letter-spacing: 0;
+  font-style: normal;
+  letter-spacing: 0.01em;
   line-height: 1.05;
   text-shadow:
     0 0 4px rgba(0,255,157,.95),

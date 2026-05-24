@@ -67,41 +67,41 @@ const BootScreen = ({ onDone }) => {
         <div className="h-full transition-all duration-300" style={{ width: `${progress}%`, background: 'var(--eh-green)', boxShadow: '0 0 6px var(--eh-green)' }} />
       </div>
 
-      <div className="relative h-full w-full flex items-center justify-center px-3 py-4">
-        <div className="w-full max-w-[420px] eh-panel eh-brackets p-5 sm:p-7 backdrop-blur-sm" style={{ background: 'rgba(8,10,12,.78)' }}>
+      <div className="relative h-full w-full flex items-center justify-center px-4 py-4">
+        <div className="w-full max-w-[360px] sm:max-w-[420px] eh-panel eh-brackets px-5 py-6 sm:px-7 sm:py-7 backdrop-blur-sm" style={{ background: 'rgba(8,10,12,.82)' }}>
           <span className="br-bl" /><span className="br-br" />
 
           {/* Header */}
-          <div className="flex items-center justify-between text-[11px] eh-mono mb-5" style={{ color: 'var(--eh-green)' }}>
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] eh-mono mb-4" style={{ color: 'var(--eh-green)' }}>
             <span>&gt;_ errorhacker_boot.sh</span>
-            <div className="flex items-center gap-3"><span className="opacity-70">{SITE.version}</span><button onClick={() => onDone && onDone()} className="opacity-60 hover:opacity-100 tracking-widest text-[10px]">[SKIP]</button></div>
+            <div className="flex items-center gap-2"><span className="opacity-70">{SITE.version}</span><button onClick={() => onDone && onDone()} className="opacity-60 hover:opacity-100 tracking-widest text-[9px]">[SKIP]</button></div>
           </div>
 
           {/* Logo */}
-          <div className="flex justify-center mb-4">
-            <div className="relative w-[78px] h-[78px] flex items-center justify-center">
+          <div className="flex justify-center mb-3">
+            <div className="relative w-[64px] h-[64px] flex items-center justify-center">
               <svg className="absolute inset-0 w-full h-full eh-spin-slow" viewBox="0 0 100 100" fill="none">
                 <circle cx="50" cy="50" r="48" stroke="rgba(0,255,157,.15)" strokeWidth="0.8" />
-                <circle cx="50" cy="50" r="48" stroke="var(--eh-green)" strokeWidth="1.6" strokeLinecap="round" strokeDasharray="60 240" />
+                <circle cx="50" cy="50" r="48" stroke="var(--eh-green)" strokeWidth="1.6" strokeLinecap="round" strokeDasharray="55 245" />
               </svg>
-              <div className="relative z-10 rounded-full overflow-hidden" style={{ boxShadow: '0 0 14px rgba(0,255,157,.3)' }}>
-                <Logo size={56} />
+              <div className="relative z-10 rounded-full overflow-hidden" style={{ boxShadow: '0 0 12px rgba(0,255,157,.3)' }}>
+                <Logo size={46} />
               </div>
             </div>
           </div>
 
           {/* Brand title */}
-          <h1 className="eh-brand font-black tracking-[0.08em] text-3xl text-center mb-3" style={{ color: 'var(--eh-green)', textShadow: '0 0 2px rgba(0,255,157,.5), 0 0 10px rgba(0,255,157,.2)' }}>{SITE.name}</h1>
+          <h1 className="eh-brand font-black tracking-[0.08em] text-[26px] sm:text-3xl text-center mb-2.5" style={{ color: 'var(--eh-green)', textShadow: '0 0 2px rgba(0,255,157,.5), 0 0 10px rgba(0,255,157,.2)' }}>{SITE.name}</h1>
 
           {/* Divider */}
-          <div className="mx-auto w-32 h-px mb-4" style={{ background: 'var(--eh-green)', boxShadow: '0 0 6px var(--eh-green)' }} />
+          <div className="mx-auto w-24 h-px mb-3" style={{ background: 'var(--eh-green)', boxShadow: '0 0 6px var(--eh-green)' }} />
 
           {/* Subtitle */}
-          <div className="text-center mb-5 text-[11px] tracking-[.45em] opacity-80" style={{ color: 'var(--eh-green)', fontFamily: "'Share Tech Mono', monospace" }}>INITIALIZING SYSTEM ...</div>
+          <div className="text-center mb-4 text-[10px] tracking-[.4em] opacity-80" style={{ color: 'var(--eh-green)', fontFamily: "'Share Tech Mono', monospace" }}>INITIALIZING SYSTEM ...</div>
 
           {/* Terminal log */}
-          <div className="text-[11px] leading-[1.7] min-h-[110px]" style={{ color: 'var(--eh-green)', fontFamily: "'Share Tech Mono', 'VT323', monospace" }}>
-            {lines.map((l, i) => (<div key={i} className={i === lines.length - 1 ? 'opacity-100' : 'opacity-70'}>{l}</div>))}
+          <div className="text-[10.5px] sm:text-[11px] leading-[1.65] min-h-[100px]" style={{ color: 'var(--eh-green)', fontFamily: "'Share Tech Mono', 'VT323', monospace" }}>
+            {lines.map((l, i) => (<div key={i} className={`whitespace-nowrap overflow-hidden text-ellipsis ${i === lines.length - 1 ? 'opacity-100' : 'opacity-70'}`}>{l}</div>))}
             <span className="eh-caret">&nbsp;</span>
           </div>
         </div>
