@@ -90,17 +90,17 @@ html.light .eh-neon { text-shadow: 0 0 1px rgba(0,158,98,0.4); }
 .eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 4px rgba(0,255,157,.25); }
 
 .eh-script {
-  font-family: 'Caveat Brush', 'Permanent Marker', 'Kaushan Script', cursive;
+  font-family: 'Pacifico', 'Sacramento', 'Kaushan Script', cursive;
   color: var(--eh-green);
   font-weight: 400;
   font-style: normal;
-  letter-spacing: 0.01em;
-  line-height: 1.05;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
   text-shadow:
-    0 0 4px rgba(0,255,157,.95),
-    0 0 14px rgba(0,255,157,.6),
-    0 0 32px rgba(0,255,157,.35);
-  filter: drop-shadow(0 0 6px rgba(0,255,157,.35));
+    0 0 3px rgba(0,255,157,.9),
+    0 0 10px rgba(0,255,157,.55),
+    0 0 22px rgba(0,255,157,.3);
+  filter: drop-shadow(0 0 4px rgba(0,255,157,.3));
 }
 html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
 
