@@ -14,9 +14,9 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-3 group">
           <Logo size={42} />
-          <div className="hidden sm:block">
-            <div className="eh-brand font-black tracking-widest text-base eh-neon-soft">{config.site.name}</div>
-            <div className="text-[10px] eh-mono opacity-60">// underground tech intel</div>
+          <div className="block">
+            <div className="eh-brand font-black tracking-widest text-sm sm:text-base eh-neon-soft leading-tight">{config.site.name}</div>
+            <div className="text-[9px] sm:text-[10px] eh-mono opacity-60 leading-tight">// underground tech intel</div>
           </div>
         </Link>
         <nav className="hidden lg:flex items-center gap-1">
