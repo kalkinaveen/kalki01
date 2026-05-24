@@ -7,6 +7,15 @@ DEFAULT_CONFIG = {
             "chat_id": "",
         },
     },
+    "feedProfile": {
+        "username": "errorhacker",
+        "displayName": "ERRORHACKER",
+        "bio": "// underground tech intel  \n// 24/7 secure ops  \n// followers earn refill warranty",
+        "website": "https://errorhacker.site",
+        "followers": 128400,
+        "following": 42,
+        "verified": True,
+    },
     "site": {
         "name": "ERRORHACKER",
         "tagline": "Your Naughty Don Is Back",
@@ -24,6 +33,7 @@ DEFAULT_CONFIG = {
         {"label": "Services", "to": "/services"},
         {"label": "Books", "to": "/books"},
         {"label": "Memberships", "to": "/memberships"},
+        {"label": "Feed", "to": "/feed"},
         {"label": "Blogs", "to": "/blogs"},
         {"label": "Tools", "to": "/tools"},
         {"label": "Track", "to": "/track"},

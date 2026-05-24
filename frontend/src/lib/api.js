@@ -55,6 +55,38 @@ export const api = {
   applyCoupon: (code, amount) => req('/coupons/apply', { method: 'POST', body: { code, amount } }),
   // chat
   chatSend: (session_id, message) => req('/chat/message', { method: 'POST', body: { session_id, message } }),
+  // feed
+  feedListPosts: () => req('/feed/posts'),
+  feedGetPost: (id) => req(`/feed/posts/${id}`),
+  feedCreatePost: (data) => req('/feed/posts', { method: 'POST', body: data, admin: true }),
+  feedUpdatePost: (id, data) => req(`/feed/posts/${id}`, { method: 'PATCH', body: data, admin: true }),
+  feedDeletePost: (id) => req(`/feed/posts/${id}`, { method: 'DELETE', admin: true }),
+  feedListReels: () => req('/feed/reels'),
+  feedCreateReel: (data) => req('/feed/reels', { method: 'POST', body: data, admin: true }),
+  feedUpdateReel: (id, data) => req(`/feed/reels/${id}`, { method: 'PATCH', body: data, admin: true }),
+  feedDeleteReel: (id) => req(`/feed/reels/${id}`, { method: 'DELETE', admin: true }),
+  feedLikePost: (id) => req(`/feed/posts/${id}/like`, { method: 'POST', auth: true }),
+  feedLikeReel: (id) => req(`/feed/reels/${id}/like`, { method: 'POST', auth: true }),
+  feedViewPost: (id, session_id) => req(`/feed/posts/${id}/view`, { method: 'POST', body: { session_id } }),
+  feedViewReel: (id, session_id) => req(`/feed/reels/${id}/view`, { method: 'POST', body: { session_id } }),
+  feedPostComments: (id) => req(`/feed/posts/${id}/comments`),
+  feedReelComments: (id) => req(`/feed/reels/${id}/comments`),
+  feedAddPostComment: (id, text) => req(`/feed/posts/${id}/comments`, { method: 'POST', body: { text }, auth: true }),
+  feedAddReelComment: (id, text) => req(`/feed/reels/${id}/comments`, { method: 'POST', body: { text }, auth: true }),
+  feedAddAdminComment: (data) => req('/feed/comments/admin', { method: 'POST', body: data, admin: true }),
+  feedDeleteComment: (id) => req(`/feed/comments/${id}`, { method: 'DELETE', admin: true }),
+  feedUploadMedia: async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API}/feed/upload-media`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': getToken() },
+      body: fd,
+    });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.detail || m; } catch (_) {} throw new Error(m); }
+    const data = await res.json();
+    return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
+  },
   // uploads
   uploadImage: async (file) => {
     const fd = new FormData();

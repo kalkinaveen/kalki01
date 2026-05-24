@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2 } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -25,6 +25,7 @@ const sections = [
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
+  { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
@@ -584,6 +585,251 @@ const Orders = () => {
   );
 };
 
+const FeedManager = () => {
+  const { config, update } = useSiteConfig();
+  const profile = config.feedProfile || { username: 'errorhacker', displayName: 'ERRORHACKER', bio: '', website: '', followers: 0, following: 0, verified: true };
+  const [tab, setTab] = useState('posts');
+  const [posts, setPosts] = useState([]);
+  const [reels, setReels] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(null); // {kind:'post'|'reel', data}
+  const [selectedComments, setSelectedComments] = useState(null); // {kind, id, items}
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const [p, r] = await Promise.all([api.feedListPosts(), api.feedListReels()]);
+      setPosts(p); setReels(r);
+    } catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const openNew = (kind) => setEditing({ kind, data: kind === 'post'
+    ? { image_url: '', caption: '', location: '', likes_base: 0, views_base: 0, pinned: false }
+    : { video_url: '', thumb_url: '', caption: '', likes_base: 0, views_base: 0, pinned: false } });
+
+  const save = async () => {
+    if (!editing) return;
+    const { kind, data } = editing;
+    try {
+      if (kind === 'post') {
+        if (!data.image_url) { toast.error('Image URL required'); return; }
+        if (data.id) await api.feedUpdatePost(data.id, { image_url: data.image_url, caption: data.caption || '', location: data.location || '', likes_base: Number(data.likes_base) || 0, views_base: Number(data.views_base) || 0, pinned: !!data.pinned });
+        else await api.feedCreatePost({ ...data, likes_base: Number(data.likes_base) || 0, views_base: Number(data.views_base) || 0 });
+      } else {
+        if (!data.video_url) { toast.error('Video URL required'); return; }
+        if (data.id) await api.feedUpdateReel(data.id, { video_url: data.video_url, thumb_url: data.thumb_url || '', caption: data.caption || '', likes_base: Number(data.likes_base) || 0, views_base: Number(data.views_base) || 0, pinned: !!data.pinned });
+        else await api.feedCreateReel({ ...data, likes_base: Number(data.likes_base) || 0, views_base: Number(data.views_base) || 0 });
+      }
+      toast.success('Saved');
+      setEditing(null);
+      refresh();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const remove = async (kind, id) => {
+    if (!window.confirm(`Delete this ${kind}?`)) return;
+    try {
+      if (kind === 'post') await api.feedDeletePost(id);
+      else await api.feedDeleteReel(id);
+      toast.success('Deleted'); refresh();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const togglePin = async (kind, item) => {
+    try {
+      if (kind === 'post') await api.feedUpdatePost(item.id, { pinned: !item.pinned });
+      else await api.feedUpdateReel(item.id, { pinned: !item.pinned });
+      refresh();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const openComments = async (kind, id) => {
+    try {
+      const items = kind === 'post' ? await api.feedPostComments(id) : await api.feedReelComments(id);
+      setSelectedComments({ kind, id, items, newName: '', newText: '', newPic: '' });
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const addAdminComment = async () => {
+    if (!selectedComments) return;
+    const { kind, id, newName, newText, newPic } = selectedComments;
+    if (!newName || !newText) { toast.error('Name and text required'); return; }
+    try {
+      const c = await api.feedAddAdminComment({ [kind === 'post' ? 'post_id' : 'reel_id']: id, user_name: newName, text: newText, picture: newPic || '' });
+      setSelectedComments(s => ({ ...s, items: [...s.items, c], newName: '', newText: '', newPic: '' }));
+      refresh();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const delComment = async (cid) => {
+    if (!window.confirm('Delete comment?')) return;
+    try {
+      await api.feedDeleteComment(cid);
+      setSelectedComments(s => ({ ...s, items: s.items.filter(c => c.id !== cid) }));
+      refresh();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  return (
+    <Section kicker="// SOCIAL" title="FEED MANAGER (POSTS · REELS · COMMENTS)" actions={<button onClick={refresh} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button>}>
+      {/* Profile config */}
+      <div className="eh-panel p-5 mb-6">
+        <div className="eh-kicker mb-3">// PROFILE HEADER</div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div><Label>USERNAME</Label><Input value={profile.username} onChange={e => update('feedProfile.username', e.target.value)} /></div>
+          <div><Label>DISPLAY NAME</Label><Input value={profile.displayName} onChange={e => update('feedProfile.displayName', e.target.value)} /></div>
+          <div><Label>WEBSITE</Label><Input value={profile.website || ''} onChange={e => update('feedProfile.website', e.target.value)} /></div>
+          <div><Label hint="number">FOLLOWERS</Label><Input type="number" value={profile.followers} onChange={e => update('feedProfile.followers', Number(e.target.value) || 0)} /></div>
+          <div><Label hint="number">FOLLOWING</Label><Input type="number" value={profile.following} onChange={e => update('feedProfile.following', Number(e.target.value) || 0)} /></div>
+          <div><Label>VERIFIED BADGE</Label><label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer mt-2"><input type="checkbox" checked={!!profile.verified} onChange={e => update('feedProfile.verified', e.target.checked)} className="w-4 h-4 accent-[var(--eh-green)]" /> {profile.verified ? 'ON' : 'OFF'}</label></div>
+          <div className="sm:col-span-2 lg:col-span-3"><Label>BIO (multi-line)</Label><Textarea rows={3} value={profile.bio || ''} onChange={e => update('feedProfile.bio', e.target.value)} /></div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setTab('posts')} className={`px-4 py-2 rounded eh-mono text-xs tracking-widest ${tab==='posts' ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>POSTS ({posts.length})</button>
+        <button onClick={() => setTab('reels')} className={`px-4 py-2 rounded eh-mono text-xs tracking-widest ${tab==='reels' ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>REELS ({reels.length})</button>
+        <button onClick={() => openNew(tab === 'reels' ? 'reel' : 'post')} className="eh-btn-primary text-xs ml-auto"><Plus size={12} /> NEW {tab === 'reels' ? 'REEL' : 'POST'}</button>
+      </div>
+
+      {loading ? <div className="py-10 text-center opacity-60">Loading...</div> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(tab === 'posts' ? posts : reels).length === 0 && <div className="col-span-3 py-10 text-center opacity-60 eh-mono text-xs">No {tab} yet. Hit NEW above to create.</div>}
+          {(tab === 'posts' ? posts : reels).map(item => (
+            <div key={item.id} className="eh-panel overflow-hidden">
+              <div className="aspect-square bg-black relative">
+                {tab === 'posts'
+                  ? <img src={item.image_url} alt="" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
+                  : (item.thumb_url
+                      ? <img src={item.thumb_url} alt="" className="w-full h-full object-cover" />
+                      : <video src={item.video_url} className="w-full h-full object-cover" muted preload="metadata" />)
+                }
+                {item.pinned && <span className="absolute top-2 left-2 text-[9px] eh-mono px-1.5 py-0.5 rounded bg-black/70 text-[var(--eh-green)] tracking-widest">PINNED</span>}
+              </div>
+              <div className="p-3">
+                <div className="text-sm leading-5 line-clamp-2 mb-2">{item.caption || <span className="opacity-50">(no caption)</span>}</div>
+                <div className="flex justify-between eh-mono text-[11px] opacity-70 mb-3">
+                  <span>❤ {item.likes_count}</span>
+                  <span>💬 {item.comments_count}</span>
+                  <span>👁 {item.views_count}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button onClick={() => setEditing({ kind: tab === 'posts' ? 'post' : 'reel', data: { ...item } })} className="eh-btn-ghost text-[11px] px-2 py-1"><Edit3 size={11} /> EDIT</button>
+                  <button onClick={() => openComments(tab === 'posts' ? 'post' : 'reel', item.id)} className="eh-btn-ghost text-[11px] px-2 py-1"><MessageSquare size={11} /> {item.comments_count}</button>
+                  <button onClick={() => togglePin(tab === 'posts' ? 'post' : 'reel', item)} className="eh-btn-ghost text-[11px] px-2 py-1">{item.pinned ? 'UNPIN' : 'PIN'}</button>
+                  <button onClick={() => remove(tab === 'posts' ? 'post' : 'reel', item.id)} className="eh-btn-ghost text-[11px] px-2 py-1 ml-auto text-red-400 hover:text-red-300"><Trash2 size={11} /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Editor Modal */}
+      {editing && (
+        <div className="fixed inset-0 z-50 bg-black/85 grid place-items-center p-4" onClick={() => setEditing(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-xl eh-panel p-5 max-h-[90vh] overflow-y-auto" style={{ background: '#0d1115' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="eh-kicker">// {editing.data.id ? 'EDIT' : 'NEW'} {editing.kind.toUpperCase()}</div>
+              <button onClick={() => setEditing(null)} className="opacity-70 hover:opacity-100"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              {editing.kind === 'post' ? (
+                <>
+                  <div><Label hint="upload or paste url">IMAGE</Label><ImageInput value={editing.data.image_url} onChange={(v) => setEditing(e => ({ ...e, data: { ...e.data, image_url: v } }))} /></div>
+                  {editing.data.image_url && <img src={editing.data.image_url} className="max-h-48 rounded object-cover w-full" alt="" onError={e => e.target.style.display='none'} />}
+                  <div><Label>CAPTION</Label><Textarea rows={3} value={editing.data.caption} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, caption: e.target.value } }))} /></div>
+                  <div><Label>LOCATION (optional)</Label><Input value={editing.data.location} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, location: e.target.value } }))} placeholder="darknet" /></div>
+                </>
+              ) : (
+                <>
+                  <FeedVideoUpload value={editing.data.video_url} onChange={(v) => setEditing(e => ({ ...e, data: { ...e.data, video_url: v } }))} />
+                  {editing.data.video_url && <video src={editing.data.video_url} controls className="max-h-64 w-full bg-black rounded" />}
+                  <div><Label hint="optional thumbnail image">THUMB URL</Label><ImageInput value={editing.data.thumb_url} onChange={(v) => setEditing(e => ({ ...e, data: { ...e.data, thumb_url: v } }))} /></div>
+                  <div><Label>CAPTION</Label><Textarea rows={3} value={editing.data.caption} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, caption: e.target.value } }))} /></div>
+                </>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label hint="display likes start">LIKES BASE</Label><Input type="number" value={editing.data.likes_base} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, likes_base: Number(e.target.value) || 0 } }))} /></div>
+                <div><Label hint="display views start">VIEWS BASE</Label><Input type="number" value={editing.data.views_base} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, views_base: Number(e.target.value) || 0 } }))} /></div>
+              </div>
+              <label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer"><input type="checkbox" checked={!!editing.data.pinned} onChange={e => setEditing(s => ({ ...s, data: { ...s.data, pinned: e.target.checked } }))} className="w-4 h-4 accent-[var(--eh-green)]" /> PINNED (shows first)</label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setEditing(null)} className="eh-btn-ghost text-xs">CANCEL</button>
+              <button onClick={save} className="eh-btn-primary text-xs"><Save size={12} /> SAVE</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comments Modal */}
+      {selectedComments && (
+        <div className="fixed inset-0 z-50 bg-black/85 grid place-items-center p-4" onClick={() => setSelectedComments(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-lg eh-panel p-5 max-h-[90vh] overflow-y-auto" style={{ background: '#0d1115' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="eh-kicker">// COMMENTS ({selectedComments.items.length})</div>
+              <button onClick={() => setSelectedComments(null)} className="opacity-70 hover:opacity-100"><X size={16} /></button>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-2 mb-4">
+              {selectedComments.items.length === 0 && <div className="opacity-60 eh-mono text-xs text-center py-4">No comments yet.</div>}
+              {selectedComments.items.map(c => (
+                <div key={c.id} className="flex items-start gap-3 eh-panel p-3">
+                  <div className="flex-1">
+                    <div className="text-sm"><span className="font-bold mr-2">{c.user_name}</span><span className="opacity-90">{c.text}</span></div>
+                    <div className="eh-mono text-[10px] opacity-50 mt-1">{c.is_admin_seed ? '⚙ seeded · ' : ''}{new Date(c.created_at).toLocaleString()}</div>
+                  </div>
+                  <button onClick={() => delComment(c.id)} className="text-red-400 hover:text-red-300"><Trash2 size={12} /></button>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[var(--eh-border)] pt-3 space-y-2">
+              <div className="eh-kicker mb-2">// ADD SEEDED COMMENT</div>
+              <Input value={selectedComments.newName} onChange={e => setSelectedComments(s => ({ ...s, newName: e.target.value }))} placeholder="username e.g. ghost_runner" />
+              <Input value={selectedComments.newPic} onChange={e => setSelectedComments(s => ({ ...s, newPic: e.target.value }))} placeholder="avatar URL (optional)" />
+              <Textarea rows={2} value={selectedComments.newText} onChange={e => setSelectedComments(s => ({ ...s, newText: e.target.value }))} placeholder="comment text" />
+              <button onClick={addAdminComment} className="eh-btn-primary text-xs"><Plus size={12} /> ADD COMMENT</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+};
+
+// Helper: video upload component
+const FeedVideoUpload = ({ value, onChange }) => {
+  const [busy, setBusy] = useState(false);
+  const onPick = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    if (!f.type.startsWith('video/')) { toast.error('Pick a video'); return; }
+    if (f.size > 50 * 1024 * 1024) { toast.error('Max 50MB'); return; }
+    setBusy(true);
+    try {
+      const r = await api.feedUploadMedia(f);
+      onChange(r.absoluteUrl);
+      toast.success('Video uploaded');
+    } catch (err) { toast.error(err.message || 'Upload failed'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <Label hint="upload mp4 (max 50MB) or paste url">VIDEO</Label>
+      <div className="flex gap-2 items-stretch">
+        <Input value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="> https://... or upload" />
+        <label className="eh-btn-ghost text-xs cursor-pointer whitespace-nowrap px-3">
+          {busy ? <><Loader2 className="animate-spin" size={12} /> UPLOADING</> : <><Upload size={12} /> UPLOAD MP4</>}
+          <input type="file" accept="video/*" onChange={onPick} className="hidden" disabled={busy} />
+        </label>
+        {value && <button type="button" onClick={() => onChange('')} className="eh-btn-ghost text-xs px-3"><X size={12} /></button>}
+      </div>
+    </div>
+  );
+};
+
 const CouponsTab = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -860,6 +1106,7 @@ const AdminPanel = () => {
         {active==='stats'       && <StatsEditor />}
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
+        {active==='feed'        && <FeedManager />}
         {active==='coupons'     && <CouponsTab />}
         {active==='notifications'&& <NotificationsTab />}
         {active==='settings'    && <SettingsTab />}

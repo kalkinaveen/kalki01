@@ -14,11 +14,12 @@ Endpoints:
   DELETE /api/orders            clear all orders (admin)
 """
 from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File, Request, Response, Depends, Cookie
-from fastapi.responses import Response as FastResponse
+from fastapi.responses import Response as FastResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os, uuid, logging, base64, asyncio, secrets
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from bson import ObjectId
+import os, uuid, logging, base64, asyncio, secrets, io
 import httpx, bcrypt, jwt
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -34,6 +35,7 @@ load_dotenv(ROOT_DIR / ".env")
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="feed_media")
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
 JWT_ALGO = "HS256"
@@ -102,6 +104,33 @@ class ApplyCouponIn(BaseModel):
 class ChatIn(BaseModel):
     session_id: str
     message: str
+
+# ---- Feed (Instagram-style) models ----
+class PostIn(BaseModel):
+    image_url: str
+    caption: Optional[str] = ""
+    location: Optional[str] = ""
+    likes_base: int = 0
+    views_base: int = 0
+    pinned: bool = False
+
+class ReelIn(BaseModel):
+    video_url: str
+    thumb_url: Optional[str] = ""
+    caption: Optional[str] = ""
+    likes_base: int = 0
+    views_base: int = 0
+    pinned: bool = False
+
+class CommentIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+class AdminCommentIn(BaseModel):
+    post_id: Optional[str] = None
+    reel_id: Optional[str] = None
+    user_name: str
+    text: str
+    picture: Optional[str] = ""
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -574,6 +603,285 @@ async def chat_message(body: ChatIn):
     await db.chat_history.insert_one({"session_id": body.session_id, "role": "bot", "text": reply, "ts": datetime.now(timezone.utc).isoformat()})
     return {"reply": reply}
 
+# ---- Feed (Instagram-style) ------------------------------------------------
+async def _enrich_feed_item(item: Dict[str, Any], kind: str, user: Optional[Dict[str, Any]]):
+    item.pop("_id", None)
+    id_key = "post_id" if kind == "post" else "reel_id"
+    like_filter = {id_key: item["id"]}
+    item["likes_count"] = (item.get("likes_base", 0) or 0) + await db.feed_likes.count_documents(like_filter)
+    item["comments_count"] = await db.feed_comments.count_documents(like_filter)
+    item["views_count"] = (item.get("views_base", 0) or 0) + await db.feed_views.count_documents(like_filter)
+    item["liked_by_me"] = False
+    if user:
+        liked = await db.feed_likes.find_one({**like_filter, "user_id": user["user_id"]})
+        item["liked_by_me"] = bool(liked)
+    return item
+
+@api.post("/feed/upload-media")
+async def feed_upload_media(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    ct = file.content_type or ""
+    is_video = ct.startswith("video/")
+    is_image = ct.startswith("image/")
+    if not (is_video or is_image):
+        raise HTTPException(status_code=400, detail="Only image or video allowed")
+    raw = await file.read()
+    limit = 50 * 1024 * 1024 if is_video else 5 * 1024 * 1024
+    if len(raw) > limit:
+        raise HTTPException(status_code=413, detail=f"File too large (max {limit // (1024*1024)}MB)")
+    if is_image:
+        # reuse simple uploads collection
+        uid = uuid.uuid4().hex
+        await db.uploads.insert_one({"_id": uid, "content_type": ct, "filename": file.filename or uid, "size": len(raw), "data": base64.b64encode(raw).decode("ascii"), "createdAt": datetime.utcnow().isoformat()})
+        return {"id": uid, "url": f"/api/uploads/{uid}", "kind": "image", "content_type": ct, "size": len(raw)}
+    # video → GridFS
+    grid_id = await fs_bucket.upload_from_stream(file.filename or f"video-{uuid.uuid4().hex}.mp4", io.BytesIO(raw), metadata={"content_type": ct, "size": len(raw)})
+    sid = str(grid_id)
+    return {"id": sid, "url": f"/api/feed/media/{sid}", "kind": "video", "content_type": ct, "size": len(raw)}
+
+@api.get("/feed/media/{media_id}")
+async def feed_get_media(media_id: str, request: Request):
+    try:
+        oid = ObjectId(media_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        stream = await fs_bucket.open_download_stream(oid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Not found")
+    ct = (stream.metadata or {}).get("content_type", "video/mp4")
+    async def gen():
+        while True:
+            chunk = await stream.readchunk()
+            if not chunk:
+                break
+            yield chunk
+    return StreamingResponse(gen(), media_type=ct, headers={"Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes"})
+
+# Posts CRUD (admin)
+@api.post("/feed/posts")
+async def feed_create_post(body: PostIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    doc = {
+        "id": f"POST-{uuid.uuid4().hex[:10]}",
+        "image_url": body.image_url,
+        "caption": body.caption or "",
+        "location": body.location or "",
+        "likes_base": int(body.likes_base or 0),
+        "views_base": int(body.views_base or 0),
+        "pinned": bool(body.pinned),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.feed_posts.insert_one(doc)
+    return await _enrich_feed_item(doc, "post", None)
+
+@api.patch("/feed/posts/{post_id}")
+async def feed_update_post(post_id: str, body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    body.pop("_id", None); body.pop("id", None); body.pop("created_at", None)
+    res = await db.feed_posts.update_one({"id": post_id}, {"$set": body})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Post not found")
+    doc = await db.feed_posts.find_one({"id": post_id})
+    return await _enrich_feed_item(doc, "post", None)
+
+@api.delete("/feed/posts/{post_id}")
+async def feed_delete_post(post_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.feed_posts.delete_one({"id": post_id})
+    await db.feed_likes.delete_many({"post_id": post_id})
+    await db.feed_comments.delete_many({"post_id": post_id})
+    await db.feed_views.delete_many({"post_id": post_id})
+    return {"ok": True}
+
+@api.get("/feed/posts")
+async def feed_list_posts(request: Request, limit: int = 30):
+    user = await _get_user_from_request(request)
+    rows = await db.feed_posts.find().sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
+    return [await _enrich_feed_item(r, "post", user) for r in rows]
+
+@api.get("/feed/posts/{post_id}")
+async def feed_get_post(post_id: str, request: Request):
+    user = await _get_user_from_request(request)
+    doc = await db.feed_posts.find_one({"id": post_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return await _enrich_feed_item(doc, "post", user)
+
+# Reels CRUD (admin)
+@api.post("/feed/reels")
+async def feed_create_reel(body: ReelIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    doc = {
+        "id": f"REEL-{uuid.uuid4().hex[:10]}",
+        "video_url": body.video_url,
+        "thumb_url": body.thumb_url or "",
+        "caption": body.caption or "",
+        "likes_base": int(body.likes_base or 0),
+        "views_base": int(body.views_base or 0),
+        "pinned": bool(body.pinned),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.feed_reels.insert_one(doc)
+    return await _enrich_feed_item(doc, "reel", None)
+
+@api.patch("/feed/reels/{reel_id}")
+async def feed_update_reel(reel_id: str, body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    body.pop("_id", None); body.pop("id", None); body.pop("created_at", None)
+    res = await db.feed_reels.update_one({"id": reel_id}, {"$set": body})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    doc = await db.feed_reels.find_one({"id": reel_id})
+    return await _enrich_feed_item(doc, "reel", None)
+
+@api.delete("/feed/reels/{reel_id}")
+async def feed_delete_reel(reel_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.feed_reels.delete_one({"id": reel_id})
+    await db.feed_likes.delete_many({"reel_id": reel_id})
+    await db.feed_comments.delete_many({"reel_id": reel_id})
+    await db.feed_views.delete_many({"reel_id": reel_id})
+    return {"ok": True}
+
+@api.get("/feed/reels")
+async def feed_list_reels(request: Request, limit: int = 30):
+    user = await _get_user_from_request(request)
+    rows = await db.feed_reels.find().sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
+    return [await _enrich_feed_item(r, "reel", user) for r in rows]
+
+# Like / unlike
+async def _toggle_like(kind: str, content_id: str, user: Dict[str, Any]):
+    id_key = "post_id" if kind == "post" else "reel_id"
+    coll = db.feed_posts if kind == "post" else db.feed_reels
+    if not await coll.find_one({"id": content_id}):
+        raise HTTPException(status_code=404, detail="Not found")
+    existing = await db.feed_likes.find_one({id_key: content_id, "user_id": user["user_id"]})
+    if existing:
+        await db.feed_likes.delete_one({"_id": existing["_id"]})
+        liked = False
+    else:
+        await db.feed_likes.insert_one({id_key: content_id, "user_id": user["user_id"], "created_at": datetime.now(timezone.utc).isoformat()})
+        liked = True
+    base = (await coll.find_one({"id": content_id})).get("likes_base", 0) or 0
+    total = base + await db.feed_likes.count_documents({id_key: content_id})
+    return {"liked": liked, "likes_count": total}
+
+@api.post("/feed/posts/{post_id}/like")
+async def feed_post_like(post_id: str, request: Request):
+    user = await require_user(request)
+    return await _toggle_like("post", post_id, user)
+
+@api.post("/feed/reels/{reel_id}/like")
+async def feed_reel_like(reel_id: str, request: Request):
+    user = await require_user(request)
+    return await _toggle_like("reel", reel_id, user)
+
+# Views (anonymous, deduped per session_id supplied by client)
+@api.post("/feed/posts/{post_id}/view")
+async def feed_post_view(post_id: str, body: Dict[str, Any]):
+    sess = (body or {}).get("session_id", "")
+    if not sess:
+        raise HTTPException(status_code=400, detail="session_id required")
+    try:
+        await db.feed_views.update_one({"post_id": post_id, "session_id": sess}, {"$setOnInsert": {"post_id": post_id, "session_id": sess, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    except Exception:
+        pass
+    doc = await db.feed_posts.find_one({"id": post_id})
+    if not doc:
+        return {"views_count": 0}
+    total = (doc.get("views_base", 0) or 0) + await db.feed_views.count_documents({"post_id": post_id})
+    return {"views_count": total}
+
+@api.post("/feed/reels/{reel_id}/view")
+async def feed_reel_view(reel_id: str, body: Dict[str, Any]):
+    sess = (body or {}).get("session_id", "")
+    if not sess:
+        raise HTTPException(status_code=400, detail="session_id required")
+    try:
+        await db.feed_views.update_one({"reel_id": reel_id, "session_id": sess}, {"$setOnInsert": {"reel_id": reel_id, "session_id": sess, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    except Exception:
+        pass
+    doc = await db.feed_reels.find_one({"id": reel_id})
+    if not doc:
+        return {"views_count": 0}
+    total = (doc.get("views_base", 0) or 0) + await db.feed_views.count_documents({"reel_id": reel_id})
+    return {"views_count": total}
+
+# Comments
+async def _comment_doc_clean(c):
+    c.pop("_id", None)
+    return c
+
+@api.get("/feed/posts/{post_id}/comments")
+async def feed_post_comments(post_id: str):
+    rows = await db.feed_comments.find({"post_id": post_id}).sort("created_at", 1).to_list(500)
+    return [_comment_doc_clean(r) for r in rows]
+
+@api.get("/feed/reels/{reel_id}/comments")
+async def feed_reel_comments(reel_id: str):
+    rows = await db.feed_comments.find({"reel_id": reel_id}).sort("created_at", 1).to_list(500)
+    return [_comment_doc_clean(r) for r in rows]
+
+@api.post("/feed/posts/{post_id}/comments")
+async def feed_post_add_comment(post_id: str, body: CommentIn, request: Request):
+    user = await require_user(request)
+    if not await db.feed_posts.find_one({"id": post_id}):
+        raise HTTPException(status_code=404, detail="Post not found")
+    doc = {
+        "id": f"CMT-{uuid.uuid4().hex[:10]}",
+        "post_id": post_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name") or user.get("email", "anon").split("@")[0],
+        "picture": user.get("picture") or "",
+        "text": body.text.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.feed_comments.insert_one(doc)
+    return _comment_doc_clean(doc)
+
+@api.post("/feed/reels/{reel_id}/comments")
+async def feed_reel_add_comment(reel_id: str, body: CommentIn, request: Request):
+    user = await require_user(request)
+    if not await db.feed_reels.find_one({"id": reel_id}):
+        raise HTTPException(status_code=404, detail="Reel not found")
+    doc = {
+        "id": f"CMT-{uuid.uuid4().hex[:10]}",
+        "reel_id": reel_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name") or user.get("email", "anon").split("@")[0],
+        "picture": user.get("picture") or "",
+        "text": body.text.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.feed_comments.insert_one(doc)
+    return _comment_doc_clean(doc)
+
+@api.post("/feed/comments/admin")
+async def feed_add_admin_comment(body: AdminCommentIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    if not body.post_id and not body.reel_id:
+        raise HTTPException(status_code=400, detail="post_id or reel_id required")
+    doc = {
+        "id": f"CMT-{uuid.uuid4().hex[:10]}",
+        "user_id": None,
+        "user_name": body.user_name,
+        "picture": body.picture or "",
+        "text": body.text.strip(),
+        "is_admin_seed": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if body.post_id: doc["post_id"] = body.post_id
+    if body.reel_id: doc["reel_id"] = body.reel_id
+    await db.feed_comments.insert_one(doc)
+    return _comment_doc_clean(doc)
+
+@api.delete("/feed/comments/{comment_id}")
+async def feed_delete_comment(comment_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.feed_comments.delete_one({"id": comment_id})
+    return {"ok": True}
+
 # --------------------------------------------------------------------------
 app.include_router(api)
 app.add_middleware(
@@ -593,6 +901,15 @@ async def on_startup():
         await db.users.create_index("user_id", unique=True)
         await db.coupons.create_index("code", unique=True)
         await db.orders.create_index("user_id")
+        await db.feed_posts.create_index("id", unique=True)
+        await db.feed_reels.create_index("id", unique=True)
+        await db.feed_comments.create_index("id", unique=True)
+        await db.feed_comments.create_index("post_id")
+        await db.feed_comments.create_index("reel_id")
+        await db.feed_likes.create_index([("post_id", 1), ("user_id", 1)])
+        await db.feed_likes.create_index([("reel_id", 1), ("user_id", 1)])
+        await db.feed_views.create_index([("post_id", 1), ("session_id", 1)], unique=False)
+        await db.feed_views.create_index([("reel_id", 1), ("session_id", 1)], unique=False)
     except Exception as e:
         log.warning("index create warn: %s", e)
     log.info("ERRORHACKER API ready")

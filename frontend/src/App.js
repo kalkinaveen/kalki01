@@ -23,6 +23,7 @@ import FontPreview from './pages/FontPreview';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MyAccount from './pages/MyAccount';
+import FeedPage from './pages/FeedPage';
 import ScrollToTop from './components/ScrollToTop';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
@@ -56,6 +57,7 @@ function App() {
                 <Route path="/login" element={<SiteShell><Login /></SiteShell>} />
                 <Route path="/signup" element={<SiteShell><Signup /></SiteShell>} />
                 <Route path="/me" element={<SiteShell><MyAccount /></SiteShell>} />
+                <Route path="/feed" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/" element={<SiteShell><Home /></SiteShell>} />
                 <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
                 <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
