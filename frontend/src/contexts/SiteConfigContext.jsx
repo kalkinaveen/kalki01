@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import * as M from '../mock';
+import { api } from '../lib/api';
 
 const KEY = 'eh_site_config_v1';
 
@@ -51,45 +52,97 @@ const DEFAULTS = {
 
 const SiteConfigCtx = createContext(null);
 
+const mergeWithDefaults = (data) => ({
+  ...DEFAULTS,
+  ...data,
+  site: { ...DEFAULTS.site, ...(data?.site || {}) },
+  hero: { ...DEFAULTS.hero, ...(data?.hero || {}) },
+});
+
 export const SiteConfigProvider = ({ children }) => {
+  // Try to seed from localStorage cache for instant render
   const [config, setConfig] = useState(() => {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        return { ...DEFAULTS, ...parsed, site: { ...DEFAULTS.site, ...(parsed.site || {}) }, hero: { ...DEFAULTS.hero, ...(parsed.hero || {}) } };
-      }
+      if (raw) return mergeWithDefaults(JSON.parse(raw));
     } catch (_) {}
     return DEFAULTS;
   });
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  // Fetch from API on mount (overwrites cache)
+  useEffect(() => {
+    let active = true;
+    api.getConfig()
+      .then(remote => {
+        if (!active) return;
+        const merged = mergeWithDefaults(remote);
+        setConfig(merged);
+        try { localStorage.setItem(KEY, JSON.stringify(merged)); } catch (_) {}
+      })
+      .catch(err => console.warn('config fetch failed, using local cache', err))
+      .finally(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  // Persist + apply brand color
   useEffect(() => {
     try { localStorage.setItem(KEY, JSON.stringify(config)); } catch (_) {}
-    // Apply brand color CSS variable
     const c = config.site?.brandColor;
     if (c) document.documentElement.style.setProperty('--eh-green', c);
   }, [config]);
 
-  const api = useMemo(() => ({
-    config,
-    setConfig,
-    update: (path, value) => setConfig(prev => {
-      if (typeof path === 'function') return { ...prev, ...path(prev) };
-      const next = { ...prev };
-      const keys = path.split('.');
-      let cur = next;
-      for (let i = 0; i < keys.length - 1; i++) {
-        cur[keys[i]] = { ...cur[keys[i]] };
-        cur = cur[keys[i]];
-      }
-      cur[keys[keys.length - 1]] = value;
-      return next;
-    }),
-    setList: (listKey, items) => setConfig(prev => ({ ...prev, [listKey]: items })),
-    reset: () => { localStorage.removeItem(KEY); setConfig(DEFAULTS); },
-  }), [config]);
+  // Push to backend (admin only)
+  const persistRemote = useCallback(async (next) => {
+    setSaving(true);
+    try { await api.putConfig(next); } catch (e) { console.warn('remote save failed', e?.message); }
+    finally { setSaving(false); }
+  }, []);
 
-  return <SiteConfigCtx.Provider value={api}>{children}</SiteConfigCtx.Provider>;
+  const api2 = useMemo(() => ({
+    config,
+    loaded,
+    saving,
+    setConfig: (val) => {
+      const next = typeof val === 'function' ? val(config) : val;
+      setConfig(next);
+      // Only push to backend if admin is logged in
+      if (localStorage.getItem('eh_admin_token')) persistRemote(next);
+    },
+    update: (path, value) => {
+      setConfig(prev => {
+        const next = { ...prev };
+        const keys = path.split('.');
+        let cur = next;
+        for (let i = 0; i < keys.length - 1; i++) { cur[keys[i]] = { ...cur[keys[i]] }; cur = cur[keys[i]]; }
+        cur[keys[keys.length - 1]] = value;
+        if (localStorage.getItem('eh_admin_token')) persistRemote(next);
+        return next;
+      });
+    },
+    setList: (listKey, items) => {
+      setConfig(prev => {
+        const next = { ...prev, [listKey]: items };
+        if (localStorage.getItem('eh_admin_token')) persistRemote(next);
+        return next;
+      });
+    },
+    reset: async () => {
+      localStorage.removeItem(KEY);
+      setConfig(DEFAULTS);
+      if (localStorage.getItem('eh_admin_token')) await persistRemote(DEFAULTS);
+    },
+    refetch: async () => {
+      try {
+        const remote = await api.getConfig();
+        const merged = mergeWithDefaults(remote);
+        setConfig(merged);
+      } catch (_) {}
+    },
+  }), [config, loaded, saving, persistRemote]);
+
+  return <SiteConfigCtx.Provider value={api2}>{children}</SiteConfigCtx.Provider>;
 };
 
 export const useSiteConfig = () => {

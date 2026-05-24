@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
+import { api } from '../lib/api';
 import { DollarSign, Clock, ShieldCheck, ArrowLeft, User, AtSign, MessageCircle, Package, Link2, FileText, Send, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,13 +20,15 @@ const ServiceDetail = () => {
   if (!s) return <div className="max-w-3xl mx-auto px-6 py-20"><div className="opacity-70">Service not found.</div><Link to="/services" className="eh-btn-ghost mt-4">Back to services</Link></div>;
 
   const onChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
-  const onSubmit = e => {
+  const onSubmit = async e => {
     e.preventDefault();
-    const orders = JSON.parse(localStorage.getItem('eh_orders') || '[]');
-    orders.unshift({ id: 'ORD-' + Date.now(), service: s.id, serviceName: s.name, ...form, status: 'received', createdAt: new Date().toISOString() });
-    localStorage.setItem('eh_orders', JSON.stringify(orders));
-    toast.success('Order placed successfully', { description: 'Our team will contact you on Telegram shortly.' });
-    setForm({ name:'', email:'', tg:'', size:'', target:'', notes:'' });
+    try {
+      const order = await api.createOrder({ service: s.id, serviceName: s.name, ...form });
+      toast.success('Order placed successfully', { description: `Track ID: ${order.id}` });
+      setForm({ name:'', email:'', tg:'', size:'', target:'', notes:'' });
+    } catch (err) {
+      toast.error('Could not place order', { description: err.message || 'try again' });
+    }
   };
 
   return (

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap } from 'lucide-react';
 import Logo from '../components/Logo';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
+import { api } from '../lib/api';
 import { toast } from 'sonner';
 
 const sections = [
@@ -570,7 +571,18 @@ const Orders = () => {
 };
 
 const SettingsTab = () => {
-  const { config, update, setConfig, reset } = useSiteConfig();
+  const { config, update, setConfig, reset, refetch } = useSiteConfig();
+  const [newPw, setNewPw] = useState('');
+  const changePass = async () => {
+    if (!newPw || newPw.length < 4) { toast.error('Password too short (min 4 chars)'); return; }
+    try {
+      await api.changePassword(newPw);
+      toast.success('Password updated. Re-login required.');
+      localStorage.removeItem('eh_admin_token');
+      localStorage.removeItem('eh_admin');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) { toast.error(e.message); }
+  };
   const exportConfig = () => {
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `errorhacker-config-${Date.now()}.json`; a.click();
@@ -579,24 +591,28 @@ const SettingsTab = () => {
   const importConfig = (e) => {
     const f = e.target.files?.[0]; if(!f) return;
     const r = new FileReader();
-    r.onload = () => { try { setConfig({ ...config, ...JSON.parse(r.result) }); toast.success('Config imported'); } catch { toast.error('Invalid JSON'); } };
+    r.onload = () => { try { setConfig({ ...config, ...JSON.parse(r.result) }); toast.success('Config imported & synced'); } catch { toast.error('Invalid JSON'); } };
     r.readAsText(f);
   };
   return (
-    <Section kicker="// SYSTEM" title="SETTINGS">
+    <Section kicker="// SYSTEM" title="SETTINGS" actions={<button onClick={refetch} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> SYNC FROM SERVER</button>}>
       <div className="grid lg:grid-cols-2 gap-5">
         <div className="eh-panel p-5">
-          <Label hint="used to access /admin">ADMIN PASSWORD</Label>
-          <Input type="text" value={config.site.adminPass} onChange={e => update('site.adminPass', e.target.value)} />
-          <div className="eh-mono text-[11px] opacity-60 mt-2">Default: admin123. Change to secure your panel.</div>
+          <Label hint="used to access /admin">CHANGE ADMIN PASSWORD</Label>
+          <div className="flex gap-2">
+            <Input type="text" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="> new password (min 4 chars)" />
+            <button onClick={changePass} className="eh-btn-primary text-xs"><Save size={12} /> SAVE</button>
+          </div>
+          <div className="eh-mono text-[11px] opacity-60 mt-2">You will be logged out after change.</div>
         </div>
         <div className="eh-panel p-5">
           <Label>BACKUP & RESTORE</Label>
           <div className="flex flex-wrap gap-2 mt-1">
             <button onClick={exportConfig} className="eh-btn-ghost text-xs"><Download size={12} /> EXPORT JSON</button>
             <label className="eh-btn-ghost text-xs cursor-pointer"><Upload size={12} /> IMPORT JSON<input type="file" accept="application/json" onChange={importConfig} className="hidden" /></label>
-            <button onClick={() => { if(window.confirm('Reset ALL settings to defaults? This cannot be undone.')) { reset(); toast.success('Reset complete'); }}} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> RESET ALL</button>
+            <button onClick={() => { if(window.confirm('Reset ALL settings to defaults on the server? This cannot be undone.')) { reset(); toast.success('Reset complete'); }}} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> RESET ALL</button>
           </div>
+          <div className="eh-mono text-[11px] opacity-60 mt-3">Changes auto-sync to the live server when you are logged in.</div>
         </div>
       </div>
     </Section>
@@ -605,7 +621,8 @@ const SettingsTab = () => {
 
 const Overview = () => {
   const { config } = useSiteConfig();
-  const orders = JSON.parse(localStorage.getItem('eh_orders') || '[]');
+  const [orders, setOrders] = useState([]);
+  useEffect(() => { api.listOrders().then(setOrders).catch(() => {}); }, []);
   return (
     <Section kicker="// DASHBOARD" title="COMMAND OVERVIEW">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
@@ -635,10 +652,23 @@ const Overview = () => {
 };
 
 const Login = ({ onOk }) => {
-  const { config } = useSiteConfig();
   const [pw, setPw] = useState('');
   const [show, setShow] = useState(false);
-  const submit = e => { e.preventDefault(); if (pw === config.site.adminPass) { localStorage.setItem('eh_admin','1'); onOk(); } else { toast.error('Access denied'); } };
+  const [busy, setBusy] = useState(false);
+  const submit = async e => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await api.login(pw);
+      if (res?.token) {
+        localStorage.setItem('eh_admin_token', res.token);
+        localStorage.setItem('eh_admin', '1');
+        onOk();
+      }
+    } catch (err) {
+      toast.error(err.status === 401 ? 'Access denied' : (err.message || 'Login failed'));
+    } finally { setBusy(false); }
+  };
   return (
     <div className="min-h-screen flex items-center justify-center eh-grid-bg p-6">
       <form onSubmit={submit} className="w-full max-w-sm eh-panel eh-brackets p-7"><span className="br-bl" /><span className="br-br" />
@@ -648,7 +678,7 @@ const Login = ({ onOk }) => {
           <input type={show?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="> ********" className="eh-input pr-10" autoFocus />
           <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button>
         </div>
-        <button className="eh-btn-primary w-full mt-5 text-xs">AUTHENTICATE</button>
+        <button disabled={busy} className="eh-btn-primary w-full mt-5 text-xs">{busy ? 'AUTHENTICATING...' : 'AUTHENTICATE'}</button>
         <div className="eh-mono text-[11px] opacity-50 mt-4 text-center">default: admin123 · change after first login</div>
       </form>
     </div>
@@ -657,10 +687,14 @@ const Login = ({ onOk }) => {
 
 const AdminPanel = () => {
   const navigate = useNavigate();
-  const [authed, setAuthed] = useState(() => localStorage.getItem('eh_admin') === '1');
+  const [authed, setAuthed] = useState(() => localStorage.getItem('eh_admin') === '1' && !!localStorage.getItem('eh_admin_token'));
   const [active, setActive] = useState('overview');
   if (!authed) return <Login onOk={() => setAuthed(true)} />;
-  const logout = () => { localStorage.removeItem('eh_admin'); setAuthed(false); navigate('/admin'); };
+  const logout = async () => {
+    try { await api.logout(); } catch (_) {}
+    localStorage.removeItem('eh_admin'); localStorage.removeItem('eh_admin_token');
+    setAuthed(false); navigate('/admin');
+  };
 
   return (
     <div className="min-h-screen flex bg-[var(--eh-bg)]">
@@ -679,6 +713,21 @@ const AdminPanel = () => {
         {active==='memberships' && <MembershipsEditor />}
         {active==='comparison'  && <ComparisonEditor />}
         {active==='blogs'       && <BlogsEditor />}
+        {active==='tools'       && <ToolsEditor />}
+        {active==='how'         && <HowEditor />}
+        {active==='partners'    && <PartnersEditor />}
+        {active==='testimonials'&& <TestimonialsEditor />}
+        {active==='activity'    && <ActivityEditor />}
+        {active==='stats'       && <StatsEditor />}
+        {active==='faqs'        && <FAQEditor />}
+        {active==='orders'      && <Orders />}
+        {active==='settings'    && <SettingsTab />}
+      </main>
+    </div>
+  );
+};
+export default AdminPanel;
+   {active==='blogs'       && <BlogsEditor />}
         {active==='tools'       && <ToolsEditor />}
         {active==='how'         && <HowEditor />}
         {active==='partners'    && <PartnersEditor />}

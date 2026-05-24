@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Search, CheckCircle2, Circle, Clock, Package, Truck, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle } from 'lucide-react';
+import { api } from '../lib/api';
 
 const SAMPLE_STATUS = ['received', 'verified', 'in-progress', 'delivered'];
 const STAGES = [
@@ -13,20 +14,22 @@ const OrderTracker = () => {
   const [id, setId] = useState('');
   const [order, setOrder] = useState(null);
   const [err, setErr] = useState('');
-  const submit = e => {
+  const [loading, setLoading] = useState(false);
+  const submit = async e => {
     e.preventDefault(); setErr(''); setOrder(null);
-    const orders = JSON.parse(localStorage.getItem('eh_orders') || '[]');
-    const found = orders.find(o => o.id.toLowerCase() === id.trim().toLowerCase());
-    if (found) {
-      setOrder({ ...found, status: found.status || 'received' });
-      return;
-    }
-    // demo fallback
-    if (id.trim().toUpperCase() === 'DEMO') {
+    const trimmed = id.trim();
+    if (!trimmed) return;
+    if (trimmed.toUpperCase() === 'DEMO') {
       setOrder({ id: 'ORD-DEMO-7142', serviceName: 'YouTube Subscribers - 1000', name: 'Demo Operator', size: '1000', target: 'https://youtu.be/demo', status: 'in-progress', createdAt: new Date().toISOString() });
       return;
     }
-    setErr('Order not found. Try ID "DEMO" to preview tracker.');
+    setLoading(true);
+    try {
+      const o = await api.getOrder(trimmed);
+      setOrder({ ...o, status: o.status || 'received' });
+    } catch (e2) {
+      setErr(e2.status === 404 ? 'Order not found. Try ID "DEMO" to preview tracker.' : (e2.message || 'Lookup failed'));
+    } finally { setLoading(false); }
   };
   const idx = order ? SAMPLE_STATUS.indexOf(order.status) : -1;
   return (
@@ -41,9 +44,9 @@ const OrderTracker = () => {
           <span className="br-bl" /><span className="br-br" />
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" size={16} />
-            <input value={id} onChange={e=>setId(e.target.value)} placeholder="&gt; ORD-XXXXXXXX" className="eh-input pl-9" />
+            <input value={id} onChange={e=>setId(e.target.value)} placeholder="> ORD-XXXXXXXX" className="eh-input pl-9" />
           </div>
-          <button className="eh-btn-primary text-xs">TRACE</button>
+          <button disabled={loading} className="eh-btn-primary text-xs">{loading ? 'TRACING...' : 'TRACE'}</button>
         </form>
         {err && (
           <div className="eh-panel p-4 flex items-center gap-3 mb-6" style={{ borderColor: 'rgba(255,49,72,.4)' }}>
