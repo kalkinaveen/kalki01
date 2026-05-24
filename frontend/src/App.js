@@ -18,6 +18,7 @@ import OrderTracker from './pages/OrderTracker';
 import FAQPage from './pages/FAQPage';
 import NotFound from './pages/NotFound';
 import AdminPanel from './pages/AdminPanel';
+import FontPreview from './pages/FontPreview';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
 
@@ -44,6 +45,7 @@ function App() {
             <BootGate />
             <Routes>
               <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/fonts" element={<FontPreview />} />
               <Route path="/" element={<SiteShell><Home /></SiteShell>} />
               <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
               <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
