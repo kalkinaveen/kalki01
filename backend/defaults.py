@@ -1,5 +1,12 @@
 """Default site config seed for first boot. Mirrors frontend DEFAULTS."""
 DEFAULT_CONFIG = {
+    "notifications": {
+        "telegram": {
+            "enabled": False,
+            "bot_token": "",
+            "chat_id": "",
+        },
+    },
     "site": {
         "name": "ERRORHACKER",
         "tagline": "Your Naughty Don Is Back",

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap } from 'lucide-react';
 import Logo from '../components/Logo';
+import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ const sections = [
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
+  { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
 ];
 
@@ -109,6 +111,8 @@ const EditModal = ({ item, fields, onClose, onSave, title }) => {
                   ))}
                   <button type="button" onClick={() => set(f.key, [...(data[f.key]||[]), ''])} className="eh-btn-ghost text-[11px]"><Plus size={12} /> ADD ITEM</button>
                 </div>
+              ) : f.key.toLowerCase().includes('cover') || f.key.toLowerCase().includes('image') || f.key === 'logoUrl' ? (
+                <ImageInput value={data[f.key] || ''} onChange={(v) => set(f.key, v)} testid={`edit-${f.key}`} />
               ) : (
                 <Input type={f.type === 'number' ? 'number' : 'text'} value={data[f.key] ?? ''} onChange={e => set(f.key, f.type === 'number' ? Number(e.target.value) : e.target.value)} placeholder={`> ${f.label.toLowerCase()}`} />
               )}
@@ -188,8 +192,8 @@ const Branding = () => {
           <Input value={s.version} onChange={e => update('site.version', e.target.value)} />
         </div>
         <div className="eh-panel p-5 space-y-4">
-          <Label hint="any image URL">LOGO URL</Label>
-          <Input value={s.logoUrl} onChange={e => update('site.logoUrl', e.target.value)} />
+          <Label hint="upload from device or paste URL">LOGO IMAGE</Label>
+          <ImageInput value={s.logoUrl || ''} onChange={(v) => update('site.logoUrl', v)} testid="branding-logo" />
           {s.logoUrl && <div className="flex justify-center pt-1"><div className="w-28 h-28 rounded-full overflow-hidden" style={{ boxShadow: '0 0 0 2px var(--eh-green), 0 0 18px rgba(0,255,157,.4)' }}><img src={s.logoUrl} alt="logo" className="w-full h-full object-cover" /></div></div>}
           <Label hint="neon green primary color">BRAND COLOR</Label>
           <div className="flex gap-2 items-center"><input type="color" value={s.brandColor || '#00ff9d'} onChange={e => update('site.brandColor', e.target.value)} className="w-12 h-12 rounded cursor-pointer bg-transparent border border-[var(--eh-border)]" /><Input value={s.brandColor || '#00ff9d'} onChange={e => update('site.brandColor', e.target.value)} /></div>
@@ -579,6 +583,51 @@ const Orders = () => {
   );
 };
 
+const NotificationsTab = () => {
+  const { config, update } = useSiteConfig();
+  const t = (config.notifications && config.notifications.telegram) || { enabled: false, bot_token: '', chat_id: '' };
+  const [testing, setTesting] = useState(false);
+  const sendTest = async () => {
+    if (!t.bot_token || !t.chat_id) { toast.error('Bot Token and Chat ID are required'); return; }
+    setTesting(true);
+    try {
+      await api.testTelegram(t.bot_token, t.chat_id, 'ERRORHACKER // test alert ok_');
+      toast.success('Test sent — check your Telegram');
+    } catch (e) { toast.error(e.message); }
+    finally { setTesting(false); }
+  };
+  return (
+    <Section kicker="// CHANNELS" title="ORDER NOTIFICATIONS">
+      <div className="grid lg:grid-cols-2 gap-5">
+        <div className="eh-panel p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <Label hint="ping bot whenever a new order arrives">TELEGRAM ALERTS</Label>
+            <label className="inline-flex items-center gap-2 text-xs eh-mono cursor-pointer">
+              <input type="checkbox" data-testid="tg-enabled" checked={!!t.enabled} onChange={e => update('notifications.telegram.enabled', e.target.checked)} className="w-4 h-4 accent-[var(--eh-green)]" />
+              {t.enabled ? <span className="text-[var(--eh-green)]">ENABLED</span> : <span className="opacity-60">DISABLED</span>}
+            </label>
+          </div>
+          <Label hint="from @BotFather (e.g. 7891234567:AAH...)">BOT TOKEN</Label>
+          <Input data-testid="tg-bot-token" value={t.bot_token || ''} onChange={e => update('notifications.telegram.bot_token', e.target.value)} placeholder="> bot token" />
+          <Label hint="from @userinfobot (numeric)">CHAT ID</Label>
+          <Input data-testid="tg-chat-id" value={t.chat_id || ''} onChange={e => update('notifications.telegram.chat_id', e.target.value)} placeholder="> chat id" />
+          <div className="flex gap-2 pt-1">
+            <button data-testid="tg-test-btn" onClick={sendTest} disabled={testing} className="eh-btn-primary text-xs">{testing ? 'SENDING...' : 'SEND TEST'}</button>
+          </div>
+        </div>
+        <div className="eh-panel p-5 space-y-3 eh-mono text-[12px] opacity-80 leading-6">
+          <div className="eh-kicker mb-1">// SETUP IN 2 MIN</div>
+          <div>1. Open Telegram → search <span className="text-[var(--eh-green)]">@BotFather</span> → send <span className="text-[var(--eh-green)]">/newbot</span>.</div>
+          <div>2. Pick a name + username ending in <span className="text-[var(--eh-green)]">_bot</span>. Copy the <b>BOT TOKEN</b>.</div>
+          <div>3. Search <span className="text-[var(--eh-green)]">@userinfobot</span> → press Start → copy your <b>CHAT ID</b>.</div>
+          <div>4. Paste both here, enable, hit <b>SEND TEST</b>.</div>
+          <div className="opacity-60 mt-3">Once enabled, every new customer order pings your Telegram instantly.</div>
+        </div>
+      </div>
+    </Section>
+  );
+};
+
 const SettingsTab = () => {
   const { config, update, setConfig, reset, refetch } = useSiteConfig();
   const [newPw, setNewPw] = useState('');
@@ -730,6 +779,7 @@ const AdminPanel = () => {
         {active==='stats'       && <StatsEditor />}
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
+        {active==='notifications'&& <NotificationsTab />}
         {active==='settings'    && <SettingsTab />}
       </main>
     </div>

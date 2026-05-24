@@ -13,11 +13,13 @@ Endpoints:
   PATCH  /api/orders/{id}       update status (admin)
   DELETE /api/orders            clear all orders (admin)
 """
-from fastapi import FastAPI, APIRouter, Header, HTTPException, status
+from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File
+from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, uuid, logging
+import os, uuid, logging, base64, asyncio
+import httpx
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -60,6 +62,11 @@ class LoginIn(BaseModel):
 class PasswordIn(BaseModel):
     new_password: str
 
+class TelegramTestIn(BaseModel):
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+    message: Optional[str] = "ERRORHACKER // Telegram test alert ok_"
+
 # --------------------------------------------------------------------------
 # Helpers
 async def _ensure_config():
@@ -89,6 +96,44 @@ def _clean(doc: Dict[str, Any]) -> Dict[str, Any]:
         return {}
     doc.pop("_id", None)
     return doc
+
+# ---- Telegram --------------------------------------------------------------
+async def _telegram_send(bot_token: str, chat_id: str, text: str) -> Dict[str, Any]:
+    if not bot_token or not chat_id:
+        return {"ok": False, "error": "missing_bot_token_or_chat_id"}
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    async with httpx.AsyncClient(timeout=10) as cx:
+        r = await cx.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True})
+        try:
+            return r.json()
+        except Exception:
+            return {"ok": False, "status": r.status_code}
+
+async def _notify_order(order: Dict[str, Any]):
+    try:
+        cfg = await _ensure_config()
+        notif = (cfg.get("notifications") or {}).get("telegram") or {}
+        if not notif.get("enabled"):
+            return
+        bot = notif.get("bot_token", "")
+        chat = notif.get("chat_id", "")
+        text = (
+            "<b>NEW ORDER // ERRORHACKER</b>\n"
+            f"<b>ID:</b> {order.get('id')}\n"
+            f"<b>Service:</b> {order.get('serviceName') or order.get('service') or '—'}\n"
+            f"<b>Name:</b> {order.get('name')}\n"
+            f"<b>Email:</b> {order.get('email')}\n"
+            f"<b>Telegram:</b> {order.get('tg') or '—'}\n"
+            f"<b>Size:</b> {order.get('size') or '—'}\n"
+            f"<b>Target:</b> {order.get('target') or '—'}\n"
+            f"<b>Notes:</b> {order.get('notes') or '—'}\n"
+            f"<b>Time:</b> {order.get('createdAt')}"
+        )
+        res = await _telegram_send(bot, chat, text)
+        if not res.get("ok"):
+            log.warning("telegram notify failed: %s", res)
+    except Exception as e:
+        log.warning("telegram notify exception: %s", e)
 
 # --------------------------------------------------------------------------
 # Routes
@@ -156,6 +201,8 @@ async def create_order(body: OrderIn):
     }
     await db.orders.insert_one(order)
     order.pop("_id", None)
+    # Fire-and-forget Telegram notification
+    asyncio.create_task(_notify_order(order))
     return order
 
 @api.get("/orders")
@@ -189,6 +236,58 @@ async def clear_orders(x_admin_token: Optional[str] = Header(None)):
     await _check_admin(x_admin_token)
     res = await db.orders.delete_many({})
     return {"deleted": res.deleted_count}
+
+# ---- Uploads ---------------------------------------------------------------
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
+@api.post("/uploads")
+async def upload_image(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 5MB)")
+    uid = uuid.uuid4().hex
+    doc = {
+        "_id": uid,
+        "content_type": file.content_type,
+        "filename": file.filename or f"{uid}",
+        "size": len(raw),
+        "data": base64.b64encode(raw).decode("ascii"),
+        "createdAt": datetime.utcnow().isoformat(),
+    }
+    await db.uploads.insert_one(doc)
+    return {"id": uid, "url": f"/api/uploads/{uid}", "size": len(raw), "content_type": file.content_type}
+
+@api.get("/uploads/{uid}")
+async def get_upload(uid: str):
+    doc = await db.uploads.find_one({"_id": uid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=base64.b64decode(doc["data"]), media_type=doc.get("content_type", "image/png"), headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+@api.delete("/uploads/{uid}")
+async def delete_upload(uid: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.uploads.delete_one({"_id": uid})
+    return {"ok": True}
+
+# ---- Telegram --------------------------------------------------------------
+@api.post("/admin/telegram/test")
+async def telegram_test(body: TelegramTestIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    bot = body.bot_token
+    chat = body.chat_id
+    if not bot or not chat:
+        cfg = await _ensure_config()
+        n = (cfg.get("notifications") or {}).get("telegram") or {}
+        bot = bot or n.get("bot_token", "")
+        chat = chat or n.get("chat_id", "")
+    res = await _telegram_send(bot, chat, body.message or "ERRORHACKER // Telegram test alert ok_")
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("description") or "Telegram send failed")
+    return {"ok": True, "result": res.get("result", {})}
 
 # --------------------------------------------------------------------------
 app.include_router(api)

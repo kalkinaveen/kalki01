@@ -6,6 +6,7 @@ const KEY = 'eh_site_config_v1';
 
 const DEFAULTS = {
   site: { ...M.SITE, logoUrl: 'https://customer-assets.emergentagent.com/job_functionality-139/artifacts/a8019kmd_WhatsApp%20Image%202026-05-23%20at%205.26.02%20PM.jpeg', brandColor: '#00ff9d', adminPass: 'admin123' },
+  notifications: { telegram: { enabled: false, bot_token: '', chat_id: '' } },
   nav: M.NAV,
   services: M.SERVICES,
   books: M.BOOKS,
@@ -57,6 +58,11 @@ const mergeWithDefaults = (data) => ({
   ...data,
   site: { ...DEFAULTS.site, ...(data?.site || {}) },
   hero: { ...DEFAULTS.hero, ...(data?.hero || {}) },
+  notifications: {
+    ...DEFAULTS.notifications,
+    ...(data?.notifications || {}),
+    telegram: { ...DEFAULTS.notifications.telegram, ...((data?.notifications || {}).telegram || {}) },
+  },
 });
 
 export const SiteConfigProvider = ({ children }) => {
