@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
-import { Moon, Sun, Menu, X, Search } from 'lucide-react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn } from 'lucide-react';
 import Logo from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
   const { theme, toggle } = useTheme();
   const { config } = useSiteConfig();
+  const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [userMenu, setUserMenu] = useState(false);
+  const nav = useNavigate();
   return (
     <header className="sticky top-0 z-40 backdrop-blur-md" style={{ background: 'rgba(5,6,8,.78)', borderBottom: '1px solid var(--eh-border)' }}>
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between gap-4">
@@ -28,6 +32,24 @@ const Navbar = () => {
           <button className="hidden md:flex items-center gap-2 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
             <Search size={14} /> <span className="opacity-70">search...</span>
           </button>
+          {user ? (
+            <div className="relative">
+              <button data-testid="nav-user-btn" onClick={() => setUserMenu(v => !v)} className="flex items-center gap-2 px-2.5 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
+                {user.picture ? <img src={user.picture} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full grid place-items-center text-[10px] eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(user.name||user.email)[0].toUpperCase()}</div>}
+                <span className="hidden sm:inline eh-mono text-xs max-w-[110px] truncate">{user.name || user.email.split('@')[0]}</span>
+              </button>
+              {userMenu && (
+                <div onMouseLeave={() => setUserMenu(false)} className="absolute right-0 mt-2 w-44 eh-panel py-1 z-50" style={{ background: '#0d1115' }}>
+                  <NavLink to="/me" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><User size={12} /> my_account</NavLink>
+                  <button data-testid="nav-logout" onClick={async () => { setUserMenu(false); await logout(); nav('/'); }} className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><LogOut size={12} /> logout</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link to="/login" data-testid="nav-login" className="hidden sm:flex items-center gap-1.5 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
+              <LogIn size={12} /> LOGIN
+            </Link>
+          )}
           <button onClick={toggle} aria-label="toggle theme" className="w-10 h-10 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -42,6 +64,8 @@ const Navbar = () => {
             {config.nav.map(n => (
               <NavLink key={n.to} to={n.to} end={n.to === '/'} onClick={() => setOpen(false)} className={({ isActive }) => `eh-mono py-3 text-sm tracking-widest uppercase border-b border-[var(--eh-border)] ${isActive ? 'text-[var(--eh-green)]' : ''}`}>{n.label}</NavLink>
             ))}
+            {!user && <NavLink to="/login" onClick={() => setOpen(false)} className="eh-mono py-3 text-sm tracking-widest uppercase border-b border-[var(--eh-border)] text-[var(--eh-green)]">login</NavLink>}
+            {user && <NavLink to="/me" onClick={() => setOpen(false)} className="eh-mono py-3 text-sm tracking-widest uppercase border-b border-[var(--eh-border)] text-[var(--eh-green)]">my_account</NavLink>}
           </div>
         </div>
       )}

@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SiteConfigProvider } from './contexts/SiteConfigContext';
+import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import BootScreen from './components/BootScreen';
 import Home from './pages/Home';
@@ -19,6 +20,9 @@ import FAQPage from './pages/FAQPage';
 import NotFound from './pages/NotFound';
 import AdminPanel from './pages/AdminPanel';
 import FontPreview from './pages/FontPreview';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import MyAccount from './pages/MyAccount';
 import ScrollToTop from './components/ScrollToTop';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
@@ -28,7 +32,7 @@ const BootGate = () => {
   const [booted, setBooted] = useState(() => sessionStorage.getItem('eh_booted') === '1');
   // Auto-skip boot for admin route
   useEffect(() => {
-    if (location.pathname.startsWith('/admin') && !booted) {
+    if ((location.pathname.startsWith('/admin') || location.pathname.startsWith('/fonts') || location.pathname.startsWith('/login') || location.pathname.startsWith('/signup') || location.pathname.startsWith('/me')) && !booted) {
       sessionStorage.setItem('eh_booted', '1');
       setBooted(true);
     }
@@ -41,28 +45,33 @@ function App() {
   return (
     <ThemeProvider>
       <SiteConfigProvider>
-        <div className="App">
-          <BrowserRouter>
-            <ScrollToTop />
-            <BootGate />
-            <Routes>
-              <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/fonts" element={<FontPreview />} />
-              <Route path="/" element={<SiteShell><Home /></SiteShell>} />
-              <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
-              <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
-              <Route path="/books" element={<SiteShell><BooksPage /></SiteShell>} />
-              <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
-              <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
-              <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
-              <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
-              <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
-              <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
-              <Route path="*" element={<SiteShell><NotFound /></SiteShell>} />
-            </Routes>
-          </BrowserRouter>
-          <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
-        </div>
+        <AuthProvider>
+          <div className="App">
+            <BrowserRouter>
+              <ScrollToTop />
+              <BootGate />
+              <Routes>
+                <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/fonts" element={<FontPreview />} />
+                <Route path="/login" element={<SiteShell><Login /></SiteShell>} />
+                <Route path="/signup" element={<SiteShell><Signup /></SiteShell>} />
+                <Route path="/me" element={<SiteShell><MyAccount /></SiteShell>} />
+                <Route path="/" element={<SiteShell><Home /></SiteShell>} />
+                <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
+                <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
+                <Route path="/books" element={<SiteShell><BooksPage /></SiteShell>} />
+                <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
+                <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
+                <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
+                <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
+                <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
+                <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
+                <Route path="*" element={<SiteShell><NotFound /></SiteShell>} />
+              </Routes>
+            </BrowserRouter>
+            <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
+          </div>
+        </AuthProvider>
       </SiteConfigProvider>
     </ThemeProvider>
   );

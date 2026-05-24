@@ -13,17 +13,17 @@ Endpoints:
   PATCH  /api/orders/{id}       update status (admin)
   DELETE /api/orders            clear all orders (admin)
 """
-from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File
-from fastapi.responses import Response
+from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File, Request, Response, Depends, Cookie
+from fastapi.responses import Response as FastResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, uuid, logging, base64, asyncio
-import httpx
+import os, uuid, logging, base64, asyncio, secrets
+import httpx, bcrypt, jwt
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 from defaults import DEFAULT_CONFIG
 
@@ -34,6 +34,10 @@ load_dotenv(ROOT_DIR / ".env")
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
+JWT_ALGO = "HS256"
+ACCESS_TTL_MIN = 60 * 24 * 7  # 7 days
 
 app = FastAPI(title="ERRORHACKER API")
 api = APIRouter(prefix="/api")
@@ -66,6 +70,38 @@ class TelegramTestIn(BaseModel):
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
     message: Optional[str] = "ERRORHACKER // Telegram test alert ok_"
+
+# ---- Auth models ----
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=4, max_length=100)
+    name: Optional[str] = None
+
+class LoginUserIn(BaseModel):
+    email: EmailStr
+    password: str
+
+class GoogleSessionIn(BaseModel):
+    session_id: str
+
+# ---- Coupon models ----
+class CouponIn(BaseModel):
+    code: str
+    type: str = Field(pattern="^(percent|flat)$")
+    value: float
+    max_uses: int = -1
+    active: bool = True
+    expires_at: Optional[str] = None
+    description: Optional[str] = ""
+
+class ApplyCouponIn(BaseModel):
+    code: str
+    amount: float
+
+# ---- Chat models ----
+class ChatIn(BaseModel):
+    session_id: str
+    message: str
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -192,13 +228,17 @@ async def admin_logout(x_admin_token: Optional[str] = Header(None)):
 
 # ---- Orders ----------------------------------------------------------------
 @api.post("/orders")
-async def create_order(body: OrderIn):
+async def create_order(body: OrderIn, request: Request):
+    user = await _get_user_from_request(request)
     order = {
         "id": f"ORD-{uuid.uuid4().hex[:10].upper()}",
         **body.dict(),
         "status": "received",
         "createdAt": datetime.utcnow().isoformat(),
     }
+    if user:
+        order["user_id"] = user["user_id"]
+        order["userEmail"] = user.get("email")
     await db.orders.insert_one(order)
     order.pop("_id", None)
     # Fire-and-forget Telegram notification
@@ -265,7 +305,7 @@ async def get_upload(uid: str):
     doc = await db.uploads.find_one({"_id": uid})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    return Response(content=base64.b64decode(doc["data"]), media_type=doc.get("content_type", "image/png"), headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FastResponse(content=base64.b64decode(doc["data"]), media_type=doc.get("content_type", "image/png"), headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 @api.delete("/uploads/{uid}")
 async def delete_upload(uid: str, x_admin_token: Optional[str] = Header(None)):
@@ -289,14 +329,272 @@ async def telegram_test(body: TelegramTestIn, x_admin_token: Optional[str] = Hea
         raise HTTPException(status_code=400, detail=res.get("description") or "Telegram send failed")
     return {"ok": True, "result": res.get("result", {})}
 
+# ---- Auth helpers ----------------------------------------------------------
+def _hash_pw(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def _verify_pw(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+def _make_jwt(user_id: str, email: str) -> str:
+    payload = {"sub": user_id, "email": email, "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TTL_MIN)}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+def _set_session_cookie(resp: Response, token: str):
+    resp.set_cookie(key="eh_session", value=token, httponly=True, secure=True, samesite="none", max_age=ACCESS_TTL_MIN * 60, path="/")
+
+def _safe_user(u: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in u.items() if k not in ("password_hash", "_id")}
+
+def _gen_ref_code() -> str:
+    return "EH" + secrets.token_hex(3).upper()
+
+async def _get_user_from_request(request: Request) -> Optional[Dict[str, Any]]:
+    token = request.cookies.get("eh_session")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        user = await db.users.find_one({"user_id": payload["sub"]}, {"_id": 0})
+        return user
+    except Exception:
+        return None
+
+async def require_user(request: Request) -> Dict[str, Any]:
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+# ---- Auth routes -----------------------------------------------------------
+@api.post("/auth/register")
+async def auth_register(body: RegisterIn, response: Response):
+    email = body.email.lower().strip()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    user = {
+        "user_id": user_id,
+        "email": email,
+        "name": (body.name or email.split("@")[0]).strip(),
+        "picture": None,
+        "password_hash": _hash_pw(body.password),
+        "role": "user",
+        "provider": "password",
+        "referral_code": _gen_ref_code(),
+        "referred_by": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(user)
+    token = _make_jwt(user_id, email)
+    _set_session_cookie(response, token)
+    return {"user": _safe_user(user), "token": token}
+
+@api.post("/auth/login")
+async def auth_login(body: LoginUserIn, response: Response):
+    email = body.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not _verify_pw(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = _make_jwt(user["user_id"], email)
+    _set_session_cookie(response, token)
+    return {"user": _safe_user(user), "token": token}
+
+@api.post("/auth/logout")
+async def auth_logout(response: Response):
+    response.delete_cookie("eh_session", path="/")
+    return {"ok": True}
+
+@api.get("/auth/me")
+async def auth_me(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        return {"user": None}
+    return {"user": _safe_user(user)}
+
+# Emergent Google Auth exchange
+@api.post("/auth/google/session")
+async def auth_google_session(body: GoogleSessionIn, response: Response):
+    sess_id = body.session_id
+    if not sess_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+    url = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+    async with httpx.AsyncClient(timeout=10) as cx:
+        r = await cx.get(url, headers={"X-Session-ID": sess_id})
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google session")
+    data = r.json()
+    email = data.get("email", "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="No email from Google")
+    user = await db.users.find_one({"email": email})
+    if not user:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user = {
+            "user_id": user_id,
+            "email": email,
+            "name": data.get("name") or email.split("@")[0],
+            "picture": data.get("picture"),
+            "password_hash": None,
+            "role": "user",
+            "provider": "google",
+            "referral_code": _gen_ref_code(),
+            "referred_by": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(user)
+    else:
+        # Update picture/name from latest google data
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"name": data.get("name") or user.get("name"), "picture": data.get("picture") or user.get("picture")}})
+        user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    token = _make_jwt(user["user_id"], email)
+    _set_session_cookie(response, token)
+    return {"user": _safe_user(user), "token": token}
+
+# ---- Coupons ---------------------------------------------------------------
+@api.get("/coupons")
+async def list_coupons(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.coupons.find().sort("created_at", -1).to_list(500)
+    for r in rows: r.pop("_id", None)
+    return rows
+
+@api.post("/coupons")
+async def create_coupon(body: CouponIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    code = body.code.upper().strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Code required")
+    existing = await db.coupons.find_one({"code": code})
+    if existing:
+        raise HTTPException(status_code=409, detail="Coupon code already exists")
+    doc = {
+        "code": code,
+        "type": body.type,
+        "value": float(body.value),
+        "max_uses": int(body.max_uses),
+        "used": 0,
+        "active": bool(body.active),
+        "expires_at": body.expires_at,
+        "description": body.description or "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.coupons.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.patch("/coupons/{code}")
+async def update_coupon(code: str, body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    body.pop("_id", None); body.pop("code", None); body.pop("created_at", None)
+    res = await db.coupons.update_one({"code": code.upper()}, {"$set": body})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Coupon not found")
+    row = await db.coupons.find_one({"code": code.upper()}); row.pop("_id", None)
+    return row
+
+@api.delete("/coupons/{code}")
+async def delete_coupon(code: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.coupons.delete_one({"code": code.upper()})
+    return {"ok": True}
+
+@api.post("/coupons/apply")
+async def apply_coupon(body: ApplyCouponIn):
+    code = body.code.upper().strip()
+    c = await db.coupons.find_one({"code": code})
+    if not c or not c.get("active"):
+        raise HTTPException(status_code=404, detail="Invalid coupon")
+    if c.get("max_uses", -1) != -1 and c.get("used", 0) >= c["max_uses"]:
+        raise HTTPException(status_code=400, detail="Coupon usage limit reached")
+    if c.get("expires_at"):
+        try:
+            if datetime.fromisoformat(c["expires_at"]) < datetime.now(timezone.utc).replace(tzinfo=None):
+                raise HTTPException(status_code=400, detail="Coupon expired")
+        except HTTPException: raise
+        except Exception: pass
+    amount = max(0.0, float(body.amount))
+    if c["type"] == "percent":
+        discount = round(amount * (float(c["value"]) / 100.0), 2)
+    else:
+        discount = min(amount, float(c["value"]))
+    total = max(0.0, round(amount - discount, 2))
+    return {"valid": True, "code": code, "discount": discount, "total": total, "type": c["type"], "value": c["value"]}
+
+# ---- Customer "My Orders" --------------------------------------------------
+@api.get("/me/orders")
+async def my_orders(request: Request):
+    user = await require_user(request)
+    rows = await db.orders.find({"user_id": user["user_id"]}).sort("createdAt", -1).to_list(500)
+    for r in rows: r.pop("_id", None)
+    return rows
+
+# ---- AI Chat ---------------------------------------------------------------
+CHAT_SYSTEM_PROMPT = (
+    "You are ERR0R-BOT, the friendly support assistant for ERRORHACKER — an underground tech intel "
+    "& hacking-services brand. Be concise, helpful, and on-brand: hacker/cyberpunk vibe, lowercase terminal style, "
+    "punchy 2-4 sentence replies. Topics you can answer: services (social media growth, custom automation, "
+    "cybersecurity audits, OSINT), pricing (varies per package, ask for target+quantity), delivery (12-72h typical, "
+    "some packages start in minutes), refund/refill policy (up to 60-day refill warranty), "
+    "payment methods (crypto BTC/USDT, manual UPI/bank, card via Stripe). "
+    "If asked something illegal/unethical or unrelated to the site, politely decline and redirect to /services or Telegram. "
+    "Never invent prices or guarantees beyond what is stated."
+)
+
+@api.post("/chat/message")
+async def chat_message(body: ChatIn):
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Empty message")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception as e:
+        log.error("emergentintegrations import failed: %s", e)
+        raise HTTPException(status_code=500, detail="AI assistant unavailable")
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="AI key not configured")
+    # Persist user message
+    await db.chat_history.insert_one({"session_id": body.session_id, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
+    chat = LlmChat(api_key=key, session_id=body.session_id, system_message=CHAT_SYSTEM_PROMPT).with_model("anthropic", "claude-haiku-4-5-20251001")
+    try:
+        reply = await chat.send_message(UserMessage(text=body.message))
+    except Exception as e:
+        log.warning("chat send_message failed: %s", e)
+        raise HTTPException(status_code=502, detail="AI assistant temporarily unavailable")
+    await db.chat_history.insert_one({"session_id": body.session_id, "role": "bot", "text": reply, "ts": datetime.now(timezone.utc).isoformat()})
+    return {"reply": reply}
+
 # --------------------------------------------------------------------------
 app.include_router(api)
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origin_regex=".*",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def on_startup():
     await _ensure_config()
     await _ensure_admin()
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("user_id", unique=True)
+        await db.coupons.create_index("code", unique=True)
+        await db.orders.create_index("user_id")
+    except Exception as e:
+        log.warning("index create warn: %s", e)
     log.info("ERRORHACKER API ready")
 
 @app.on_event("shutdown")

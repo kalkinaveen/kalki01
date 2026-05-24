@@ -25,6 +25,7 @@ const sections = [
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
+  { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
 ];
@@ -583,6 +584,86 @@ const Orders = () => {
   );
 };
 
+const CouponsTab = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ code: '', type: 'percent', value: 10, max_uses: -1, active: true, description: '' });
+  const load = async () => {
+    setLoading(true);
+    try { setItems(await api.listCoupons()); } catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+  const create = async (e) => {
+    e.preventDefault();
+    if (!form.code) { toast.error('Code required'); return; }
+    try { await api.createCoupon({ ...form, code: form.code.toUpperCase(), value: Number(form.value), max_uses: Number(form.max_uses) }); toast.success('Coupon created'); setForm({ code: '', type: 'percent', value: 10, max_uses: -1, active: true, description: '' }); load(); }
+    catch (err) { toast.error(err.message); }
+  };
+  const toggleActive = async (c) => {
+    try { await api.updateCoupon(c.code, { active: !c.active }); load(); } catch (e) { toast.error(e.message); }
+  };
+  const remove = async (code) => {
+    if (!window.confirm(`Delete coupon ${code}?`)) return;
+    try { await api.deleteCoupon(code); toast.success('Deleted'); load(); } catch (e) { toast.error(e.message); }
+  };
+  return (
+    <Section kicker="// DISCOUNTS" title="COUPON CODES" actions={<button onClick={load} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button>}>
+      <div className="grid lg:grid-cols-[420px_1fr] gap-5">
+        <form onSubmit={create} className="eh-panel p-5 space-y-3" data-testid="coupon-form">
+          <div className="eh-kicker mb-2">// CREATE</div>
+          <Label>CODE</Label>
+          <Input data-testid="coupon-code" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="HACK20" />
+          <Label>TYPE</Label>
+          <select className="eh-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} data-testid="coupon-type">
+            <option value="percent">PERCENT (%)</option>
+            <option value="flat">FLAT (amount off)</option>
+          </select>
+          <Label hint={form.type === 'percent' ? '0-100' : 'currency amount'}>VALUE</Label>
+          <Input data-testid="coupon-value" type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} />
+          <Label hint="-1 = unlimited">MAX USES</Label>
+          <Input data-testid="coupon-max-uses" type="number" value={form.max_uses} onChange={e => setForm(f => ({ ...f, max_uses: e.target.value }))} />
+          <Label>DESCRIPTION</Label>
+          <Input data-testid="coupon-desc" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="20% off all services" />
+          <label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer">
+            <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-[var(--eh-green)]" /> ACTIVE
+          </label>
+          <button data-testid="coupon-create-btn" type="submit" className="eh-btn-primary text-xs w-full justify-center"><Plus size={12} /> CREATE COUPON</button>
+        </form>
+        <div className="eh-panel overflow-x-auto">
+          <table className="w-full eh-mono text-sm min-w-[640px]">
+            <thead><tr className="text-left border-b border-[var(--eh-border)]">
+              <th className="p-3 text-xs tracking-widest opacity-70">CODE</th>
+              <th className="p-3 text-xs">TYPE</th>
+              <th className="p-3 text-xs">VALUE</th>
+              <th className="p-3 text-xs">USED</th>
+              <th className="p-3 text-xs">STATUS</th>
+              <th className="p-3 text-xs">ACTIONS</th>
+            </tr></thead>
+            <tbody>
+              {loading && <tr><td colSpan={6} className="p-6 text-center opacity-60">Loading…</td></tr>}
+              {!loading && items.length === 0 && <tr><td colSpan={6} className="p-6 text-center opacity-60">No coupons yet.</td></tr>}
+              {items.map(c => (
+                <tr key={c.code} className="border-b border-[var(--eh-border)]" data-testid={`coupon-row-${c.code}`}>
+                  <td className="p-3 eh-neon-soft font-bold">{c.code}</td>
+                  <td className="p-3 opacity-80">{c.type}</td>
+                  <td className="p-3">{c.type === 'percent' ? `${c.value}%` : c.value}</td>
+                  <td className="p-3 opacity-70">{c.used} / {c.max_uses === -1 ? '∞' : c.max_uses}</td>
+                  <td className="p-3"><span className="px-2 py-1 rounded text-[11px]" style={{ background: c.active ? 'rgba(0,255,157,.1)' : 'rgba(255,255,255,.05)', color: c.active ? 'var(--eh-green)' : 'rgba(255,255,255,.5)' }}>{c.active ? 'ACTIVE' : 'OFF'}</span></td>
+                  <td className="p-3 flex gap-2">
+                    <button onClick={() => toggleActive(c)} className="eh-btn-ghost text-[11px] px-2 py-1">{c.active ? 'DISABLE' : 'ENABLE'}</button>
+                    <button onClick={() => remove(c.code)} className="text-red-400 hover:text-red-300 px-2"><Trash2 size={12} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Section>
+  );
+};
+
 const NotificationsTab = () => {
   const { config, update } = useSiteConfig();
   const t = (config.notifications && config.notifications.telegram) || { enabled: false, bot_token: '', chat_id: '' };
@@ -779,6 +860,7 @@ const AdminPanel = () => {
         {active==='stats'       && <StatsEditor />}
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
+        {active==='coupons'     && <CouponsTab />}
         {active==='notifications'&& <NotificationsTab />}
         {active==='settings'    && <SettingsTab />}
       </main>

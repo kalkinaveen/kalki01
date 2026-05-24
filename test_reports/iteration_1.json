@@ -1,0 +1,53 @@
+{
+  "summary": "Backend-only testing for Batch 1 (ERRORHACKER). 31 pytest tests covering customer auth (register/login/me/logout/google), coupons CRUD + apply, AI chat (single+multi-turn), image uploads (multipart+base64), Telegram test endpoint, orders with/without auth, /me/orders, and existing /api/config + /api/orders. 30/31 passed. Only failure is a transient LLM budget cap on the Emergent LLM key (not a code defect) which surfaces as 502 'AI assistant temporarily unavailable' on /api/chat/message when the per-key budget tips over. Multi-turn chat passed in the same run, proving wiring is correct.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/chat/message",
+        "issue": "Intermittent 502 'AI assistant temporarily unavailable'. Backend logs show: litellm.BadRequestError: 'Budget has been exceeded! Current cost: 0.00147, Max budget: 0.001'. This is an EMERGENT_LLM_KEY budget cap, not a code bug. The endpoint, model wiring (anthropic/claude-haiku-4-5-20251001), and multi-turn persistence (db.chat_history) all work correctly when budget is available."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_batch1_backend.py",
+    "/app/test_reports/pytest/batch1_results.xml"
+  ],
+  "action_items": [
+    "Investigate Emergent LLM key budget cap — current key 'sk-emergent-fEb49Eb0c7970B2FcC' is throwing 'Budget has been exceeded' from LiteLLM (max budget 0.001 USD). Likely need a higher-quota key or budget reset.",
+    "Consider returning a 503 (instead of 502) on AI key budget exhaustion so clients can distinguish 'rate limited' from 'upstream broken'.",
+    "Optional: Set httponly/secure/samesite='none' may be blocked on non-HTTPS dev; works fine in this preview environment over HTTPS."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~600 lines and starting to mix concerns (auth, coupons, chat, uploads, orders). Approaching the 700-line guideline — recommend splitting into modules: auth.py, coupons.py, chat.py, uploads.py, orders.py.",
+    "POST /api/orders silently swallows JWT decode errors via _get_user_from_request returning None. If a bad/expired token is provided via Authorization header, the order is created anonymously instead of returning 401. Consider distinguishing 'no token' from 'invalid token'.",
+    "_set_session_cookie hardcodes secure=True + samesite='none' — fine over HTTPS preview, but local-http dev (without HTTPS) will silently drop cookies. Not blocking for production.",
+    "Coupon apply doesn't increment 'used' counter on successful application — max_uses limit can never trigger. Either move counter increment into apply, or document that increment should happen only at order checkout.",
+    "Admin auth uses plaintext password compare in db.admin (line 208: body.password != creds.get('password')). Recommend hashing admin password too (bcrypt) per playbook. Token store is also in-memory (Mongo array but unbounded growth limited to last 10 — OK).",
+    "POST /api/coupons doesn't accept lowercase code variations consistently — body.code.upper() applied on create but PATCH /coupons/{code} also uppercases. Good. However DELETE /coupons/{code} uppercases; ensure callers use consistent case.",
+    "Chat endpoint persists user message before LLM call but doesn't persist failed responses — if AI fails, the user message is in db.chat_history without a bot reply, which may confuse future context loading.",
+    "GET /api/uploads/{uid} is public (no auth) — intentional for serving images, but enumeration via UUID4 is effectively safe. OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py",
+    "/app/backend/tests/test_batch1_backend.py"
+  ],
+  "success_rate": {
+    "backend": "96.7% (30/31)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": {
+    "admin_password": "admin123",
+    "test_user_format": "qa+{timestamp}@example.com / qa12345 (created fresh per run)"
+  },
+  "seed_data_creation": "Tests create unique users per run (qa+<timestamp>@example.com) and seed coupons HACK20 (percent 20) and HACK50 (flat 50). HACK20/HACK50 remain in DB after test run (idempotent — re-runs delete + recreate).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest suite at /app/backend/tests/test_batch1_backend.py auto-loads REACT_APP_BACKEND_URL from frontend/.env. Run: `pytest /app/backend/tests/test_batch1_backend.py -v`. Only the single-shot chat test is flaky due to Emergent LLM key budget cap (LiteLLM 'Budget has been exceeded'); if both chat tests fail it means budget is fully exhausted — request a key with more headroom. All other endpoints are stable. HACK20/HACK50 coupons may already exist in DB — tests handle this via pre-delete.",
+  "rca of the issue": "Chat 502: Root cause = Emergent LLM key budget exceeded (LiteLLM BadRequestError 'Current cost: 0.00147, Max budget: 0.001'). Reproduction: POST /api/chat/message with a fresh session_id after key has accumulated >$0.001 in cost. Mitigation: Provision an Emergent LLM key with higher budget OR reset/cycle the key. Code wiring is correct — anthropic/claude-haiku-4-5-20251001 model name is valid and multi-turn calls work when budget allows."
+}
