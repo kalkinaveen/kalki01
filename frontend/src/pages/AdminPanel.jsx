@@ -537,15 +537,23 @@ const ComparisonEditor = () => {
 };
 
 const Orders = () => {
-  const [orders, setOrders] = useState(() => JSON.parse(localStorage.getItem('eh_orders') || '[]'));
-  const clear = () => { localStorage.removeItem('eh_orders'); setOrders([]); toast.success('Orders cleared'); };
-  const updateStatus = (id, status) => {
-    const next = orders.map(o => o.id === id ? { ...o, status } : o);
-    localStorage.setItem('eh_orders', JSON.stringify(next));
-    setOrders(next);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const reload = async () => {
+    setLoading(true);
+    try { setOrders(await api.listOrders()); } catch (e) { toast.error(e.message || 'Failed to load'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { reload(); }, []);
+  const clear = async () => {
+    if (!window.confirm('Delete ALL orders permanently?')) return;
+    try { await api.clearOrders(); setOrders([]); toast.success('Orders cleared'); } catch (e) { toast.error(e.message); }
+  };
+  const updateStatus = async (id, status) => {
+    try { await api.updateOrder(id, status); setOrders(orders.map(o => o.id === id ? { ...o, status } : o)); toast.success('Status updated'); } catch (e) { toast.error(e.message); }
   };
   return (
-    <Section kicker="// INCOMING" title="ORDERS INBOX" actions={<button onClick={clear} className="eh-btn-ghost text-xs"><Trash2 size={12} /> CLEAR ALL</button>}>
+    <Section kicker="// INCOMING" title="ORDERS INBOX" actions={<><button onClick={reload} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button><button onClick={clear} className="eh-btn-ghost text-xs"><Trash2 size={12} /> CLEAR ALL</button></>}>
       <div className="eh-panel overflow-x-auto">
         <table className="w-full eh-mono text-sm min-w-[820px]">
           <thead><tr className="text-left border-b border-[var(--eh-border)]"><th className="p-3 text-xs tracking-widest opacity-70">ID</th><th className="p-3 text-xs">SERVICE</th><th className="p-3 text-xs">CLIENT</th><th className="p-3 text-xs">EMAIL</th><th className="p-3 text-xs">SIZE</th><th className="p-3 text-xs">TARGET</th><th className="p-3 text-xs">STATUS</th><th className="p-3 text-xs">DATE</th></tr></thead>
@@ -562,7 +570,8 @@ const Orders = () => {
                 <td className="p-3 opacity-70 text-xs">{new Date(o.createdAt).toLocaleString()}</td>
               </tr>
             ))}
-            {orders.length===0 && <tr><td colSpan={8} className="p-6 text-center opacity-60">Inbox empty. Place a test order from the storefront.</td></tr>}
+            {!loading && orders.length===0 && <tr><td colSpan={8} className="p-6 text-center opacity-60">Inbox empty. Place a test order from the storefront.</td></tr>}
+            {loading && <tr><td colSpan={8} className="p-6 text-center opacity-60 eh-mono text-xs">&gt; loading orders...</td></tr>}
           </tbody>
         </table>
       </div>
@@ -713,21 +722,6 @@ const AdminPanel = () => {
         {active==='memberships' && <MembershipsEditor />}
         {active==='comparison'  && <ComparisonEditor />}
         {active==='blogs'       && <BlogsEditor />}
-        {active==='tools'       && <ToolsEditor />}
-        {active==='how'         && <HowEditor />}
-        {active==='partners'    && <PartnersEditor />}
-        {active==='testimonials'&& <TestimonialsEditor />}
-        {active==='activity'    && <ActivityEditor />}
-        {active==='stats'       && <StatsEditor />}
-        {active==='faqs'        && <FAQEditor />}
-        {active==='orders'      && <Orders />}
-        {active==='settings'    && <SettingsTab />}
-      </main>
-    </div>
-  );
-};
-export default AdminPanel;
-   {active==='blogs'       && <BlogsEditor />}
         {active==='tools'       && <ToolsEditor />}
         {active==='how'         && <HowEditor />}
         {active==='partners'    && <PartnersEditor />}
