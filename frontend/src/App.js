@@ -19,6 +19,7 @@ import FAQPage from './pages/FAQPage';
 import NotFound from './pages/NotFound';
 import AdminPanel from './pages/AdminPanel';
 import FontPreview from './pages/FontPreview';
+import ScrollToTop from './components/ScrollToTop';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
 
@@ -42,6 +43,7 @@ function App() {
       <SiteConfigProvider>
         <div className="App">
           <BrowserRouter>
+            <ScrollToTop />
             <BootGate />
             <Routes>
               <Route path="/admin" element={<AdminPanel />} />
