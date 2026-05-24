@@ -22,9 +22,9 @@ const Hero = () => {
           </span>
         </h1>
         <div className="flex items-center justify-center gap-2 sm:gap-4 mb-5 px-2">
-          <span className="h-px w-6 sm:w-20 bg-[var(--eh-green)] opacity-60 shrink-0" />
-          <h2 className="eh-script leading-tight" style={{ fontSize: 'clamp(1.4rem, 5vw, 3rem)' }}>{SITE.tagline}</h2>
-          <span className="h-px w-6 sm:w-20 bg-[var(--eh-green)] opacity-60 shrink-0" />
+          <span className="hidden sm:block h-px w-10 sm:w-20 bg-[var(--eh-green)] opacity-60 shrink-0" />
+          <h2 className="eh-script leading-none" style={{ fontSize: 'clamp(1.5rem, 6vw, 3.6rem)' }}>{SITE.tagline}</h2>
+          <span className="hidden sm:block h-px w-10 sm:w-20 bg-[var(--eh-green)] opacity-60 shrink-0" />
         </div>
         <div className="eh-mono text-xs sm:text-sm opacity-90 mb-6" style={{ color: 'var(--eh-green)' }}>
           &gt; <Typewriter words={HERO.typewriterLines} />

@@ -98,7 +98,7 @@ const BootScreen = ({ onDone }) => {
               </div>
             </div>
 
-            <h1 className="eh-brand font-black tracking-wider text-2xl sm:text-4xl text-center" style={{ color: 'var(--eh-green)', textShadow: '0 0 2px rgba(0,255,157,.5), 0 0 10px rgba(0,255,157,.2)' }}>{SITE.name}</h1>
+            <h1 className="font-black tracking-[0.18em] text-2xl sm:text-4xl text-center" style={{ fontFamily: "'Major Mono Display', 'Share Tech Mono', monospace", color: 'var(--eh-green)', textShadow: '0 0 3px rgba(0,255,157,.55), 0 0 12px rgba(0,255,157,.3)' }}>{SITE.name}</h1>
 
             <div className="w-full max-w-sm">
               <div className="flex justify-between eh-mono text-[10px] mb-1 opacity-80"><span>INITIALIZING SYSTEM</span><span>{progress}%</span></div>

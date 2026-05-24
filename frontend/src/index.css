@@ -90,11 +90,16 @@ html.light .eh-neon { text-shadow: 0 0 1px rgba(0,158,98,0.4); }
 .eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 4px rgba(0,255,157,.25); }
 
 .eh-script {
-  font-family: 'Pacifico', cursive;
+  font-family: 'Sacramento', 'Mr Dafoe', 'Allura', cursive;
   color: var(--eh-green);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1;
   text-shadow:
-    0 0 3px rgba(0,255,157,.5),
-    0 0 12px rgba(0,255,157,.25);
+    0 0 4px rgba(0,255,157,.85),
+    0 0 14px rgba(0,255,157,.55),
+    0 0 32px rgba(0,255,157,.35);
+  filter: drop-shadow(0 0 6px rgba(0,255,157,.35));
 }
 html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
 
