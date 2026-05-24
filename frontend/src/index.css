@@ -90,12 +90,12 @@ html.light .eh-neon { text-shadow: 0 0 1px rgba(0,158,98,0.4); }
 .eh-neon-soft { color: var(--eh-green); text-shadow: 0 0 4px rgba(0,255,157,.25); }
 
 .eh-script {
-  font-family: 'Pacifico', 'Sacramento', 'Kaushan Script', cursive;
+  font-family: 'Tangerine', 'Pacifico', 'Sacramento', cursive;
   color: var(--eh-green);
-  font-weight: 400;
+  font-weight: 700;
   font-style: normal;
   letter-spacing: 0.02em;
-  line-height: 1.15;
+  line-height: 1.1;
   text-shadow:
     0 0 3px rgba(0,255,157,.9),
     0 0 10px rgba(0,255,157,.55),
