@@ -34,22 +34,22 @@ const OrderDetail = () => {
   return (
     <section className="max-w-3xl mx-auto px-4 py-10">
       <Link to="/me" className="inline-flex items-center gap-2 eh-mono text-xs opacity-70 hover:opacity-100 mb-6"><ArrowLeft size={12} /> back to account</Link>
-      <div className="eh-panel eh-brackets p-5 sm:p-7 mb-6">
+      <div className="eh-panel eh-brackets p-5 sm:p-7 mb-6 overflow-hidden">
         <span className="br-bl" /><span className="br-br" />
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
-          <div>
+        <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
+          <div className="min-w-0 flex-1">
             <div className="eh-mono text-[10px] opacity-60">ORDER_ID</div>
-            <div className="eh-neon-soft eh-mono text-sm">{order.id}</div>
+            <div className="eh-neon-soft eh-mono text-sm break-all">{order.id}</div>
           </div>
-          <div className="text-right">
+          <div className="text-right min-w-0 max-w-full sm:max-w-[60%]">
             <div className="eh-mono text-[10px] opacity-60">PACKAGE</div>
-            <div className="text-sm font-semibold" style={{ fontFamily: 'Inter,sans-serif' }}>{order.serviceName || order.service || '—'}</div>
+            <div className="text-sm font-semibold break-words" style={{ fontFamily: 'Inter,sans-serif' }}>{order.serviceName || order.service || '—'}</div>
           </div>
         </div>
-        <div className="grid sm:grid-cols-3 gap-3 mb-6 text-sm">
-          {order.size && <div className="eh-panel p-3"><div className="eh-mono text-[10px] opacity-60">SIZE</div><div>{order.size}</div></div>}
-          {order.target && <div className="eh-panel p-3 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">TARGET</div><div className="truncate">{order.target}</div></div>}
-          {order.tg && <div className="eh-panel p-3"><div className="eh-mono text-[10px] opacity-60">TELEGRAM</div><div>{order.tg}</div></div>}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-sm">
+          {order.size && <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">SIZE</div><div className="break-words">{order.size}</div></div>}
+          {order.target && <div className="eh-panel p-3 min-w-0 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">TARGET</div><div className="truncate" title={order.target}>{order.target}</div></div>}
+          {order.tg && <div className="eh-panel p-3 min-w-0 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">TELEGRAM</div><div className="truncate">{order.tg}</div></div>}
         </div>
         <div>
           {STAGES.map((s, i) => { const I = s.icon; const active = i <= idx; const current = i === idx; return (
