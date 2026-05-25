@@ -675,11 +675,14 @@ async def chat_message(body: ChatIn):
     # Persist user message
     await db.chat_history.insert_one({"session_id": body.session_id, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
     chat = LlmChat(api_key=key, session_id=body.session_id, system_message=CHAT_SYSTEM_PROMPT).with_model("anthropic", "claude-haiku-4-5-20251001")
+    reply = None
     try:
         reply = await chat.send_message(UserMessage(text=body.message))
     except Exception as e:
         log.warning("chat send_message failed: %s", e)
         raise HTTPException(status_code=502, detail="AI assistant temporarily unavailable")
+    if not reply:
+        raise HTTPException(status_code=502, detail="AI assistant returned empty response")
     await db.chat_history.insert_one({"session_id": body.session_id, "role": "bot", "text": reply, "ts": datetime.now(timezone.utc).isoformat()})
     return {"reply": reply}
 

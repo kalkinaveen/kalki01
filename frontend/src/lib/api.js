@@ -17,8 +17,12 @@ async function req(path, { method = 'GET', body, admin = false, auth = false } =
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
-    try { const j = await res.json(); msg = (typeof j.detail === 'string' ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(', ') : msg)); } catch (_) {}
-    // Auto-recover from stale admin token — clear it and force re-login UI
+    try {
+      const j = await res.json();
+      msg = (typeof j.detail === 'string' ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(', ') : msg));
+    } catch (parseErr) {
+      console.warn('api: failed to parse error body', parseErr);
+    }
     if (admin && res.status === 401) {
       localStorage.removeItem('eh_admin_token');
       localStorage.removeItem('eh_admin');
@@ -103,7 +107,11 @@ export const api = {
       headers: { 'X-Admin-Token': getToken() },
       body: fd,
     });
-    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.detail || m; } catch (_) {} throw new Error(m); }
+    if (!res.ok) {
+      let m = `HTTP ${res.status}`;
+      try { const j = await res.json(); m = j.detail || m; } catch (parseErr) { console.warn('upload: error parsing response', parseErr); }
+      throw new Error(m);
+    }
     const data = await res.json();
     return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
   },
@@ -116,7 +124,11 @@ export const api = {
       headers: { 'X-Admin-Token': getToken() },
       body: fd,
     });
-    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.detail || m; } catch (_) {} throw new Error(m); }
+    if (!res.ok) {
+      let m = `HTTP ${res.status}`;
+      try { const j = await res.json(); m = j.detail || m; } catch (parseErr) { console.warn('upload: error parsing response', parseErr); }
+      throw new Error(m);
+    }
     const data = await res.json();
     return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
   },

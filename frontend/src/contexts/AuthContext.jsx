@@ -11,7 +11,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.authMe();
       setUser(res.user || null);
-    } catch (_) {
+    } catch (err) {
+      console.warn('auth/me failed', err);
       setUser(null);
     } finally {
       setLoading(false);
@@ -40,7 +41,7 @@ export const AuthProvider = ({ children }) => {
     return r.user;
   };
   const logout = async () => {
-    try { await api.authLogout(); } catch (_) {}
+    try { await api.authLogout(); } catch (err) { console.warn('logout call failed', err); }
     localStorage.removeItem('eh_user_token');
     setUser(null);
   };
