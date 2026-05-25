@@ -28,9 +28,6 @@ const Navbar = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const [open, setOpen] = useState(false);
-  const [userMenu, setUserMenu] = useState(false);
-  const nav = useNavigate();
   return (
     <header className="sticky top-0 z-40 backdrop-blur-md" style={{ background: 'rgba(5,6,8,.78)', borderBottom: '1px solid var(--eh-border)' }}>
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between gap-4">
