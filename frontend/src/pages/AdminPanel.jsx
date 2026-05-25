@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -145,13 +145,20 @@ const ListManager = ({ title, kicker, items, columns, fields, onChange, idKey = 
     }
   };
   const remove = (it) => { onChange(items.filter(x => x[idKey] !== it[idKey])); toast.success('Removed'); };
+  const move = (idx, dir) => {
+    const target = idx + dir;
+    if (target < 0 || target >= items.length) return;
+    const next = [...items];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onChange(next);
+  };
   return (
     <Section kicker={kicker} title={title} actions={<button onClick={()=>setShowNew(true)} className="eh-btn-primary text-xs"><Plus size={14} /> ADD NEW</button>}>
       <div className="eh-panel overflow-x-auto">
         <table className="w-full eh-mono text-sm min-w-[640px]">
-          <thead><tr className="text-left border-b border-[var(--eh-border)]">{columns.map(c => <th key={c.key} className="p-3 text-xs tracking-widest opacity-70">{c.label}</th>)}<th className="p-3 w-24 text-right">Actions</th></tr></thead>
+          <thead><tr className="text-left border-b border-[var(--eh-border)]">{columns.map(c => <th key={c.key} className="p-3 text-xs tracking-widest opacity-70">{c.label}</th>)}<th className="p-3 w-32 text-right">Actions</th></tr></thead>
           <tbody>
-            {items.map(it => (
+            {items.map((it, idx) => (
               <tr key={it[idKey]} className="border-b border-[var(--eh-border)] hover:bg-white/[.02]">
                 {columns.map(c => (
                   <td key={c.key} className="p-3 align-top max-w-[260px]">
@@ -160,6 +167,8 @@ const ListManager = ({ title, kicker, items, columns, fields, onChange, idKey = 
                 ))}
                 <td className="p-3 text-right">
                   <div className="inline-flex gap-1">
+                    <button onClick={()=>move(idx, -1)} disabled={idx === 0} className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] hover:text-[var(--eh-green)] disabled:opacity-30 disabled:hover:border-[var(--eh-border)] disabled:hover:text-current" title="Move up"><ArrowUp size={12} /></button>
+                    <button onClick={()=>move(idx, 1)} disabled={idx === items.length - 1} className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] hover:text-[var(--eh-green)] disabled:opacity-30 disabled:hover:border-[var(--eh-border)] disabled:hover:text-current" title="Move down"><ArrowDown size={12} /></button>
                     <button onClick={()=>setEditing(it)} className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] hover:text-[var(--eh-green)]"><Edit3 size={12} /></button>
                     <button onClick={()=>remove(it)} className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-red-400 hover:text-red-400"><Trash2 size={12} /></button>
                   </div>
