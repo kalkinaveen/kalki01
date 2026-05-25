@@ -18,6 +18,14 @@ async function req(path, { method = 'GET', body, admin = false, auth = false } =
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { const j = await res.json(); msg = (typeof j.detail === 'string' ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(', ') : msg)); } catch (_) {}
+    // Auto-recover from stale admin token — clear it and force re-login UI
+    if (admin && res.status === 401) {
+      localStorage.removeItem('eh_admin_token');
+      localStorage.removeItem('eh_admin');
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+        setTimeout(() => window.location.reload(), 100);
+      }
+    }
     const err = new Error(msg);
     err.status = res.status;
     throw err;
