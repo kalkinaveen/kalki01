@@ -14,11 +14,14 @@ const Hero = () => {
       <div className="relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
         <div className="eh-kicker justify-center mb-5 text-[10px] sm:text-xs">{HERO.kicker}</div>
         <div className="eh-mono text-[10px] sm:text-sm tracking-[.4em] opacity-70 mb-3">{HERO.welcome}</div>
-        <h1 className="eh-brand eh-glitch font-black leading-none mb-5 eh-title-glitch px-2 whitespace-nowrap" style={{ fontSize: 'clamp(1.6rem, 8vw, 7rem)' }}>
-          <span className="eh-title-main inline-block" data-text={SITE.name}>
-            <span className="eh-chrom-r" aria-hidden="true">{SITE.name}</span>
-            <span className="eh-chrom-c" aria-hidden="true">{SITE.name}</span>
-            {SITE.name}
+        <h1 className="eh-brand font-black leading-none mb-5 px-2 whitespace-nowrap" style={{ fontSize: 'clamp(1.6rem, 8vw, 7rem)' }}>
+          <span className="eh-dragon-fire">
+            <span className="eh-fire-text" data-testid="hero-title">{SITE.name}</span>
+            <span className="eh-embers" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span>
+            </span>
+            <span className="eh-fire-trail" aria-hidden="true" />
           </span>
         </h1>
         <div className="flex items-center justify-center gap-2 sm:gap-4 mb-5 px-2">
