@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
-import { DollarSign, Clock, ShieldCheck, ArrowLeft, User, AtSign, MessageCircle, Package, Link2, FileText, Send, Lock } from 'lucide-react';
+import { DollarSign, Clock, ShieldCheck, ArrowLeft, User, AtSign, MessageCircle, Package, Link2, FileText, Send, Lock, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Field = ({ icon: Icon, label, children }) => (
@@ -15,20 +16,31 @@ const Field = ({ icon: Icon, label, children }) => (
 const ServiceDetail = () => {
   const { id } = useParams();
   const { config } = useSiteConfig();
+  const { user, loading: authLoading } = useAuth();
+  const nav = useNavigate();
   const s = config.services.find(x => x.id === id);
   const [form, setForm] = useState({ name:'', email:'', tg:'', size:'', target:'', notes:'' });
+  const [placing, setPlacing] = useState(false);
+
+  // Prefill from logged-in user
+  useEffect(() => {
+    if (user) setForm(f => ({ ...f, name: f.name || user.name || user.email.split('@')[0], email: f.email || user.email }));
+  }, [user]);
+
   if (!s) return <div className="max-w-3xl mx-auto px-6 py-20"><div className="opacity-70">Service not found.</div><Link to="/services" className="eh-btn-ghost mt-4">Back to services</Link></div>;
 
   const onChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
   const onSubmit = async e => {
     e.preventDefault();
+    if (!user) { toast.error('Please login to place an order'); nav('/login', { state: { from: `/services/${id}` } }); return; }
+    setPlacing(true);
     try {
       const order = await api.createOrder({ service: s.id, serviceName: s.name, ...form });
-      toast.success('Order placed successfully', { description: `Track ID: ${order.id}` });
-      setForm({ name:'', email:'', tg:'', size:'', target:'', notes:'' });
+      toast.success('Order placed', { description: `Track ID: ${order.id} — complete payment` });
+      nav(`/me/orders/${order.id}`);
     } catch (err) {
       toast.error('Could not place order', { description: err.message || 'try again' });
-    }
+    } finally { setPlacing(false); }
   };
 
   return (
@@ -78,7 +90,7 @@ const ServiceDetail = () => {
           <div className="mt-5 flex items-center gap-2 eh-mono text-xs px-3 py-2 rounded" style={{ background:'rgba(0,255,157,.08)', color:'var(--eh-green)', border:'1px solid rgba(0,255,157,.25)' }}>
             <span className="w-2 h-2 rounded-full bg-current" style={{ boxShadow:'0 0 8px currentColor' }} /> <Lock size={12} /> SECURE CHANNEL // YOUR DATA IS ENCRYPTED
           </div>
-          <button type="submit" className="eh-btn-primary w-full mt-5">PLACE ORDER <Send size={16} /></button>
+          <button type="submit" disabled={placing} className="eh-btn-primary w-full mt-5">{!user ? <><LogIn size={16} /> LOGIN TO ORDER</> : <>{placing ? 'PLACING...' : 'PLACE ORDER'} <Send size={16} /></>}</button>
         </form>
       </div>
     </div>

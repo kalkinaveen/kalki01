@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SiteConfigProvider } from './contexts/SiteConfigContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { CartProvider } from './contexts/CartContext';
 import Layout from './components/Layout';
 import BootScreen from './components/BootScreen';
 import Home from './pages/Home';
@@ -23,6 +24,8 @@ import FontPreview from './pages/FontPreview';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MyAccount from './pages/MyAccount';
+import OrderDetail from './pages/OrderDetail';
+import CartPage from './pages/CartPage';
 import FeedPage from './pages/FeedPage';
 import ScrollToTop from './components/ScrollToTop';
 
@@ -47,6 +50,7 @@ function App() {
     <ThemeProvider>
       <SiteConfigProvider>
         <AuthProvider>
+          <CartProvider>
           <div className="App">
             <BrowserRouter>
               <ScrollToTop />
@@ -57,6 +61,8 @@ function App() {
                 <Route path="/login" element={<SiteShell><Login /></SiteShell>} />
                 <Route path="/signup" element={<SiteShell><Signup /></SiteShell>} />
                 <Route path="/me" element={<SiteShell><MyAccount /></SiteShell>} />
+                <Route path="/me/orders/:id" element={<SiteShell><OrderDetail /></SiteShell>} />
+                <Route path="/cart" element={<SiteShell><CartPage /></SiteShell>} />
                 <Route path="/feed" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/" element={<SiteShell><Home /></SiteShell>} />
                 <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
@@ -73,6 +79,7 @@ function App() {
             </BrowserRouter>
             <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0d1115', color: '#d6e2dc', border: '1px solid #1a2128' } }} />
           </div>
+          </CartProvider>
         </AuthProvider>
       </SiteConfigProvider>
     </ThemeProvider>

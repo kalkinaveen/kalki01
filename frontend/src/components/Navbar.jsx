@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn } from 'lucide-react';
+import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn, ShoppingCart } from 'lucide-react';
 import Logo from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
 
 const Navbar = () => {
   const { theme, toggle } = useTheme();
   const { config } = useSiteConfig();
   const { user, logout } = useAuth();
+  const { count } = useCart();
   const [open, setOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const nav = useNavigate();
@@ -34,6 +36,10 @@ const Navbar = () => {
           <button className="hidden md:flex items-center gap-2 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
             <Search size={14} /> <span className="opacity-70">search...</span>
           </button>
+          <Link to="/cart" data-testid="nav-cart" className="relative w-10 h-10 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
+            <ShoppingCart size={16} />
+            {count > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] grid place-items-center text-[10px] eh-mono font-bold rounded-full px-1" style={{ background: 'var(--eh-green)', color: '#001a10' }}>{count}</span>}
+          </Link>
           {user ? (
             <div className="relative">
               <button data-testid="nav-user-btn" onClick={() => setUserMenu(v => !v)} className="flex items-center gap-2 px-2.5 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">

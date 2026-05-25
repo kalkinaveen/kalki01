@@ -92,7 +92,7 @@ const MyAccount = () => {
               {loadingOrders && <tr><td colSpan={4} className="p-6 text-center opacity-60">Loading…</td></tr>}
               {!loadingOrders && orders.length === 0 && <tr><td colSpan={4} className="p-6 text-center opacity-60">No orders yet. Place one from /services.</td></tr>}
               {orders.map(o => (
-                <tr key={o.id} className="border-b border-[var(--eh-border)]">
+                <tr key={o.id} onClick={() => nav(`/me/orders/${o.id}`)} data-testid={`my-order-row-${o.id}`} className="border-b border-[var(--eh-border)] cursor-pointer hover:bg-white/[.03] transition-colors">
                   <td className="p-3 eh-neon-soft">{o.id}</td>
                   <td className="p-3">{o.serviceName || o.service || '—'}</td>
                   <td className="p-3"><span className="px-2 py-1 rounded text-[11px]" style={{ background:'rgba(0,255,157,.1)', color:'var(--eh-green)' }}>{o.status}</span></td>

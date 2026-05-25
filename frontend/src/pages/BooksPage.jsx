@@ -1,14 +1,19 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { ShoppingCart, Star } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const BooksPage = () => {
   const { config } = useSiteConfig();
+  const { add } = useCart();
+  const { user } = useAuth();
+  const nav = useNavigate();
   const addToCart = (b) => {
-    const cart = JSON.parse(localStorage.getItem('eh_cart') || '[]');
-    cart.unshift({ ...b, addedAt: new Date().toISOString() });
-    localStorage.setItem('eh_cart', JSON.stringify(cart));
+    if (!user) { toast.error('Login to add to cart'); nav('/login', { state: { from: '/books' } }); return; }
+    add({ id: b.id, type: 'book', title: b.title, author: b.author, pages: b.pages, level: b.level, price: b.price, cover: b.cover });
     toast.success('Added to cart', { description: b.title });
   };
   return (

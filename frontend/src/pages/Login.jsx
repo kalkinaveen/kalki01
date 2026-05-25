@@ -19,7 +19,7 @@ const Login = () => {
     e.preventDefault();
     if (!email || !pw) { toast.error('Email & password required'); return; }
     setBusy(true);
-    try { await login(email, pw); toast.success('Welcome back, operator'); nav('/me'); }
+    try { await login(email, pw); toast.success('Welcome back, operator'); nav(loc.state?.from || '/me'); }
     catch (err) { toast.error(err.message || 'Login failed'); }
     finally { setBusy(false); }
   };
