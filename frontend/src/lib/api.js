@@ -63,6 +63,10 @@ export const api = {
   applyCoupon: (code, amount) => req('/coupons/apply', { method: 'POST', body: { code, amount } }),
   // chat
   chatSend: (session_id, message) => req('/chat/message', { method: 'POST', body: { session_id, message } }),
+  // payments
+  getPaymentSettings: () => req('/payments/settings'),
+  putPaymentSettings: (data) => req('/payments/settings', { method: 'PUT', body: data, admin: true }),
+  submitPaymentProof: (data) => req('/payments/proof', { method: 'POST', body: data }),
   // feed
   feedListPosts: () => req('/feed/posts'),
   feedGetPost: (id) => req(`/feed/posts/${id}`),

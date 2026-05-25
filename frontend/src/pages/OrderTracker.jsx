@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api';
+import PaymentBox from '../components/PaymentBox';
 
 const SAMPLE_STATUS = ['received', 'verified', 'in-progress', 'delivered'];
 const STAGES = [
@@ -86,6 +87,7 @@ const OrderTracker = () => {
                 </div>
               );})}
             </div>
+            <PaymentBox order={order} onUpdated={setOrder} />
           </div>
         )}
       </div>

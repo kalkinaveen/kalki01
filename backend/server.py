@@ -105,6 +105,28 @@ class ChatIn(BaseModel):
     session_id: str
     message: str
 
+# ---- Payment models ----
+class PaymentSettingsIn(BaseModel):
+    manual_enabled: bool = True
+    upi_id: Optional[str] = ""
+    upi_name: Optional[str] = ""
+    bank_details: Optional[str] = ""
+    qr_image_url: Optional[str] = ""
+    instructions: Optional[str] = ""
+    crypto_enabled: bool = True
+    crypto_wallets: Optional[List[Dict[str, Any]]] = None
+    currencies: Optional[List[Dict[str, Any]]] = None
+    default_currency: Optional[str] = "INR"
+
+class PaymentProofIn(BaseModel):
+    order_id: str
+    method: str
+    coin: Optional[str] = ""
+    tx_reference: Optional[str] = ""
+    proof_url: Optional[str] = ""
+    amount: Optional[float] = 0
+    currency: Optional[str] = "INR"
+
 # ---- Feed (Instagram-style) models ----
 class PostIn(BaseModel):
     image_url: str
@@ -917,6 +939,85 @@ async def feed_delete_comment(comment_id: str, x_admin_token: Optional[str] = He
     await _check_admin(x_admin_token)
     await db.feed_comments.delete_one({"id": comment_id})
     return {"ok": True}
+
+# ---- Payment Settings & Intents -------------------------------------------
+DEFAULT_PAYMENT_SETTINGS = {
+    "manual_enabled": True,
+    "upi_id": "errorhacker@upi",
+    "upi_name": "ERRORHACKER",
+    "bank_details": "",
+    "qr_image_url": "",
+    "instructions": "After payment, upload your transaction screenshot below. Order is confirmed once verified (usually within 30 min).",
+    "crypto_enabled": True,
+    "crypto_wallets": [
+        {"coin": "BTC", "network": "Bitcoin", "address": "bc1qexamplebtcaddresshere0000000000000", "qr_url": ""},
+        {"coin": "USDT", "network": "TRC20 (Tron)", "address": "TExampleUsdtAddressHere000000000000", "qr_url": ""},
+    ],
+    "currencies": [
+        {"code": "INR", "symbol": "₹", "rate": 1.0},
+        {"code": "USD", "symbol": "$", "rate": 0.012},
+    ],
+    "default_currency": "INR",
+}
+
+async def _ensure_payment_settings():
+    doc = await db.payment_settings.find_one({"_id": "main"})
+    if not doc:
+        await db.payment_settings.insert_one({"_id": "main", **DEFAULT_PAYMENT_SETTINGS, "updated_at": datetime.utcnow().isoformat()})
+        doc = await db.payment_settings.find_one({"_id": "main"})
+    return doc
+
+@api.get("/payments/settings")
+async def get_payment_settings():
+    doc = await _ensure_payment_settings()
+    return _clean(doc)
+
+@api.put("/payments/settings")
+async def put_payment_settings(body: PaymentSettingsIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    data = body.dict(exclude_none=True)
+    data["updated_at"] = datetime.utcnow().isoformat()
+    await db.payment_settings.update_one({"_id": "main"}, {"$set": data}, upsert=True)
+    doc = await db.payment_settings.find_one({"_id": "main"})
+    return _clean(doc)
+
+@api.post("/payments/proof")
+async def submit_payment_proof(body: PaymentProofIn):
+    # Public: customers submit proof against their order
+    order = await db.orders.find_one({"id": body.order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    update = {
+        "payment_method": body.method,
+        "payment_coin": body.coin or "",
+        "payment_tx_reference": body.tx_reference or "",
+        "payment_proof_url": body.proof_url or "",
+        "payment_amount": float(body.amount or 0),
+        "payment_currency": body.currency or "INR",
+        "payment_submitted_at": datetime.utcnow().isoformat(),
+        "status": "payment_review",
+    }
+    await db.orders.update_one({"id": body.order_id}, {"$set": update})
+    # Telegram notify
+    async def _notify():
+        try:
+            cfg = await _ensure_config()
+            notif = (cfg.get("notifications") or {}).get("telegram") or {}
+            if notif.get("enabled"):
+                msg = (
+                    "<b>PAYMENT SUBMITTED // ERRORHACKER</b>\n"
+                    f"<b>Order:</b> {body.order_id}\n"
+                    f"<b>Method:</b> {body.method} {body.coin or ''}\n"
+                    f"<b>Amount:</b> {body.amount} {body.currency}\n"
+                    f"<b>Ref:</b> {body.tx_reference}\n"
+                    f"<b>Proof:</b> {body.proof_url or '—'}"
+                )
+                await _telegram_send(notif.get("bot_token", ""), notif.get("chat_id", ""), msg)
+        except Exception as e:
+            log.warning("payment notify failed: %s", e)
+    asyncio.create_task(_notify())
+    updated = await db.orders.find_one({"id": body.order_id})
+    return _clean(updated)
 
 # --------------------------------------------------------------------------
 app.include_router(api)

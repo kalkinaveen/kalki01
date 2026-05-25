@@ -26,6 +26,7 @@ const sections = [
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
+  { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
@@ -839,6 +840,90 @@ const FeedVideoUpload = ({ value, onChange }) => {
   );
 };
 
+const PaymentSettingsTab = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    api.getPaymentSettings().then(setData).catch(e => toast.error(e.message)).finally(() => setLoading(false));
+  }, []);
+  const update = (patch) => setData(d => ({ ...d, ...patch }));
+  const updateWallet = (i, patch) => setData(d => ({ ...d, crypto_wallets: d.crypto_wallets.map((w, idx) => idx === i ? { ...w, ...patch } : w) }));
+  const addWallet = () => setData(d => ({ ...d, crypto_wallets: [...(d.crypto_wallets || []), { coin: '', network: '', address: '', qr_url: '' }] }));
+  const removeWallet = (i) => setData(d => ({ ...d, crypto_wallets: d.crypto_wallets.filter((_, idx) => idx !== i) }));
+  const updateCurrency = (i, patch) => setData(d => ({ ...d, currencies: d.currencies.map((c, idx) => idx === i ? { ...c, ...patch } : c) }));
+  const addCurrency = () => setData(d => ({ ...d, currencies: [...(d.currencies || []), { code: '', symbol: '', rate: 1 }] }));
+  const removeCurrency = (i) => setData(d => ({ ...d, currencies: d.currencies.filter((_, idx) => idx !== i) }));
+  const save = async () => {
+    setSaving(true);
+    try { const r = await api.putPaymentSettings(data); setData(r); toast.success('Saved'); }
+    catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+  if (loading) return <Section kicker="// PAYMENTS" title="PAYMENT SETTINGS"><div className="py-10 text-center opacity-60">Loading...</div></Section>;
+  return (
+    <Section kicker="// PAYMENTS" title="PAYMENT SETTINGS" actions={<button onClick={save} disabled={saving} className="eh-btn-primary text-xs"><Save size={12} /> {saving ? 'SAVING...' : 'SAVE ALL'}</button>}>
+      {/* Manual / UPI */}
+      <div className="eh-panel p-5 mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="eh-kicker">// MANUAL (UPI / BANK)</div>
+          <label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer"><input type="checkbox" checked={!!data.manual_enabled} onChange={e => update({ manual_enabled: e.target.checked })} className="w-4 h-4 accent-[var(--eh-green)]" /> {data.manual_enabled ? 'ENABLED' : 'DISABLED'}</label>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div><Label>UPI ID</Label><Input value={data.upi_id || ''} onChange={e => update({ upi_id: e.target.value })} placeholder="errorhacker@upi" /></div>
+          <div><Label>UPI NAME / RECIPIENT</Label><Input value={data.upi_name || ''} onChange={e => update({ upi_name: e.target.value })} placeholder="ERRORHACKER" /></div>
+          <div className="sm:col-span-2"><Label>QR CODE IMAGE</Label><ImageInput value={data.qr_image_url || ''} onChange={v => update({ qr_image_url: v })} testid="payment-qr" /></div>
+          <div className="sm:col-span-2"><Label>BANK DETAILS (multi-line)</Label><Textarea rows={3} value={data.bank_details || ''} onChange={e => update({ bank_details: e.target.value })} placeholder="Bank: HDFC\nA/C: 1234 5678 9012\nIFSC: HDFC0001234" /></div>
+          <div className="sm:col-span-2"><Label>INSTRUCTIONS (shown to customer at checkout)</Label><Textarea rows={3} value={data.instructions || ''} onChange={e => update({ instructions: e.target.value })} /></div>
+        </div>
+      </div>
+
+      {/* Crypto */}
+      <div className="eh-panel p-5 mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="eh-kicker">// CRYPTO WALLETS</div>
+          <label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer"><input type="checkbox" checked={!!data.crypto_enabled} onChange={e => update({ crypto_enabled: e.target.checked })} className="w-4 h-4 accent-[var(--eh-green)]" /> {data.crypto_enabled ? 'ENABLED' : 'DISABLED'}</label>
+        </div>
+        <div className="space-y-3">
+          {(data.crypto_wallets || []).map((w, i) => (
+            <div key={i} className="grid sm:grid-cols-[120px_140px_1fr_auto] gap-2 items-end border border-[var(--eh-border)] p-3 rounded">
+              <div><Label>COIN</Label><Input value={w.coin} onChange={e => updateWallet(i, { coin: e.target.value.toUpperCase() })} placeholder="BTC" /></div>
+              <div><Label>NETWORK</Label><Input value={w.network} onChange={e => updateWallet(i, { network: e.target.value })} placeholder="Bitcoin / TRC20" /></div>
+              <div><Label>ADDRESS</Label><Input value={w.address} onChange={e => updateWallet(i, { address: e.target.value })} placeholder="bc1q... / T..." /></div>
+              <button onClick={() => removeWallet(i)} className="eh-btn-ghost text-xs text-red-400 hover:text-red-300"><Trash2 size={12} /></button>
+              <div className="sm:col-span-4"><Label>QR (optional)</Label><ImageInput value={w.qr_url} onChange={v => updateWallet(i, { qr_url: v })} testid={`wallet-qr-${i}`} /></div>
+            </div>
+          ))}
+          <button onClick={addWallet} className="eh-btn-ghost text-xs"><Plus size={12} /> ADD WALLET</button>
+        </div>
+      </div>
+
+      {/* Currencies */}
+      <div className="eh-panel p-5">
+        <div className="eh-kicker mb-3">// CURRENCIES & RATES</div>
+        <p className="eh-mono text-[11px] opacity-70 mb-3">Set rate as multiplier from your BASE price. Example: if your service is priced in INR and you want to show USD, USD rate = 0.012 means 1 INR × 0.012 = USD.</p>
+        <div className="space-y-2 max-w-xl">
+          {(data.currencies || []).map((c, i) => (
+            <div key={i} className="grid grid-cols-[100px_100px_1fr_auto] gap-2 items-end">
+              <div><Label>CODE</Label><Input value={c.code} onChange={e => updateCurrency(i, { code: e.target.value.toUpperCase() })} placeholder="USD" /></div>
+              <div><Label>SYMBOL</Label><Input value={c.symbol} onChange={e => updateCurrency(i, { symbol: e.target.value })} placeholder="$" /></div>
+              <div><Label>RATE × BASE</Label><Input type="number" step="0.0001" value={c.rate} onChange={e => updateCurrency(i, { rate: Number(e.target.value) || 0 })} /></div>
+              <button onClick={() => removeCurrency(i)} className="eh-btn-ghost text-xs text-red-400 hover:text-red-300"><Trash2 size={12} /></button>
+            </div>
+          ))}
+          <button onClick={addCurrency} className="eh-btn-ghost text-xs"><Plus size={12} /> ADD CURRENCY</button>
+        </div>
+        <div className="mt-4 max-w-xs">
+          <Label>DEFAULT CURRENCY</Label>
+          <select className="eh-input" value={data.default_currency || 'INR'} onChange={e => update({ default_currency: e.target.value })}>
+            {(data.currencies || []).map(c => <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>)}
+          </select>
+        </div>
+      </div>
+    </Section>
+  );
+};
+
 const CouponsTab = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1116,6 +1201,7 @@ const AdminPanel = () => {
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
         {active==='feed'        && <FeedManager />}
+        {active==='payments'    && <PaymentSettingsTab />}
         {active==='coupons'     && <CouponsTab />}
         {active==='notifications'&& <NotificationsTab />}
         {active==='settings'    && <SettingsTab />}
