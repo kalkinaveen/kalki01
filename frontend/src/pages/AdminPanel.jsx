@@ -1180,34 +1180,147 @@ const SettingsTab = () => {
   );
 };
 
-const Overview = () => {
+const Overview = ({ setActive }) => {
   const { config } = useSiteConfig();
   const [orders, setOrders] = useState([]);
-  useEffect(() => { api.listOrders().then(setOrders).catch(() => {}); }, []);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const [o, u] = await Promise.all([api.listOrders().catch(() => []), api.listUsers().catch(() => [])]);
+      setOrders(o); setUsers(u);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const revenue = orders.filter(o => ['delivered', 'paid', 'verified'].includes(o.status)).reduce((s, o) => s + Number(o.payment_amount || 0), 0);
+  const pendingPayments = orders.filter(o => o.status === 'payment_review').length;
+
+  const updateOrderStatus = async (id, status) => {
+    try { await api.updateOrder(id, status); toast.success(`Marked ${status}`); refresh(); }
+    catch (e) { toast.error(e.message); }
+  };
+
+  const quickActions = [
+    { label: 'NEW SERVICE',    icon: Wrench,      to: 'services',  color: 'rgba(0,255,157,.15)' },
+    { label: 'NEW BOOK',       icon: BookOpen,    to: 'books',     color: 'rgba(77,224,255,.15)' },
+    { label: 'NEW BLOG',       icon: FileText,    to: 'blogs',     color: 'rgba(255,200,40,.15)' },
+    { label: 'NEW FEED POST',  icon: Activity,    to: 'feed',      color: 'rgba(255,80,120,.15)' },
+    { label: 'PAYMENTS',       icon: CreditCard,  to: 'payments',  color: 'rgba(180,120,255,.15)' },
+    { label: 'COUPONS',        icon: Zap,         to: 'coupons',   color: 'rgba(0,255,157,.15)' },
+  ];
+
   return (
-    <Section kicker="// DASHBOARD" title="COMMAND OVERVIEW">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <StatCard label="SERVICES" value={config.services.length} hint="offerings" />
-        <StatCard label="BOOKS" value={config.books.length} hint="library" />
-        <StatCard label="MEMBERSHIPS" value={config.memberships.length} hint="tiers" />
-        <StatCard label="BLOGS" value={config.blogs.length} hint="posts" />
-        <StatCard label="TOOLS" value={config.tools.length} hint="arsenal" />
-        <StatCard label="ORDERS" value={orders.length} hint="received" />
-      </div>
-      <Section kicker="// RECENT" title="LAST 5 ORDERS">
-        <div className="eh-panel overflow-x-auto">
-          <table className="w-full eh-mono text-sm"><thead><tr className="text-left border-b border-[var(--eh-border)]"><th className="p-3 text-xs tracking-widest opacity-70">ID</th><th className="p-3 text-xs">SERVICE</th><th className="p-3 text-xs">CLIENT</th><th className="p-3 text-xs">STATUS</th><th className="p-3 text-xs">DATE</th></tr></thead><tbody>
-            {orders.slice(0,5).map(o => (
-              <tr key={o.id} className="border-b border-[var(--eh-border)]">
-                <td className="p-3 eh-neon-soft">{o.id}</td><td className="p-3">{o.serviceName}</td><td className="p-3">{o.name}</td>
-                <td className="p-3"><span className="px-2 py-1 rounded text-[11px]" style={{ background:'rgba(0,255,157,.1)', color:'var(--eh-green)' }}>{o.status}</span></td>
-                <td className="p-3 opacity-70 text-xs">{new Date(o.createdAt).toLocaleString()}</td>
-              </tr>
-            ))}
-            {orders.length === 0 && <tr><td colSpan={5} className="p-6 text-center opacity-60">No orders yet. Place one from the storefront.</td></tr>}
-          </tbody></table>
+    <Section kicker="// DASHBOARD" title="COMMAND OVERVIEW" actions={<button onClick={refresh} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button>}>
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">TOTAL ORDERS</div>
+          <div className="eh-display text-3xl font-black eh-neon">{orders.length}</div>
+          <div className="eh-mono text-[10px] opacity-50 mt-1">all-time</div>
         </div>
-      </Section>
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">REVENUE</div>
+          <div className="eh-display text-3xl font-black eh-neon">${revenue.toFixed(0)}</div>
+          <div className="eh-mono text-[10px] opacity-50 mt-1">verified payments</div>
+        </div>
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">USERS</div>
+          <div className="eh-display text-3xl font-black">{users.length}</div>
+          <div className="eh-mono text-[10px] opacity-50 mt-1">registered</div>
+        </div>
+        <div className="eh-panel p-4" style={ pendingPayments ? { borderColor: 'rgba(255,200,40,.4)' } : {}}>
+          <div className="eh-mono text-[10px] opacity-60 mb-1">PENDING REVIEW</div>
+          <div className="eh-display text-3xl font-black" style={ pendingPayments ? { color: '#ffc828' } : {}}>{pendingPayments}</div>
+          <div className="eh-mono text-[10px] opacity-50 mt-1">payments to verify</div>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="eh-panel p-4 mb-6">
+        <div className="eh-kicker mb-3">// QUICK ACTIONS</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {quickActions.map(q => { const I = q.icon; return (
+            <button key={q.label} onClick={() => setActive(q.to)} className="flex flex-col items-center gap-2 py-4 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-all hover:bg-white/[.02]" data-testid={`qa-${q.to}`}>
+              <div className="w-9 h-9 rounded grid place-items-center" style={{ background: q.color }}><I size={16} color="var(--eh-green)" /></div>
+              <div className="eh-mono text-[10px] tracking-widest">{q.label}</div>
+            </button>
+          );})}
+        </div>
+      </div>
+
+      {/* Content counters w/ jump buttons */}
+      <div className="eh-panel p-4 mb-6">
+        <div className="eh-kicker mb-3">// CONTENT</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            { key: 'services',     count: config.services.length,     label: 'SERVICES',    icon: Wrench },
+            { key: 'books',        count: config.books.length,        label: 'BOOKS',       icon: BookOpen },
+            { key: 'memberships',  count: config.memberships.length,  label: 'TIERS',       icon: CreditCard },
+            { key: 'blogs',        count: config.blogs.length,        label: 'BLOGS',       icon: FileText },
+            { key: 'tools',        count: config.tools.length,        label: 'TOOLS',       icon: Terminal },
+            { key: 'faqs',         count: config.faqs.length,         label: 'FAQS',        icon: MessageSquare },
+          ].map(c => { const I = c.icon; return (
+            <button key={c.key} onClick={() => setActive(c.key)} className="flex items-center gap-3 p-3 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors text-left">
+              <I size={16} className="text-[var(--eh-green)] shrink-0" />
+              <div className="min-w-0">
+                <div className="eh-display text-2xl font-black leading-none">{c.count}</div>
+                <div className="eh-mono text-[10px] opacity-60 tracking-widest mt-1">{c.label}</div>
+              </div>
+              <Edit3 size={12} className="ml-auto opacity-50" />
+            </button>
+          );})}
+        </div>
+      </div>
+
+      {/* Recent Orders w/ inline status changer */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="eh-panel p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="eh-kicker">// RECENT ORDERS</div>
+            <button onClick={() => setActive('orders')} className="eh-mono text-[10px] opacity-70 hover:opacity-100 hover:text-[var(--eh-green)]">VIEW ALL →</button>
+          </div>
+          <div className="space-y-2">
+            {loading && <div className="py-6 text-center opacity-60 eh-mono text-xs">Loading...</div>}
+            {!loading && orders.length === 0 && <div className="py-6 text-center opacity-60 eh-mono text-xs">No orders yet.</div>}
+            {orders.slice(0, 6).map(o => (
+              <div key={o.id} className="flex items-center gap-3 p-2.5 border border-[var(--eh-border)] rounded" data-testid={`ov-order-${o.id}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{o.serviceName || '—'}</div>
+                  <div className="eh-mono text-[10px] opacity-60 truncate">{o.name} · {o.id}</div>
+                </div>
+                <select value={o.status} onChange={e => updateOrderStatus(o.id, e.target.value)} className="bg-transparent eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] cursor-pointer">
+                  <option value="received">received</option>
+                  <option value="payment_review">payment_review</option>
+                  <option value="verified">verified</option>
+                  <option value="in-progress">in-progress</option>
+                  <option value="delivered">delivered</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="eh-panel p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="eh-kicker">// RECENT USERS</div>
+            <button onClick={() => setActive('users')} className="eh-mono text-[10px] opacity-70 hover:opacity-100 hover:text-[var(--eh-green)]">VIEW ALL →</button>
+          </div>
+          <div className="space-y-2">
+            {users.length === 0 && <div className="py-6 text-center opacity-60 eh-mono text-xs">No users yet.</div>}
+            {users.slice(0, 6).map(u => (
+              <div key={u.user_id} className="flex items-center gap-3 p-2.5 border border-[var(--eh-border)] rounded">
+                {u.picture ? <img src={u.picture} className="w-8 h-8 rounded-full object-cover" alt="" /> : <div className="w-8 h-8 rounded-full grid place-items-center text-[10px] eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(u.name || u.email || 'a')[0].toUpperCase()}</div>}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{u.name || u.email.split('@')[0]}</div>
+                  <div className="eh-mono text-[10px] opacity-60 truncate">{u.email}</div>
+                </div>
+                <div className="eh-mono text-[10px] opacity-70">{u.orders_count} ord</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </Section>
   );
 };
@@ -1265,7 +1378,7 @@ const AdminPanel = () => {
           {sections.map(s => (<button key={s.to} onClick={()=>setActive(s.to)} className={`shrink-0 px-3 py-2 rounded text-[11px] eh-mono tracking-widest uppercase ${active===s.to ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>{s.label}</button>))}
         </div>
 
-        {active==='overview'    && <Overview />}
+        {active==='overview'    && <Overview setActive={setActive} />}
         {active==='branding'    && <Branding />}
         {active==='hero'        && <HeroEditor />}
         {active==='navigation'  && <NavigationEditor />}

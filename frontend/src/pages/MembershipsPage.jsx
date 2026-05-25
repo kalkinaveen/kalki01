@@ -1,17 +1,35 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
-import { Check, Star, Lock, Zap, ArrowRight } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
+import { Check, Star, Lock, Zap, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import PricingComparison from '../components/PricingComparison';
 import FAQ from '../components/FAQ';
 
 const MembershipsPage = () => {
   const { config } = useSiteConfig();
-  const subscribe = (m) => {
-    const subs = JSON.parse(localStorage.getItem('eh_subs') || '[]');
-    subs.unshift({ tier: m.id, name: m.name, price: m.price, at: new Date().toISOString() });
-    localStorage.setItem('eh_subs', JSON.stringify(subs));
-    toast.success(`${m.name} tier selected`, { description: 'Proceed to checkout (mock).' });
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const [busy, setBusy] = useState('');
+  const subscribe = async (m) => {
+    if (!user) { toast.error('Login required to subscribe'); nav('/login', { state: { from: '/memberships' } }); return; }
+    setBusy(m.id);
+    try {
+      const order = await api.createOrder({
+        service: `membership:${m.id}`,
+        serviceName: `${m.name} Membership · $${m.price}/${m.period}`,
+        name: user.name || user.email.split('@')[0],
+        email: user.email,
+        size: m.period || 'month',
+        target: `tier:${m.id}`,
+        notes: `Membership subscription — ${m.name}`,
+      });
+      toast.success('Subscription created', { description: `Complete payment to activate` });
+      nav(`/me/orders/${order.id}`);
+    } catch (e) { toast.error(e.message); }
+    finally { setBusy(''); }
   };
   return (
     <div className="pt-10 pb-10 eh-grid-bg">
@@ -29,7 +47,7 @@ const MembershipsPage = () => {
               <div className="flex items-center gap-2 mb-2">{m.color==='red' && <Zap size={18} color="var(--eh-red)" />}{m.color==='green' && <Star size={18} color="var(--eh-green)" />}{m.color==='cyan' && <Lock size={18} color="var(--eh-cyan)" />}<div className="eh-display text-xl font-black tracking-widest">{m.name}</div></div>
               <div className="flex items-baseline gap-1 my-3"><span className="eh-display text-4xl sm:text-5xl font-black eh-neon">${m.price}</span><span className="opacity-60 eh-mono">/{m.period}</span></div>
               <ul className="space-y-2 mb-6 mt-4">{(m.perks || []).map(p => (<li key={p} className="flex items-start gap-2 text-sm"><Check size={16} color="var(--eh-green)" className="mt-0.5 shrink-0" /><span>{p}</span></li>))}</ul>
-              <button onClick={() => subscribe(m)} className="eh-btn-primary w-full text-xs">SUBSCRIBE NOW <ArrowRight size={14} /></button>
+              <button onClick={() => subscribe(m)} disabled={busy === m.id} data-testid={`membership-buy-${m.id}`} className="eh-btn-primary w-full text-xs">{busy === m.id ? <><Loader2 size={14} className="animate-spin" /> PROCESSING...</> : <>SUBSCRIBE NOW <ArrowRight size={14} /></>}</button>
             </div>
           ))}
         </div>
