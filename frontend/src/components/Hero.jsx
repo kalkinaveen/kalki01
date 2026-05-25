@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Terminal, ChevronDown } from 'lucide-react';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import Typewriter from './Typewriter';
-import SnakeRoam from './SnakeRoam';
+import RealisticSnake from './RealisticSnake';
 
 const Hero = () => {
   const { config } = useSiteConfig();
@@ -16,9 +16,9 @@ const Hero = () => {
         <div className="eh-kicker justify-center mb-5 text-[10px] sm:text-xs">{HERO.kicker}</div>
         <div className="eh-mono text-[10px] sm:text-sm tracking-[.4em] opacity-70 mb-3">{HERO.welcome}</div>
         <h1 className="eh-brand font-black leading-none mb-5 px-2 whitespace-nowrap relative" style={{ fontSize: 'clamp(1.6rem, 8vw, 7rem)' }}>
-          <span className="eh-title-neon relative inline-block" data-testid="hero-title">
+          <span className="eh-title-neon eh-title-snake relative inline-block" data-testid="hero-title">
             {SITE.name}
-            <SnakeRoam />
+            <RealisticSnake />
           </span>
         </h1>
         <div className="flex items-center justify-center gap-2 sm:gap-4 mb-5 px-2">

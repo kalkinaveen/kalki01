@@ -250,7 +250,10 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
 .eh-scroll::-webkit-scrollbar-thumb { background: rgba(0,255,157,.25); border-radius:8px; }
 
 /* ========================================================================
-   VENOM SNAKE — live snake slithering around the ERRORHACKER title
+   REALISTIC SNAKE — engraved-illustration style snake weaving through letters
+   Renders in TWO SVG layers: one BEHIND text (.eh-rsnake-back), one IN
+   FRONT (.eh-rsnake-front). The clip windows are spaced so the body alternates
+   visibility, creating the woven-through-letters effect.
    ======================================================================== */
 .eh-title-neon {
   color: var(--eh-green);
@@ -259,119 +262,55 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
     0 0 12px rgba(0,255,157,.30),
     0 0 28px rgba(0,255,157,.18);
 }
-
-.eh-snake-wrap {
+.eh-title-snake {
+  /* the letters themselves sit at z-index:auto by default; we layer snake around them */
+  position: relative;
+  z-index: 0;
+}
+.eh-title-snake > .eh-rsnake-wrap {
   position: absolute;
-  inset: -22% -8% -22% -8%;
+  inset: -22% -3% -22% -3%;
   pointer-events: none;
-  z-index: 5;
 }
-.eh-snake-svg { display: none; } /* gradient defs only */
-
-/* Shared roaming motion path (snake's track around the title bounding box). */
-@property --eh-snake-pos { syntax: '<length-percentage>'; inherits: true; initial-value: 0%; }
-
-.eh-snake-seg, .eh-snake-head {
+.eh-rsnake {
   position: absolute;
-  top: 0; left: 0;
-  width: var(--seg-size, 18px);
-  height: var(--seg-size, 18px);
-  border-radius: 50%;
-  z-index: var(--seg-z, 1);
-  offset-path: path("M 20 80 C 80 -10, 250 -10, 320 50 S 560 130, 620 60 S 880 -20, 940 60 S 1100 140, 1160 70 S 1100 -10, 940 40 S 620 130, 560 60 S 320 -10, 250 50 S 80 130, 20 80");
-  offset-rotate: auto;
-  offset-distance: 0%;
-  animation: eh-snake-slither 9s linear infinite;
-  animation-delay: var(--seg-delay, 0s);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  /* very subtle breathing — gives life without the cartoon "joker" jiggle */
+  animation: eh-rsnake-breathe 7s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+.eh-rsnake-back  { z-index: -1; }
+.eh-rsnake-front { z-index:  3; }
+@keyframes eh-rsnake-breathe {
+  0%, 100% { transform: translateY(0) scale(1);     filter: drop-shadow(0 6px 16px rgba(0,0,0,.6)); }
+  50%      { transform: translateY(1.5px) scale(1.005); filter: drop-shadow(0 9px 20px rgba(0,0,0,.55)); }
 }
 
-.eh-snake-seg {
-  background: radial-gradient(circle at 35% 30%, #d4ffe6 0%, #0aff9d 35%, #018a4f 70%, #001a10 100%);
-  box-shadow:
-    0 0 6px rgba(0,255,157,.55),
-    inset -1px -2px 0 rgba(0,0,0,.35),
-    inset 2px 2px 0 rgba(212,255,230,.25);
-  filter: hue-rotate(0deg);
+/* Forked tongue: slow, infrequent flick */
+.eh-rsnake-tongue {
+  transform-origin: 0% 50%;
+  animation: eh-rsnake-tongue 4.5s ease-in-out infinite;
 }
-.eh-snake-seg::after {
-  /* scale highlights along the back */
-  content: '';
-  position: absolute;
-  inset: 18%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, rgba(255,255,255,.25), transparent 55%);
-}
-
-.eh-snake-head {
-  width: 26px; height: 26px;
-  background: radial-gradient(ellipse 60% 90% at 50% 35%, #e6ffec 0%, #0aff9d 30%, #016a3d 75%, #00170d 100%);
-  border-radius: 60% 60% 50% 50% / 70% 70% 40% 40%;
-  box-shadow:
-    0 0 10px rgba(0,255,157,.85),
-    0 0 22px rgba(0,255,157,.45),
-    inset -2px -2px 4px rgba(0,0,0,.5),
-    inset 2px 3px 4px rgba(255,255,255,.18);
-}
-
-/* Glowing slit eyes */
-.eh-snake-eye {
-  position: absolute;
-  top: 26%;
-  width: 18%; height: 38%;
-  background: radial-gradient(ellipse at 50% 50%, #fff 0%, #d6ff00 35%, #ff2a3a 80%, transparent 100%);
-  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-  box-shadow: 0 0 4px rgba(214,255,0,.9), 0 0 8px rgba(255,42,58,.6);
-}
-.eh-snake-eye-l { left: 22%; }
-.eh-snake-eye-r { right: 22%; }
-.eh-snake-eye::after {
-  content: '';
-  position: absolute;
-  top: 18%; left: 35%;
-  width: 30%; height: 64%;
-  background: #0a0a0a;
-  border-radius: 50%;
-}
-
-/* Forked flicking tongue */
-.eh-snake-tongue {
-  position: absolute;
-  top: 88%;
-  left: 38%;
-  width: 24%; height: 80%;
-  background: linear-gradient(180deg, #ff2a3a, #b30015);
-  clip-path: polygon(40% 0%, 60% 0%, 60% 55%, 100% 75%, 75% 100%, 50% 78%, 25% 100%, 0% 75%, 40% 55%);
-  transform-origin: 50% 0%;
-  animation: eh-snake-tongue 1.4s ease-in-out infinite;
-  filter: drop-shadow(0 0 3px rgba(255,42,58,.7));
-}
-@keyframes eh-snake-tongue {
-  0%, 70%, 100% { transform: scaleY(0.15); opacity: 0; }
-  78%           { transform: scaleY(1)    translateX(-1px); opacity: 1; }
-  85%           { transform: scaleY(0.95) translateX(1px);  opacity: 1; }
-  92%           { transform: scaleY(0.9)  translateX(-1px); opacity: 1; }
-}
-
-/* The slither path traversal */
-@keyframes eh-snake-slither {
-  0%   { offset-distance: 0%; }
-  100% { offset-distance: 100%; }
-}
-
-/* Subtle body wobble for organic feel */
-.eh-snake-seg, .eh-snake-head {
-  filter: drop-shadow(0 0 4px rgba(0,255,157,.35));
+@keyframes eh-rsnake-tongue {
+  0%, 80%, 100% { transform: scaleX(0);    opacity: 0; }
+  84%           { transform: scaleX(1);    opacity: 1; }
+  88%           { transform: scaleX(0.85); opacity: 1; }
+  92%           { transform: scaleX(1);    opacity: 1; }
+  96%           { transform: scaleX(0);    opacity: 0; }
 }
 
 @media (max-width: 640px) {
-  .eh-snake-seg { width: calc(var(--seg-size, 14px) * 0.7); height: calc(var(--seg-size, 14px) * 0.7); }
-  .eh-snake-head { width: 20px; height: 20px; }
+  .eh-title-snake > .eh-rsnake-wrap { inset: -28% -2% -28% -2%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eh-rsnake, .eh-rsnake-tongue { animation: none !important; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .eh-snake-seg, .eh-snake-head, .eh-snake-tongue { animation: none !important; }
-  .eh-snake-wrap { display: none; }
-}
+/* legacy effects hidden */
+.eh-snake-wrap, .eh-dragon-wrap { display: none !important; }
 
 @layer base { :root { --background:0 0% 3%; --foreground:0 0% 95%; --card:0 0% 5%; --card-foreground:0 0% 95%; --popover:0 0% 5%; --popover-foreground:0 0% 95%; --primary:152 100% 50%; --primary-foreground:0 0% 5%; --secondary:0 0% 10%; --secondary-foreground:0 0% 95%; --muted:0 0% 12%; --muted-foreground:0 0% 65%; --accent:0 0% 12%; --accent-foreground:0 0% 95%; --destructive:0 84% 60%; --destructive-foreground:0 0% 95%; --border:0 0% 14%; --input:0 0% 14%; --ring:152 100% 50%; --radius:.5rem; } }
 @layer base { * { @apply border-border; } }
