@@ -67,6 +67,9 @@ export const api = {
   getPaymentSettings: () => req('/payments/settings'),
   putPaymentSettings: (data) => req('/payments/settings', { method: 'PUT', body: data, admin: true }),
   submitPaymentProof: (data) => req('/payments/proof', { method: 'POST', body: data }),
+  // users (admin)
+  listUsers: () => req('/admin/users', { admin: true }),
+  deleteUser: (uid) => req(`/admin/users/${uid}`, { method: 'DELETE', admin: true }),
   // feed
   feedListPosts: () => req('/feed/posts'),
   feedGetPost: (id) => req(`/feed/posts/${id}`),

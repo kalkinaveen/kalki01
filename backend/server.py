@@ -940,6 +940,23 @@ async def feed_delete_comment(comment_id: str, x_admin_token: Optional[str] = He
     await db.feed_comments.delete_one({"id": comment_id})
     return {"ok": True}
 
+@api.get("/admin/users")
+async def list_users(x_admin_token: Optional[str] = Header(None), limit: int = 500):
+    await _check_admin(x_admin_token)
+    rows = await db.users.find().sort("created_at", -1).to_list(min(max(limit, 1), 2000))
+    out = []
+    for u in rows:
+        u.pop("_id", None); u.pop("password_hash", None)
+        u["orders_count"] = await db.orders.count_documents({"user_id": u.get("user_id")})
+        out.append(u)
+    return out
+
+@api.delete("/admin/users/{user_id}")
+async def delete_user(user_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.users.delete_one({"user_id": user_id})
+    return {"ok": True}
+
 # ---- Payment Settings & Intents -------------------------------------------
 DEFAULT_PAYMENT_SETTINGS = {
     "manual_enabled": True,

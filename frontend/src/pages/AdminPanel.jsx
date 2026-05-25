@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -25,6 +25,7 @@ const sections = [
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
+  { to: 'users',       label: 'Users',        icon: User,            group: 'main' },
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
@@ -840,6 +841,87 @@ const FeedVideoUpload = ({ value, onChange }) => {
   );
 };
 
+const UsersTab = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const load = async () => {
+    setLoading(true);
+    try { setItems(await api.listUsers()); } catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+  const remove = async (u) => {
+    if (!window.confirm(`Delete user ${u.email}? This cannot be undone.`)) return;
+    try { await api.deleteUser(u.user_id); toast.success('Deleted'); load(); } catch (e) { toast.error(e.message); }
+  };
+  const copy = (text) => { navigator.clipboard.writeText(text); toast.success('Copied'); };
+  const filtered = items.filter(u => {
+    if (!q) return true;
+    const s = q.toLowerCase();
+    return (u.email || '').toLowerCase().includes(s) || (u.name || '').toLowerCase().includes(s) || (u.referral_code || '').toLowerCase().includes(s);
+  });
+  return (
+    <Section kicker="// USERS" title={`REGISTERED USERS (${items.length})`} actions={<button onClick={load} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button>}>
+      <div className="mb-4">
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="> search email / name / referral..." className="eh-input text-sm max-w-md" data-testid="users-search" />
+      </div>
+      <div className="grid sm:grid-cols-3 gap-3 mb-5">
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">TOTAL</div>
+          <div className="eh-display text-2xl font-black eh-neon">{items.length}</div>
+        </div>
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">PASSWORD</div>
+          <div className="eh-display text-2xl font-black">{items.filter(u => u.provider === 'password').length}</div>
+        </div>
+        <div className="eh-panel p-4">
+          <div className="eh-mono text-[10px] opacity-60 mb-1">GOOGLE</div>
+          <div className="eh-display text-2xl font-black">{items.filter(u => u.provider === 'google').length}</div>
+        </div>
+      </div>
+      <div className="eh-panel overflow-x-auto">
+        <table className="w-full eh-mono text-sm min-w-[760px]">
+          <thead><tr className="text-left border-b border-[var(--eh-border)]">
+            <th className="p-3 text-xs tracking-widest opacity-70">USER</th>
+            <th className="p-3 text-xs">EMAIL</th>
+            <th className="p-3 text-xs">PROVIDER</th>
+            <th className="p-3 text-xs">REFERRAL</th>
+            <th className="p-3 text-xs">ORDERS</th>
+            <th className="p-3 text-xs">JOINED</th>
+            <th className="p-3 text-xs text-right">ACTIONS</th>
+          </tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={7} className="p-6 text-center opacity-60">Loading…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={7} className="p-6 text-center opacity-60">No users.</td></tr>}
+            {filtered.map(u => (
+              <tr key={u.user_id} className="border-b border-[var(--eh-border)] hover:bg-white/[.02]" data-testid={`user-row-${u.user_id}`}>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    {u.picture ? <img src={u.picture} className="w-7 h-7 rounded-full object-cover" alt="" /> : <div className="w-7 h-7 rounded-full grid place-items-center text-[10px]" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(u.name || u.email || 'a')[0].toUpperCase()}</div>}
+                    <span className="text-sm font-bold" style={{ fontFamily: 'Inter,sans-serif' }}>{u.name || '—'}</span>
+                  </div>
+                </td>
+                <td className="p-3"><span className="eh-neon-soft">{u.email}</span></td>
+                <td className="p-3"><span className="px-2 py-1 rounded text-[10px]" style={{ background: u.provider === 'google' ? 'rgba(77,224,255,.1)' : 'rgba(0,255,157,.1)', color: u.provider === 'google' ? '#4de0ff' : 'var(--eh-green)' }}>{(u.provider || 'password').toUpperCase()}</span></td>
+                <td className="p-3 opacity-80">{u.referral_code || '—'}</td>
+                <td className="p-3">{u.orders_count}</td>
+                <td className="p-3 opacity-70 text-[11px]">{new Date(u.created_at).toLocaleString()}</td>
+                <td className="p-3 text-right">
+                  <div className="inline-flex gap-1">
+                    <button onClick={() => copy(u.email)} title="Copy email" className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] hover:text-[var(--eh-green)]"><Copy size={12} /></button>
+                    <button onClick={() => remove(u)} className="w-7 h-7 grid place-items-center rounded border border-[var(--eh-border)] hover:border-red-400 hover:text-red-400"><Trash2 size={12} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Section>
+  );
+};
+
 const PaymentSettingsTab = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1200,6 +1282,7 @@ const AdminPanel = () => {
         {active==='stats'       && <StatsEditor />}
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
+        {active==='users'       && <UsersTab />}
         {active==='feed'        && <FeedManager />}
         {active==='payments'    && <PaymentSettingsTab />}
         {active==='coupons'     && <CouponsTab />}
