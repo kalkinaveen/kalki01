@@ -139,6 +139,32 @@ async def _ensure_config():
     if not doc:
         await db.site_config.insert_one({"_id": "main", **DEFAULT_CONFIG, "updated_at": datetime.utcnow().isoformat()})
         doc = await db.site_config.find_one({"_id": "main"})
+        return doc
+    # Auto-migrate: merge in any new top-level keys from DEFAULT_CONFIG
+    updates = {}
+    for k, v in DEFAULT_CONFIG.items():
+        if k not in doc:
+            updates[k] = v
+    # Make sure 'Feed' nav item exists (insert before Blogs)
+    try:
+        nav = doc.get("nav") or []
+        if not any((n.get("to") == "/feed") for n in nav):
+            new_nav = []
+            inserted = False
+            for n in nav:
+                if not inserted and n.get("to") == "/blogs":
+                    new_nav.append({"label": "Feed", "to": "/feed"})
+                    inserted = True
+                new_nav.append(n)
+            if not inserted:
+                new_nav.append({"label": "Feed", "to": "/feed"})
+            updates["nav"] = new_nav
+    except Exception:
+        pass
+    if updates:
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        await db.site_config.update_one({"_id": "main"}, {"$set": updates})
+        doc = await db.site_config.find_one({"_id": "main"})
     return doc
 
 async def _ensure_admin():
