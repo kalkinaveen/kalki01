@@ -7,6 +7,10 @@ DEFAULT_CONFIG = {
             "chat_id": "",
         },
     },
+    "analytics": {
+        "enabled": False,
+        "googleId": "",
+    },
     "feedProfile": {
         "username": "errorhacker",
         "displayName": "ERRORHACKER",

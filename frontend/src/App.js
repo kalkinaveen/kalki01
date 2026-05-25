@@ -28,6 +28,7 @@ import OrderDetail from './pages/OrderDetail';
 import CartPage from './pages/CartPage';
 import FeedPage from './pages/FeedPage';
 import ScrollToTop from './components/ScrollToTop';
+import Analytics from './components/Analytics';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
 
@@ -54,6 +55,7 @@ function App() {
           <div className="App">
             <BrowserRouter>
               <ScrollToTop />
+              <Analytics />
               <BootGate />
               <Routes>
                 <Route path="/admin" element={<AdminPanel />} />

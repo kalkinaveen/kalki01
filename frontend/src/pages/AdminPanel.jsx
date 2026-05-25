@@ -1089,6 +1089,7 @@ const CouponsTab = () => {
 const NotificationsTab = () => {
   const { config, update } = useSiteConfig();
   const t = (config.notifications && config.notifications.telegram) || { enabled: false, bot_token: '', chat_id: '' };
+  const ga = config.analytics || { enabled: false, googleId: '' };
   const [testing, setTesting] = useState(false);
   const sendTest = async () => {
     if (!t.bot_token || !t.chat_id) { toast.error('Bot Token and Chat ID are required'); return; }
@@ -1100,8 +1101,8 @@ const NotificationsTab = () => {
     finally { setTesting(false); }
   };
   return (
-    <Section kicker="// CHANNELS" title="ORDER NOTIFICATIONS">
-      <div className="grid lg:grid-cols-2 gap-5">
+    <Section kicker="// CHANNELS" title="ORDER NOTIFICATIONS & ANALYTICS">
+      <div className="grid lg:grid-cols-2 gap-5 mb-5">
         <div className="eh-panel p-5 space-y-4">
           <div className="flex items-center justify-between">
             <Label hint="ping bot whenever a new order arrives">TELEGRAM ALERTS</Label>
@@ -1119,12 +1120,39 @@ const NotificationsTab = () => {
           </div>
         </div>
         <div className="eh-panel p-5 space-y-3 eh-mono text-[12px] opacity-80 leading-6">
-          <div className="eh-kicker mb-1">// SETUP IN 2 MIN</div>
+          <div className="eh-kicker mb-1">// TELEGRAM SETUP</div>
           <div>1. Open Telegram → search <span className="text-[var(--eh-green)]">@BotFather</span> → send <span className="text-[var(--eh-green)]">/newbot</span>.</div>
           <div>2. Pick a name + username ending in <span className="text-[var(--eh-green)]">_bot</span>. Copy the <b>BOT TOKEN</b>.</div>
           <div>3. Search <span className="text-[var(--eh-green)]">@userinfobot</span> → press Start → copy your <b>CHAT ID</b>.</div>
           <div>4. Paste both here, enable, hit <b>SEND TEST</b>.</div>
-          <div className="opacity-60 mt-3">Once enabled, every new customer order pings your Telegram instantly.</div>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5">
+        <div className="eh-panel p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <Label hint="track visitors in real time">GOOGLE ANALYTICS</Label>
+            <label className="inline-flex items-center gap-2 text-xs eh-mono cursor-pointer">
+              <input type="checkbox" data-testid="ga-enabled" checked={!!ga.enabled} onChange={e => update('analytics.enabled', e.target.checked)} className="w-4 h-4 accent-[var(--eh-green)]" />
+              {ga.enabled ? <span className="text-[var(--eh-green)]">ENABLED</span> : <span className="opacity-60">DISABLED</span>}
+            </label>
+          </div>
+          <Label hint="format: G-XXXXXXXXXX">MEASUREMENT ID</Label>
+          <Input data-testid="ga-id" value={ga.googleId || ''} onChange={e => update('analytics.googleId', e.target.value.trim())} placeholder="> G-XXXXXXXXXX" />
+          {ga.googleId && !/^G-[A-Z0-9]+$/i.test(ga.googleId) && (
+            <div className="eh-mono text-[11px]" style={{ color: '#ffc828' }}>⚠ ID should start with <b>G-</b></div>
+          )}
+          <div className="eh-mono text-[11px] opacity-70 leading-6 pt-1">
+            Tracks every page view + auto-loads <span className="text-[var(--eh-green)]">gtag.js</span> on the public site (not in admin). Verify in Google Analytics → Realtime within 1 min.
+          </div>
+        </div>
+        <div className="eh-panel p-5 space-y-3 eh-mono text-[12px] opacity-80 leading-6">
+          <div className="eh-kicker mb-1">// GOOGLE ANALYTICS SETUP</div>
+          <div>1. Go to <span className="text-[var(--eh-green)]">analytics.google.com</span> → Admin → Create Property.</div>
+          <div>2. Add a <b>Web</b> data stream for <span className="text-[var(--eh-green)]">errorhacker.site</span>.</div>
+          <div>3. Copy your <b>Measurement ID</b> (format: <span className="text-[var(--eh-green)]">G-ABC1234567</span>).</div>
+          <div>4. Paste it here, toggle <b>ENABLED</b>, hit <b>SAVE</b> at top.</div>
+          <div>5. Open your site in another tab → check GA <b>Realtime</b> report to confirm.</div>
         </div>
       </div>
     </Section>
