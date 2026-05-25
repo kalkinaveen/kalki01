@@ -25,6 +25,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MyAccount from './pages/MyAccount';
 import OrderDetail from './pages/OrderDetail';
+import ReferralsPage from './pages/ReferralsPage';
 import CartPage from './pages/CartPage';
 import FeedPage from './pages/FeedPage';
 import ScrollToTop from './components/ScrollToTop';
@@ -64,6 +65,7 @@ function App() {
                 <Route path="/signup" element={<SiteShell><Signup /></SiteShell>} />
                 <Route path="/me" element={<SiteShell><MyAccount /></SiteShell>} />
                 <Route path="/me/orders/:id" element={<SiteShell><OrderDetail /></SiteShell>} />
+                <Route path="/me/referrals" element={<SiteShell><ReferralsPage /></SiteShell>} />
                 <Route path="/cart" element={<SiteShell><CartPage /></SiteShell>} />
                 <Route path="/feed" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/" element={<SiteShell><Home /></SiteShell>} />

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -26,6 +26,7 @@ const sections = [
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
   { to: 'users',       label: 'Users',        icon: User,            group: 'main' },
+  { to: 'referrals',   label: 'Referrals',    icon: Gift,            group: 'main' },
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
@@ -922,6 +923,80 @@ const UsersTab = () => {
   );
 };
 
+const ReferralsTab = () => {
+  const [settings, setSettings] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, h] = await Promise.all([api.getReferralSettings(), api.adminReferrals()]);
+      setSettings(s); setHistory(h);
+    } catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+  const upd = (patch) => setSettings(s => ({ ...s, ...patch }));
+  const save = async () => {
+    setSaving(true);
+    try { const r = await api.putReferralSettings(settings); setSettings(r); toast.success('Saved'); }
+    catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+  if (loading) return <Section kicker="// REFERRALS" title="REFERRAL PROGRAM"><div className="py-10 text-center opacity-60">Loading...</div></Section>;
+  const totalPaid = history.reduce((s, r) => s + Number(r.amount || 0), 0);
+  return (
+    <Section kicker="// REFERRALS" title="REFERRAL PROGRAM" actions={<button onClick={save} disabled={saving} className="eh-btn-primary text-xs"><Save size={12} /> {saving ? 'SAVING...' : 'SAVE SETTINGS'}</button>}>
+      <div className="grid sm:grid-cols-3 gap-3 mb-5">
+        <div className="eh-panel p-4"><div className="eh-mono text-[10px] opacity-60 mb-1">TOTAL REWARDS PAID</div><div className="eh-display text-3xl font-black eh-neon">{settings?.currency_symbol || '₹'}{totalPaid.toFixed(0)}</div></div>
+        <div className="eh-panel p-4"><div className="eh-mono text-[10px] opacity-60 mb-1">REFERRAL EVENTS</div><div className="eh-display text-3xl font-black">{history.length}</div></div>
+        <div className="eh-panel p-4"><div className="eh-mono text-[10px] opacity-60 mb-1">PROGRAM</div><div className="eh-display text-2xl font-black" style={{ color: settings.enabled ? 'var(--eh-green)' : '#ffc828' }}>{settings.enabled ? 'ACTIVE' : 'PAUSED'}</div></div>
+      </div>
+      <div className="eh-panel p-5 mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="eh-kicker">// REWARD RULES</div>
+          <label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer">
+            <input type="checkbox" checked={!!settings.enabled} onChange={e => upd({ enabled: e.target.checked })} className="w-4 h-4 accent-[var(--eh-green)]" />
+            {settings.enabled ? 'ENABLED' : 'DISABLED'}
+          </label>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div><Label hint="awarded to inviter on signup">SIGNUP REWARD</Label><Input type="number" value={settings.signup_reward} onChange={e => upd({ signup_reward: Number(e.target.value) || 0 })} /></div>
+          <div><Label hint="% of invitee's first order">ORDER COMMISSION %</Label><Input type="number" value={settings.order_percent} onChange={e => upd({ order_percent: Number(e.target.value) || 0 })} /></div>
+          <div><Label>MIN PAYOUT</Label><Input type="number" value={settings.min_payout} onChange={e => upd({ min_payout: Number(e.target.value) || 0 })} /></div>
+          <div><Label>CURRENCY SYMBOL</Label><Input value={settings.currency_symbol} onChange={e => upd({ currency_symbol: e.target.value })} /></div>
+        </div>
+        <div className="mt-3"><Label>PROGRAM DESCRIPTION (shown to user)</Label><Textarea rows={2} value={settings.description || ''} onChange={e => upd({ description: e.target.value })} /></div>
+      </div>
+      <div className="eh-panel overflow-x-auto">
+        <div className="eh-kicker p-4 pb-2">// RECENT REWARDS</div>
+        <table className="w-full eh-mono text-sm min-w-[640px]">
+          <thead><tr className="text-left border-b border-[var(--eh-border)]">
+            <th className="p-3 text-xs">DATE</th>
+            <th className="p-3 text-xs">INVITER</th>
+            <th className="p-3 text-xs">INVITEE</th>
+            <th className="p-3 text-xs">TYPE</th>
+            <th className="p-3 text-xs text-right">AMOUNT</th>
+          </tr></thead>
+          <tbody>
+            {history.length === 0 && <tr><td colSpan={5} className="p-6 text-center opacity-60">No rewards yet.</td></tr>}
+            {history.map(r => (
+              <tr key={r.id} className="border-b border-[var(--eh-border)]">
+                <td className="p-3 opacity-70 text-[11px]">{new Date(r.created_at).toLocaleString()}</td>
+                <td className="p-3 eh-neon-soft">{r.inviter_id}</td>
+                <td className="p-3">{r.invitee_email}</td>
+                <td className="p-3 opacity-80">{r.type}</td>
+                <td className="p-3 text-right font-bold text-[var(--eh-green)]">{settings.currency_symbol}{Number(r.amount || 0).toFixed(0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Section>
+  );
+};
+
 const PaymentSettingsTab = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1424,6 +1499,7 @@ const AdminPanel = () => {
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
         {active==='users'       && <UsersTab />}
+        {active==='referrals'   && <ReferralsTab />}
         {active==='feed'        && <FeedManager />}
         {active==='payments'    && <PaymentSettingsTab />}
         {active==='coupons'     && <CouponsTab />}

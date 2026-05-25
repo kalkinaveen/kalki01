@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn, ShoppingCart } from 'lucide-react';
 import Logo from './Logo';
@@ -6,12 +6,28 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
+import SearchModal from './SearchModal';
 
 const Navbar = () => {
   const { theme, toggle } = useTheme();
   const { config } = useSiteConfig();
   const { user, logout } = useAuth();
   const { count } = useCart();
+  const [open, setOpen] = useState(false);
+  const [userMenu, setUserMenu] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const nav = useNavigate();
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault(); setSearchOpen(true);
+      } else if (e.key === '/' && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
+        e.preventDefault(); setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [open, setOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const nav = useNavigate();
@@ -33,9 +49,11 @@ const Navbar = () => {
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <button className="hidden md:flex items-center gap-2 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
+          <button onClick={() => setSearchOpen(true)} data-testid="nav-search" className="hidden md:flex items-center gap-2 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
             <Search size={14} /> <span className="opacity-70">search...</span>
+            <kbd className="ml-2 text-[9px] opacity-60 px-1 py-0.5 border border-[var(--eh-border)] rounded">⌘K</kbd>
           </button>
+          <button onClick={() => setSearchOpen(true)} data-testid="nav-search-mobile" aria-label="search" className="md:hidden w-10 h-10 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors"><Search size={16} /></button>
           <Link to="/cart" data-testid="nav-cart" className="relative w-10 h-10 grid place-items-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
             <ShoppingCart size={16} />
             {count > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] grid place-items-center text-[10px] eh-mono font-bold rounded-full px-1" style={{ background: 'var(--eh-green)', color: '#001a10' }}>{count}</span>}
@@ -77,6 +95,7 @@ const Navbar = () => {
           </div>
         </div>
       )}
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   );
 };

@@ -78,6 +78,7 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=4, max_length=100)
     name: Optional[str] = None
+    ref: Optional[str] = None  # referral code of inviter
 
 class LoginUserIn(BaseModel):
     email: EmailStr
@@ -468,6 +469,11 @@ async def auth_register(body: RegisterIn, response: Response):
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
     user_id = f"user_{uuid.uuid4().hex[:12]}"
+    referred_by_uid = None
+    if body.ref:
+        inviter = await db.users.find_one({"referral_code": body.ref.upper().strip()})
+        if inviter:
+            referred_by_uid = inviter["user_id"]
     user = {
         "user_id": user_id,
         "email": email,
@@ -477,10 +483,26 @@ async def auth_register(body: RegisterIn, response: Response):
         "role": "user",
         "provider": "password",
         "referral_code": _gen_ref_code(),
-        "referred_by": None,
+        "referred_by": referred_by_uid,
+        "credit_balance": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
+    # Award inviter on signup
+    if referred_by_uid:
+        settings = await _ensure_referral_settings()
+        award = float(settings.get("signup_reward", 0) or 0)
+        if award > 0:
+            await db.users.update_one({"user_id": referred_by_uid}, {"$inc": {"credit_balance": award}})
+            await db.referrals.insert_one({
+                "id": f"REF-{uuid.uuid4().hex[:10]}",
+                "inviter_id": referred_by_uid,
+                "invitee_id": user_id,
+                "invitee_email": email,
+                "type": "signup",
+                "amount": award,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
     token = _make_jwt(user_id, email)
     _set_session_cookie(response, token)
     return {"user": _safe_user(user), "token": token}
@@ -956,6 +978,59 @@ async def delete_user(user_id: str, x_admin_token: Optional[str] = Header(None))
     await _check_admin(x_admin_token)
     await db.users.delete_one({"user_id": user_id})
     return {"ok": True}
+
+# ---- Referrals -------------------------------------------------------------
+DEFAULT_REFERRAL_SETTINGS = {
+    "enabled": True,
+    "signup_reward": 50.0,
+    "order_percent": 10.0,
+    "min_payout": 500.0,
+    "currency_symbol": "₹",
+    "description": "Invite friends. Earn ₹50 when they sign up + 10% on their first order.",
+}
+
+async def _ensure_referral_settings():
+    doc = await db.referral_settings.find_one({"_id": "main"})
+    if not doc:
+        await db.referral_settings.insert_one({"_id": "main", **DEFAULT_REFERRAL_SETTINGS})
+        doc = await db.referral_settings.find_one({"_id": "main"})
+    return doc
+
+@api.get("/referrals/settings")
+async def referrals_settings():
+    doc = await _ensure_referral_settings()
+    return _clean(doc)
+
+@api.put("/referrals/settings")
+async def referrals_put_settings(body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    body.pop("_id", None)
+    await db.referral_settings.update_one({"_id": "main"}, {"$set": body}, upsert=True)
+    doc = await db.referral_settings.find_one({"_id": "main"})
+    return _clean(doc)
+
+@api.get("/me/referrals")
+async def my_referrals(request: Request):
+    user = await require_user(request)
+    rows = await db.referrals.find({"inviter_id": user["user_id"]}).sort("created_at", -1).to_list(500)
+    for r in rows: r.pop("_id", None)
+    invited_users = await db.users.find({"referred_by": user["user_id"]}, {"_id": 0, "email": 1, "name": 1, "created_at": 1, "user_id": 1}).sort("created_at", -1).to_list(500)
+    total = sum(r.get("amount", 0) for r in rows)
+    return {
+        "referral_code": user.get("referral_code"),
+        "credit_balance": user.get("credit_balance", 0.0),
+        "total_earned": total,
+        "invited_count": len(invited_users),
+        "invited": invited_users,
+        "history": rows,
+    }
+
+@api.get("/admin/referrals")
+async def admin_referrals(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.referrals.find().sort("created_at", -1).to_list(1000)
+    for r in rows: r.pop("_id", None)
+    return rows
 
 # ---- Payment Settings & Intents -------------------------------------------
 DEFAULT_PAYMENT_SETTINGS = {

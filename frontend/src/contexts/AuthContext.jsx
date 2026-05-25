@@ -33,8 +33,8 @@ export const AuthProvider = ({ children }) => {
     setUser(r.user);
     return r.user;
   };
-  const register = async (email, password, name) => {
-    const r = await api.authRegister(email, password, name);
+  const register = async (email, password, name, ref) => {
+    const r = await api.authRegister(email, password, name, ref);
     if (r.token) localStorage.setItem('eh_user_token', r.token);
     setUser(r.user);
     return r.user;

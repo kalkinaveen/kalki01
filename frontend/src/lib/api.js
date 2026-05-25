@@ -50,7 +50,7 @@ export const api = {
   clearOrders: () => req('/orders', { method: 'DELETE', admin: true }),
   myOrders: () => req('/me/orders', { auth: true }),
   // auth (customer)
-  authRegister: (email, password, name) => req('/auth/register', { method: 'POST', body: { email, password, name } }),
+  authRegister: (email, password, name, ref) => req('/auth/register', { method: 'POST', body: { email, password, name, ref } }),
   authLogin: (email, password) => req('/auth/login', { method: 'POST', body: { email, password } }),
   authLogout: () => req('/auth/logout', { method: 'POST' }),
   authMe: () => req('/auth/me', { auth: true }),
@@ -69,7 +69,12 @@ export const api = {
   submitPaymentProof: (data) => req('/payments/proof', { method: 'POST', body: data }),
   // users (admin)
   listUsers: () => req('/admin/users', { admin: true }),
-  deleteUser: (uid) => req(`/admin/users/${uid}`, { method: 'DELETE', admin: true }),
+  deleteUser: (uid) => req(`/admin/users/${uid}`, { admin: true, method: 'DELETE' }),
+  // referrals
+  getReferralSettings: () => req('/referrals/settings'),
+  putReferralSettings: (data) => req('/referrals/settings', { method: 'PUT', body: data, admin: true }),
+  myReferrals: () => req('/me/referrals', { auth: true }),
+  adminReferrals: () => req('/admin/referrals', { admin: true }),
   // feed
   feedListPosts: () => req('/feed/posts'),
   feedGetPost: (id) => req(`/feed/posts/${id}`),

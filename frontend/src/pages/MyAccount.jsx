@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Copy, Package, Loader2 } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { LogOut, Copy, Package, Loader2, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -66,7 +66,10 @@ const MyAccount = () => {
           <div className="eh-mono text-xs tracking-widest opacity-60 mb-2">// REFERRAL</div>
           <div className="eh-display text-2xl font-black eh-neon mb-2">{user.referral_code || '—'}</div>
           <p className="eh-mono text-xs opacity-70 mb-3 leading-6">Share your code. Earn rewards on every signup that uses it.</p>
-          <button onClick={copyRef} data-testid="copy-referral" className="eh-btn-ghost text-xs"><Copy size={12} /> COPY LINK</button>
+          <div className="flex gap-2">
+            <button onClick={copyRef} data-testid="copy-referral" className="eh-btn-ghost text-xs"><Copy size={12} /> COPY LINK</button>
+            <Link to="/me/referrals" className="eh-btn-primary text-xs"><Gift size={12} /> EARNINGS</Link>
+          </div>
         </div>
         <div className="eh-panel p-5">
           <div className="eh-mono text-xs tracking-widest opacity-60 mb-2">// PROVIDER</div>

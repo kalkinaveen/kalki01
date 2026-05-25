@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Lock, Mail, User, ArrowRight, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Lock, Mail, User, ArrowRight, Loader2, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
@@ -8,19 +8,23 @@ import Logo from '../components/Logo';
 const Signup = () => {
   const { register, user } = useAuth();
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const refFromUrl = params.get('ref') || '';
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [name, setName] = useState('');
+  const [ref, setRef] = useState(refFromUrl);
   const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => { if (user) nav('/me'); }, [user, nav]);
+  useEffect(() => { if (user) nav('/me'); }, [user, nav]);
+  useEffect(() => { if (refFromUrl) setRef(refFromUrl); }, [refFromUrl]);
 
   const submit = async (e) => {
     e.preventDefault();
     if (!email || !pw) { toast.error('Email & password required'); return; }
     if (pw.length < 4) { toast.error('Password too short (min 4 chars)'); return; }
     setBusy(true);
-    try { await register(email, pw, name); toast.success('Welcome aboard, operator'); nav('/me'); }
+    try { await register(email, pw, name, ref || null); toast.success(refFromUrl ? 'Welcome — referral bonus applied' : 'Welcome aboard, operator'); nav('/me'); }
     catch (err) { toast.error(err.message || 'Signup failed'); }
     finally { setBusy(false); }
   };
@@ -48,6 +52,11 @@ const Signup = () => {
           <div>
             <label className="eh-mono text-xs tracking-widest opacity-70 mb-2 flex items-center gap-2"><Lock size={12} /> PASSWORD</label>
             <input value={pw} onChange={e=>setPw(e.target.value)} type="password" data-testid="signup-password" autoComplete="new-password" className="eh-input" placeholder="&gt; min 4 chars" />
+          </div>
+          <div>
+            <label className="eh-mono text-xs tracking-widest opacity-70 mb-2 flex items-center gap-2"><Gift size={12} /> REFERRAL CODE <span className="opacity-50 normal-case">— optional</span></label>
+            <input value={ref} onChange={e=>setRef(e.target.value.toUpperCase())} data-testid="signup-ref" className="eh-input" placeholder="&gt; EHXXXXXX" />
+            {refFromUrl && <div className="eh-mono text-[10px] mt-1.5 text-[var(--eh-green)]">✓ referral applied — both you & inviter will be rewarded</div>}
           </div>
           <button disabled={busy} type="submit" data-testid="signup-submit" className="eh-btn-primary w-full justify-center">
             {busy ? <Loader2 className="animate-spin" size={14} /> : <ArrowRight size={14} />} {busy ? 'CREATING' : 'CREATE_ACCOUNT'}
