@@ -169,9 +169,19 @@ async def _ensure_config():
 
 async def _ensure_admin():
     doc = await db.admin.find_one({"_id": "creds"})
+    env_pw = os.environ.get("ADMIN_PASSWORD", "").strip()
+    env_force = os.environ.get("ADMIN_PASSWORD_FORCE", "").strip() == "1"
     if not doc:
-        await db.admin.insert_one({"_id": "creds", "password": "admin123", "tokens": []})
+        # First boot — use env password if provided, otherwise default admin123
+        pw = env_pw or "admin123"
+        await db.admin.insert_one({"_id": "creds", "password": pw, "tokens": []})
         doc = await db.admin.find_one({"_id": "creds"})
+        log.info("admin creds bootstrapped")
+    elif env_force and env_pw and env_pw != doc.get("password"):
+        # ADMIN_PASSWORD_FORCE=1 → sync password from env (one-shot reset)
+        await db.admin.update_one({"_id": "creds"}, {"$set": {"password": env_pw, "tokens": []}})
+        doc = await db.admin.find_one({"_id": "creds"})
+        log.info("admin password force-synced from ADMIN_PASSWORD env var")
     return doc
 
 async def _check_admin(token: Optional[str]):
