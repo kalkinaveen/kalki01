@@ -19,7 +19,9 @@ const Navbar = () => {
         <Link to="/" className="flex items-center gap-3 group">
           <Logo size={42} />
           <div className="block">
-            <div className="eh-brand font-black tracking-widest text-sm sm:text-base eh-neon-soft leading-tight">{config.site.name}</div>
+            <div className="eh-brand font-black tracking-widest text-sm sm:text-base leading-tight">
+              <span className="eh-title-error">ERROR</span><span className="eh-title-hacker">HACKER</span>
+            </div>
             <div className="text-[9px] sm:text-[10px] eh-mono opacity-60 leading-tight">// underground tech intel</div>
           </div>
         </Link>
