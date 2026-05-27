@@ -733,13 +733,68 @@ async def feed_get_media(media_id: str, request: Request):
     except Exception:
         raise HTTPException(status_code=404, detail="Not found")
     ct = (stream.metadata or {}).get("content_type", "video/mp4")
+    total = stream.length
+
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header:
+        # Parse "bytes=start-end" or "bytes=start-"
+        try:
+            units, _, rng = range_header.partition("=")
+            if units.strip().lower() != "bytes":
+                raise ValueError("unsupported unit")
+            start_s, _, end_s = rng.partition("-")
+            start = int(start_s) if start_s.strip() else 0
+            end = int(end_s) if end_s.strip() else total - 1
+            if start < 0 or end >= total or start > end:
+                raise ValueError("invalid range")
+        except Exception:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+
+        # Cap a single response at ~2 MiB so mobile clients can paginate progressively
+        MAX_CHUNK = 2 * 1024 * 1024
+        if end - start + 1 > MAX_CHUNK:
+            end = start + MAX_CHUNK - 1
+        length = end - start + 1
+
+        stream.seek(start)
+
+        async def range_gen(remaining=length):
+            chunk_size = 64 * 1024
+            while remaining > 0:
+                buf = await stream.read(min(chunk_size, remaining))
+                if not buf:
+                    break
+                remaining -= len(buf)
+                yield buf
+
+        return StreamingResponse(
+            range_gen(),
+            status_code=206,
+            media_type=ct,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(length),
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
+        )
+
+    # No Range header — stream the whole file (original behaviour)
     async def gen():
         while True:
             chunk = await stream.readchunk()
             if not chunk:
                 break
             yield chunk
-    return StreamingResponse(gen(), media_type=ct, headers={"Cache-Control": "public, max-age=31536000, immutable", "Accept-Ranges": "bytes"})
+    return StreamingResponse(
+        gen(),
+        media_type=ct,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total),
+        },
+    )
 
 # Posts CRUD (admin)
 @api.post("/feed/posts")
