@@ -358,7 +358,16 @@ const PostModal = ({ post, onClose, onMutate }) => {
                 preload="metadata"
                 onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
               />
-              <button onClick={() => setMuted(m => !m)} aria-label="toggle audio" className="absolute bottom-3 right-3 w-9 h-9 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+              <button onClick={() => {
+                const v = videoRef.current;
+                const next = !muted;
+                if (v) {
+                  v.muted = next;
+                  const p = v.play();
+                  if (p && p.catch) p.catch(() => { v.muted = true; setMuted(true); });
+                }
+                setMuted(next);
+              }} aria-label="toggle audio" data-testid={`post-modal-mute-${post.id}`} className="absolute bottom-3 right-3 w-9 h-9 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
             </>
           ) : (
             <img src={post.image_url} className="max-w-full max-h-[55vh] md:max-h-[92vh] object-contain" alt="" />
@@ -468,6 +477,26 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
   const [busy, setBusy] = useState(false);
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
 
+  // iOS Safari: unmute MUST happen synchronously inside the user-gesture handler,
+  // otherwise the browser silently re-mutes the video. Don't go through a state→effect cycle.
+  const handleToggleMute = () => {
+    const next = !muted;
+    const v = activeId ? videoRefs.current[activeId] : null;
+    if (v) {
+      v.muted = next;
+      // Play synchronously while we still have the gesture token
+      const p = v.play();
+      if (p && p.catch) {
+        p.catch(() => {
+          v.muted = true;
+          setMuted(true);
+          setShowUnmuteHint(true);
+        });
+      }
+    }
+    setMuted(next);
+  };
+
   // Each item has _kind: 'post' | 'reel'. Posts may also be videos (.mp4 in image_url).
   const getMediaUrl = (it) => it._kind === 'reel' ? it.video_url : it.image_url;
   const isVideoItem = (it) => it._kind === 'reel' || isVideoUrl(it.image_url);
@@ -567,7 +596,7 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
   return (
     <div className="fixed inset-0 z-[60] bg-black">
       <button onClick={onExit} data-testid="reels-close" aria-label="close" className="fixed top-4 left-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white"><X size={20} /></button>
-      <button onClick={() => setMuted(m => !m)} data-testid="reels-mute-toggle" aria-label="toggle audio" className="fixed top-4 right-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+      <button onClick={handleToggleMute} data-testid="reels-mute-toggle" aria-label="toggle audio" className="fixed top-4 right-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
 
       <div ref={containerRef} className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory eh-no-scrollbar">
         {items.map(it => {
@@ -624,7 +653,7 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
 
       {/* Tap-to-unmute hint */}
       {showUnmuteHint && muted && (
-        <button onClick={() => setMuted(false)} data-testid="reels-unmute-hint" className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-full bg-black/70 border border-white/20 text-white text-xs eh-mono flex items-center gap-2 backdrop-blur">
+        <button onClick={handleToggleMute} data-testid="reels-unmute-hint" className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-full bg-black/70 border border-white/20 text-white text-xs eh-mono flex items-center gap-2 backdrop-blur">
           <VolumeX size={14} /> tap to unmute
         </button>
       )}
