@@ -68,6 +68,8 @@ function App() {
                 <Route path="/me/referrals" element={<SiteShell><ReferralsPage /></SiteShell>} />
                 <Route path="/cart" element={<SiteShell><CartPage /></SiteShell>} />
                 <Route path="/feed" element={<SiteShell><FeedPage /></SiteShell>} />
+                <Route path="/feed/p/:postId" element={<SiteShell><FeedPage /></SiteShell>} />
+                <Route path="/feed/r/:reelId" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/" element={<SiteShell><Home /></SiteShell>} />
                 <Route path="/services" element={<SiteShell><ServicesPage /></SiteShell>} />
                 <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />

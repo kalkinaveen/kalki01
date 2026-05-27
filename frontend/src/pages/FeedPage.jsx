@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2 } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -100,6 +100,27 @@ const CommentList = ({ items }) => (
   </div>
 );
 
+const sharePostOrReel = async ({ type, id, caption, displayName }) => {
+  const url = `${window.location.origin}/feed/${type === 'reel' ? 'r' : 'p'}/${id}`;
+  const title = `${displayName || 'ERRORHACKER'} on ERRORHACKER Feed`;
+  const text = caption ? `${caption.slice(0, 120)}${caption.length > 120 ? '…' : ''}` : 'Check this out on ERRORHACKER';
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text, url });
+      return;
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError') return; // user cancelled
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success('Link copied', { description: url });
+  } catch {
+    // last-resort fallback
+    window.prompt('Copy this link:', url);
+  }
+};
+
 const PostModal = ({ post, onClose, onMutate }) => {
   const { user } = useAuth();
   const nav = useNavigate();
@@ -156,6 +177,7 @@ const PostModal = ({ post, onClose, onMutate }) => {
             <div className="flex items-center gap-4 mb-2">
               <button onClick={toggleLike} data-testid="post-like-btn" className="transition-transform active:scale-90"><Heart size={22} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} /></button>
               <MessageCircle size={22} />
+              <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid="post-share-btn" aria-label="Share post" className="transition-transform active:scale-90 ml-auto"><Share2 size={22} /></button>
             </div>
             <div className="eh-mono text-xs font-bold mb-1">{fmt(likes)} likes · {fmt(post.views_count)} views</div>
             <div className="eh-mono text-[10px] opacity-50 uppercase">{new Date(post.created_at).toLocaleDateString()}</div>
@@ -225,6 +247,10 @@ const ReelPlayer = ({ reel, onClose, onMutate }) => {
             <MessageCircle size={28} />
             <span className="text-[11px] font-bold">{fmt(comments.length)}</span>
           </button>
+          <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid="reel-share-btn" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+            <Share2 size={28} />
+            <span className="text-[11px] font-bold">Share</span>
+          </button>
           <div className="flex flex-col items-center gap-1 opacity-90">
             <Eye size={26} />
             <span className="text-[11px] font-bold">{fmt(reel.views_count)}</span>
@@ -259,8 +285,9 @@ const ReelPlayer = ({ reel, onClose, onMutate }) => {
 
 const FeedPage = () => {
   const { config } = useSiteConfig();
+  const { postId, reelId } = useParams();
   const profile = config.feedProfile || { username: 'errorhacker', displayName: config.site?.name || 'ERRORHACKER', bio: '', followers: 0, following: 0, verified: true };
-  const [tab, setTab] = useState('posts');
+  const [tab, setTab] = useState(reelId ? 'reels' : 'posts');
   const [posts, setPosts] = useState([]);
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -274,6 +301,27 @@ const FeedPage = () => {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Auto-open shared post/reel from deep link
+  useEffect(() => {
+    if (postId && posts.length) {
+      const p = posts.find(x => x.id === postId);
+      if (p) { setOpenPost(p); setTab('posts'); }
+      else if (!loading) toast.error('Post not found');
+    }
+  }, [postId, posts, loading]);
+  useEffect(() => {
+    if (reelId && reels.length) {
+      const r = reels.find(x => x.id === reelId);
+      if (r) { setOpenReel(r); setTab('reels'); }
+      else if (!loading) toast.error('Reel not found');
+    }
+  }, [reelId, reels, loading]);
+
+  const handleOpenPost = (p) => { setOpenPost(p); window.history.replaceState(null, '', `/feed/p/${p.id}`); };
+  const handleOpenReel = (r) => { setOpenReel(r); window.history.replaceState(null, '', `/feed/r/${r.id}`); };
+  const handleClosePost = () => { setOpenPost(null); window.history.replaceState(null, '', '/feed'); };
+  const handleCloseReel = () => { setOpenReel(null); window.history.replaceState(null, '', '/feed'); };
 
   const postCount = useMemo(() => posts.length, [posts]);
   const reelCount = useMemo(() => reels.length, [reels]);
@@ -298,17 +346,17 @@ const FeedPage = () => {
         ) : tab === 'posts' ? (
           <div className="grid grid-cols-3 gap-1 sm:gap-1.5 py-4">
             {posts.length === 0 && <div className="col-span-3 py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
-            {posts.map(p => <PostTile key={p.id} post={p} onOpen={setOpenPost} />)}
+            {posts.map(p => <PostTile key={p.id} post={p} onOpen={handleOpenPost} />)}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-1.5 py-4">
             {reels.length === 0 && <div className="col-span-3 py-20 text-center opacity-60 eh-mono text-xs">No reels yet.</div>}
-            {reels.map(r => <ReelTile key={r.id} reel={r} onOpen={setOpenReel} />)}
+            {reels.map(r => <ReelTile key={r.id} reel={r} onOpen={handleOpenReel} />)}
           </div>
         )}
       </div>
-      {openPost && <PostModal post={openPost} onClose={() => setOpenPost(null)} onMutate={updatePost} />}
-      {openReel && <ReelPlayer reel={openReel} onClose={() => setOpenReel(null)} onMutate={updateReel} />}
+      {openPost && <PostModal post={openPost} onClose={handleClosePost} onMutate={updatePost} />}
+      {openReel && <ReelPlayer reel={openReel} onClose={handleCloseReel} onMutate={updateReel} />}
     </section>
   );
 };
