@@ -406,8 +406,8 @@ const CommentsSheet = ({ post, onClose, onMutate }) => {
   );
 };
 
-// Vertical TikTok/Instagram-Reels-style feed
-const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
+// Vertical TikTok/Instagram-Reels-style feed — supports mixed posts + reels
+const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
   const { user } = useAuth();
   const nav = useNavigate();
   const containerRef = useRef(null);
@@ -420,24 +420,25 @@ const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
   const [busy, setBusy] = useState(false);
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
 
-  // 1. IntersectionObserver only decides which reel is "active"
+  // Each item has _kind: 'post' | 'reel'. Posts may also be videos (.mp4 in image_url).
+  const getMediaUrl = (it) => it._kind === 'reel' ? it.video_url : it.image_url;
+  const isVideoItem = (it) => it._kind === 'reel' || isVideoUrl(it.image_url);
+
+  // 1. IntersectionObserver decides which item is "active"
   useEffect(() => {
     if (!containerRef.current) return;
     const obs = new IntersectionObserver(entries => {
-      // pick the entry with the highest intersectionRatio that's at least 70% visible
       let best = null;
       entries.forEach(e => {
         if (e.intersectionRatio >= 0.7 && (!best || e.intersectionRatio > best.intersectionRatio)) best = e;
       });
-      if (best) setActiveId(best.target.getAttribute('data-reel-id'));
+      if (best) setActiveId(best.target.getAttribute('data-item-id'));
     }, { root: containerRef.current, threshold: [0, 0.5, 0.7, 1] });
-    Array.from(containerRef.current.querySelectorAll('[data-reel-id]')).forEach(el => obs.observe(el));
+    Array.from(containerRef.current.querySelectorAll('[data-item-id]')).forEach(el => obs.observe(el));
     return () => obs.disconnect();
-  }, [reels.length]);
+  }, [items.length]);
 
-  // 2. Single source of truth: whenever activeId or muted changes, hard-sync ALL videos.
-  //    - Every non-active video: pause + mute + rewind so it can't leak audio.
-  //    - Active video: apply user's mute preference and play; if blocked by autoplay policy, fall back to muted.
+  // 2. Sync videos with activeId + muted; count views on activation
   useEffect(() => {
     Object.entries(videoRefs.current).forEach(([id, v]) => {
       if (!v) return;
@@ -447,45 +448,52 @@ const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
         try { v.currentTime = 0; } catch {}
         return;
       }
-      // active
       v.muted = muted;
       const p = v.play();
       if (p && p.catch) {
         p.catch(() => {
-          // Autoplay-with-sound blocked → fall back to muted and prompt user
           v.muted = true;
           setMuted(true);
           setShowUnmuteHint(true);
           v.play().catch(() => {});
         });
       }
-      // record view once per active reel
-      if (!v.dataset.viewed) {
-        v.dataset.viewed = '1';
-        api.feedViewReel(id, getViewSession()).catch(() => {});
-      }
     });
+    if (activeId) {
+      const it = items.find(x => x.id === activeId);
+      if (it) {
+        const flag = `viewed_${it._kind}_${it.id}`;
+        if (!sessionStorage.getItem(flag)) {
+          sessionStorage.setItem(flag, '1');
+          if (it._kind === 'reel') api.feedViewReel(it.id, getViewSession()).catch(()=>{});
+          else api.feedViewPost(it.id, getViewSession()).catch(()=>{});
+        }
+      }
+    }
     if (!muted) setShowUnmuteHint(false);
-  }, [activeId, muted, reels.length]);
+  }, [activeId, muted, items]);
 
-  // Scroll to initial reel from deep-link
+  // Scroll to initial item from deep-link
   useEffect(() => {
-    if (!initialReelId || !containerRef.current) return;
-    const el = containerRef.current.querySelector(`[data-reel-id="${initialReelId}"]`);
+    if (!initialId || !containerRef.current) return;
+    const el = containerRef.current.querySelector(`[data-item-id="${initialId}"]`);
     if (el) el.scrollIntoView({ block: 'start' });
-  }, [initialReelId, reels.length]);
+  }, [initialId, items.length]);
 
-  const toggleLike = async (reel) => {
+  const toggleLike = async (it) => {
     if (!user) { toast.error('Login to like'); nav('/login'); return; }
     try {
-      const r = await api.feedLikeReel(reel.id);
-      onMutate?.({ ...reel, liked_by_me: r.liked, likes_count: r.likes_count });
+      const r = it._kind === 'reel' ? await api.feedLikeReel(it.id) : await api.feedLikePost(it.id);
+      onMutate?.({ ...it, liked_by_me: r.liked, likes_count: r.likes_count });
     } catch (e) { toast.error(e.message); }
   };
 
-  const openComments = async (reel) => {
-    setCommentsFor(reel);
-    try { setComments(await api.feedReelComments(reel.id)); } catch { setComments([]); }
+  const openComments = async (it) => {
+    setCommentsFor(it);
+    try {
+      const data = it._kind === 'reel' ? await api.feedReelComments(it.id) : await api.feedPostComments(it.id);
+      setComments(data);
+    } catch { setComments([]); }
   };
 
   const submitComment = async (e) => {
@@ -494,68 +502,76 @@ const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
     if (!user) { toast.error('Login to comment'); nav('/login'); return; }
     setBusy(true);
     try {
-      const c = await api.feedAddReelComment(commentsFor.id, text.trim());
+      const it = commentsFor;
+      const c = it._kind === 'reel'
+        ? await api.feedAddReelComment(it.id, text.trim())
+        : await api.feedAddPostComment(it.id, text.trim());
       setComments(prev => [...prev, c]); setText('');
-      onMutate?.({ ...commentsFor, comments_count: (commentsFor.comments_count || 0) + 1 });
+      onMutate?.({ ...it, comments_count: (it.comments_count || 0) + 1 });
     } catch (err) { toast.error(err.message); }
     finally { setBusy(false); }
   };
 
-  if (reels.length === 0) {
-    return <div className="py-20 text-center opacity-60 eh-mono text-xs">No reels yet.</div>;
+  if (items.length === 0) {
+    return <div className="py-20 text-center opacity-60 eh-mono text-xs">Nothing here yet.</div>;
   }
 
   return (
     <div className="fixed inset-0 z-[60] bg-black">
-      <button onClick={onExit} data-testid="reels-close" aria-label="close reels" className="fixed top-4 left-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white"><X size={20} /></button>
+      <button onClick={onExit} data-testid="reels-close" aria-label="close" className="fixed top-4 left-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white"><X size={20} /></button>
       <button onClick={() => setMuted(m => !m)} data-testid="reels-mute-toggle" aria-label="toggle audio" className="fixed top-4 right-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
 
       <div ref={containerRef} className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory eh-no-scrollbar">
-        {reels.map(reel => (
-          <section key={reel.id} data-reel-id={reel.id} data-testid={`reel-section-${reel.id}`} className="relative h-[100dvh] snap-start snap-always bg-black flex items-center justify-center">
-            <video
-              ref={el => { if (el) videoRefs.current[reel.id] = el; }}
-              src={reel.video_url}
-              className="absolute inset-0 w-full h-full object-contain bg-black"
-              loop
-              playsInline
-              preload="metadata"
-              poster={reel.thumb_url || undefined}
-              onClick={(e) => {
-                const v = e.currentTarget;
-                if (v.paused) v.play().catch(()=>{});
-                else v.pause();
-              }}
-            />
-            {/* Right action rail */}
-            <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 text-white z-10">
-              <button onClick={() => toggleLike(reel)} data-testid={`reel-card-like-${reel.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-                <Heart size={30} fill={reel.liked_by_me ? '#ff2a3a' : 'none'} color={reel.liked_by_me ? '#ff2a3a' : 'currentColor'} />
-                <span className="text-[11px] font-bold">{fmt(reel.likes_count)}</span>
-              </button>
-              <button onClick={() => openComments(reel)} data-testid={`reel-card-comments-${reel.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-                <MessageCircle size={30} />
-                <span className="text-[11px] font-bold">{fmt(reel.comments_count)}</span>
-              </button>
-              <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid={`reel-card-share-${reel.id}`} aria-label="share" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-                <Share2 size={28} />
-                <span className="text-[11px] font-bold">Share</span>
-              </button>
-              <div className="flex flex-col items-center gap-1 opacity-90">
-                <Eye size={26} />
-                <span className="text-[11px] font-bold">{fmt(reel.views_count)}</span>
+        {items.map(it => {
+          const url = getMediaUrl(it);
+          const isVid = isVideoItem(it);
+          return (
+            <section key={`${it._kind}-${it.id}`} data-item-id={it.id} data-testid={`feed-stream-${it._kind}-${it.id}`} className="relative h-[100dvh] snap-start snap-always bg-black flex items-center justify-center">
+              {isVid ? (
+                <video
+                  ref={el => { if (el) videoRefs.current[it.id] = el; }}
+                  src={url}
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                  loop
+                  playsInline
+                  preload="metadata"
+                  poster={it.thumb_url || undefined}
+                  onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
+                />
+              ) : (
+                <img src={url} alt="" className="absolute inset-0 w-full h-full object-contain bg-black" />
+              )}
+              {/* Right action rail */}
+              <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 text-white z-10">
+                <button onClick={() => toggleLike(it)} data-testid={`stream-like-${it.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                  <Heart size={30} fill={it.liked_by_me ? '#ff2a3a' : 'none'} color={it.liked_by_me ? '#ff2a3a' : 'currentColor'} />
+                  <span className="text-[11px] font-bold">{fmt(it.likes_count)}</span>
+                </button>
+                <button onClick={() => openComments(it)} data-testid={`stream-comments-${it.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                  <MessageCircle size={30} />
+                  <span className="text-[11px] font-bold">{fmt(it.comments_count)}</span>
+                </button>
+                <button onClick={() => sharePostOrReel({ type: it._kind, id: it.id, caption: it.caption })} data-testid={`stream-share-${it.id}`} aria-label="share" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                  <Share2 size={28} />
+                  <span className="text-[11px] font-bold">Share</span>
+                </button>
+                <div className="flex flex-col items-center gap-1 opacity-90">
+                  <Eye size={26} />
+                  <span className="text-[11px] font-bold">{fmt(it.views_count)}</span>
+                </div>
               </div>
-            </div>
-            {/* Bottom caption */}
-            <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 pb-6 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="font-bold text-sm">errorhacker</span>
-                <BadgeCheck size={14} className="text-[#4de0ff]" />
+              {/* Bottom caption */}
+              <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 pb-6 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-bold text-sm">errorhacker</span>
+                  <BadgeCheck size={14} className="text-[#4de0ff]" />
+                  {it._kind === 'reel' && <span className="eh-mono text-[9px] px-1.5 py-0.5 rounded bg-white/15 tracking-widest">REEL</span>}
+                </div>
+                {it.caption && <div className="text-xs leading-5 opacity-95 line-clamp-3">{it.caption}</div>}
               </div>
-              {reel.caption && <div className="text-xs leading-5 opacity-95 line-clamp-3">{reel.caption}</div>}
-            </div>
-          </section>
-        ))}
+            </section>
+          );
+        })}
       </div>
 
       {/* Tap-to-unmute hint */}
@@ -627,6 +643,10 @@ const FeedPage = () => {
 
   const updatePost = useCallback((p) => setPosts(prev => prev.map(x => x.id === p.id ? p : x)), []);
   const updateReel = useCallback((r) => setReels(prev => prev.map(x => x.id === r.id ? r : x)), []);
+  const updateItem = useCallback((it) => {
+    if (it._kind === 'reel') setReels(prev => prev.map(x => x.id === it.id ? { ...x, ...it } : x));
+    else setPosts(prev => prev.map(x => x.id === it.id ? { ...x, ...it } : x));
+  }, []);
 
   const exitReels = () => { setOpenReelId(null); window.history.replaceState(null, '', '/feed'); };
 
@@ -714,7 +734,7 @@ const FeedPage = () => {
       </div>
       {openPostObj && <PostModal post={openPostObj} onClose={closePost} onMutate={updatePost} />}
       {commentsPost && <CommentsSheet post={commentsPost} onClose={() => setCommentsPost(null)} onMutate={updatePost} />}
-      {openReelId && reels.length > 0 && <ReelsFeed reels={reels} onMutate={updateReel} initialReelId={openReelId} onExit={exitReels} />}
+      {openReelId && combined.length > 0 && <ReelsFeed items={combined} onMutate={updateItem} initialId={openReelId} onExit={exitReels} />}
     </section>
   );
 };
