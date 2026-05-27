@@ -469,31 +469,42 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
   const nav = useNavigate();
   const containerRef = useRef(null);
   const videoRefs = useRef({});
-  const [muted, setMuted] = useState(true); // always start muted — iOS Safari refuses autoplay-with-audio anyway. User opts in via tap.
-  const [activeId, setActiveId] = useState(null);
+  const [muted, setMuted] = useState(true);
+  const [activeId, setActiveId] = useState(() => initialId || items[0]?.id || null);
   const [commentsFor, setCommentsFor] = useState(null);
   const [comments, setComments] = useState([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [showUnmuteHint, setShowUnmuteHint] = useState(true); // show hint until first unmute
+  const [showUnmuteHint, setShowUnmuteHint] = useState(true);
+  // Persists user's audio choice across reel switches so once they unmute, audio stays on
+  const audioEnabledRef = useRef(false);
 
-  // iOS Safari fix: unmuting an already-playing video doesn't grant audio.
-  // We must PAUSE → set muted=false → PLAY synchronously inside the user-gesture handler.
-  // Pausing first invalidates the "ambient autoplay" state, so the next play() is treated as
-  // a fresh user-initiated playback that is allowed to carry audio.
+  // SIMPLEST CORRECT RECIPE for unmuting on iOS Safari / Brave / strict-autoplay browsers.
+  // Inside the user-gesture handler: set v.muted = false directly on the active <video>
+  // and call v.play(). No pause-first tricks (those drop the gesture in Brave).
+  // No state→effect indirection (loses the gesture on iOS). One synchronous block. Done.
   const handleToggleMute = () => {
-    const next = !muted;
     const v = activeId ? videoRefs.current[activeId] : null;
-    if (v) {
-      const t = v.currentTime;
-      try { v.pause(); } catch {}
-      v.muted = next;
-      try { v.currentTime = t; } catch {}
+    if (!v) { setMuted(m => !m); return; }
+    if (v.muted) {
+      v.muted = false;
       const p = v.play();
-      if (p && p.catch) p.catch(() => { v.muted = true; setMuted(true); });
+      if (p && p.catch) {
+        p.catch(() => {
+          v.muted = true;
+          audioEnabledRef.current = false;
+          setMuted(true);
+          toast.error('Audio blocked by browser', { description: 'Enable autoplay in browser settings for this site.' });
+        });
+      }
+      audioEnabledRef.current = true;
+      setMuted(false);
+      setShowUnmuteHint(false);
+    } else {
+      v.muted = true;
+      audioEnabledRef.current = false;
+      setMuted(true);
     }
-    setMuted(next);
-    if (!next) setShowUnmuteHint(false);
   };
 
   // Each item has _kind: 'post' | 'reel'. Posts may also be videos (.mp4 in image_url).
@@ -514,40 +525,48 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
     return () => obs.disconnect();
   }, [items.length]);
 
-  // 2. Sync videos with activeId + muted; count views on activation
+  // Effect B: when activeId changes ONLY — swap which video is playing.
+  // Does NOT depend on `muted`. The user's mute toggle never re-runs this, which is what
+  // keeps the gesture-granted audio session alive in Brave / iOS Safari.
   useEffect(() => {
+    // Pause + mute every non-active video
     Object.entries(videoRefs.current).forEach(([id, v]) => {
       if (!v) return;
       if (id !== activeId) {
         v.muted = true;
         if (!v.paused) v.pause();
         try { v.currentTime = 0; } catch {}
-        return;
-      }
-      v.muted = muted;
-      const p = v.play();
-      if (p && p.catch) {
-        p.catch(() => {
-          v.muted = true;
-          setMuted(true);
-          setShowUnmuteHint(true);
-          v.play().catch(() => {});
-        });
       }
     });
-    if (activeId) {
-      const it = items.find(x => x.id === activeId);
-      if (it) {
-        const flag = `viewed_${it._kind}_${it.id}`;
-        if (!sessionStorage.getItem(flag)) {
-          sessionStorage.setItem(flag, '1');
-          if (it._kind === 'reel') api.feedViewReel(it.id, getViewSession()).catch(()=>{});
-          else api.feedViewPost(it.id, getViewSession()).catch(()=>{});
-        }
+    if (!activeId) return;
+    const v = videoRefs.current[activeId];
+    if (!v) return;
+    // Reflect the user's persisted choice (default: muted)
+    v.muted = !audioEnabledRef.current;
+    const p = v.play();
+    if (p && p.catch) {
+      p.catch(() => {
+        // Strict-autoplay browser blocked unmuted play → fall back to muted autoplay
+        v.muted = true;
+        audioEnabledRef.current = false;
+        setMuted(true);
+        setShowUnmuteHint(true);
+        v.play().catch(() => {});
+      });
+    }
+    setMuted(!audioEnabledRef.current);
+    // Record view once
+    const it = items.find(x => x.id === activeId);
+    if (it) {
+      const flag = `viewed_${it._kind}_${it.id}`;
+      if (!sessionStorage.getItem(flag)) {
+        sessionStorage.setItem(flag, '1');
+        if (it._kind === 'reel') api.feedViewReel(it.id, getViewSession()).catch(()=>{});
+        else api.feedViewPost(it.id, getViewSession()).catch(()=>{});
       }
     }
-    if (!muted) setShowUnmuteHint(false);
-  }, [activeId, muted, items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   // Scroll to initial item from deep-link
   useEffect(() => {
