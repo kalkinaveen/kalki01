@@ -453,6 +453,7 @@ const FeedPage = () => {
   const [loading, setLoading] = useState(true);
   const [commentsPost, setCommentsPost] = useState(null);
   const [postsMuted, setPostsMuted] = useState(true); // start muted for browser autoplay policy; user can unmute
+  const [openReelId, setOpenReelId] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -475,7 +476,7 @@ const FeedPage = () => {
   }, [postId, posts.length]);
 
   useEffect(() => {
-    if (reelId && reels.length) setTab('reels');
+    if (reelId && reels.length) { setTab('reels'); setOpenReelId(reelId); }
   }, [reelId, reels.length]);
 
   const postCount = useMemo(() => posts.length, [posts]);
@@ -484,7 +485,9 @@ const FeedPage = () => {
   const updatePost = useCallback((p) => setPosts(prev => prev.map(x => x.id === p.id ? p : x)), []);
   const updateReel = useCallback((r) => setReels(prev => prev.map(x => x.id === r.id ? r : x)), []);
 
-  const exitReels = () => { nav('/feed'); setTab('posts'); };
+  const exitReels = () => { setOpenReelId(null); window.history.replaceState(null, '', '/feed'); };
+
+  const openReel = (id) => { setOpenReelId(id); window.history.replaceState(null, '', `/feed/r/${id}`); };
 
   return (
     <section className="min-h-[80vh] eh-grid-bg">
@@ -506,14 +509,30 @@ const FeedPage = () => {
             {posts.map(p => <PostCard key={p.id} post={p} brandLogo={config.site.logoUrl} onMutate={updatePost} onOpenComments={setCommentsPost} mutedAudio={postsMuted} onToggleMuted={() => setPostsMuted(m => !m)} />)}
           </div>
         ) : (
-          <div className="py-10 text-center">
-            <div className="eh-mono text-xs opacity-60 mb-4">Tap any reel to enter full-screen mode</div>
-            <button onClick={() => nav('/feed/r/' + (reels[0]?.id || ''))} disabled={!reels.length} data-testid="feed-open-reels" className="eh-btn-primary text-xs"><Film size={14} /> WATCH REELS ({reelCount})</button>
+          <div className="py-3">
+            {reels.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No reels yet.</div>}
+            <div className="grid grid-cols-3 gap-1 sm:gap-1.5 px-1 sm:px-0">
+              {reels.map(r => (
+                <button key={r.id} onClick={() => openReel(r.id)} data-testid={`reel-grid-tile-${r.id}`} className="group relative overflow-hidden bg-[var(--eh-bg-2)]" style={{ aspectRatio: '9/16' }}>
+                  {r.thumb_url ? (
+                    <img src={r.thumb_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <video src={r.video_url} className="w-full h-full object-cover" muted preload="metadata" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                  <div className="absolute top-1.5 right-1.5"><Film size={14} className="text-white drop-shadow" /></div>
+                  <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between eh-mono text-white text-[11px] font-bold">
+                    <span className="flex items-center gap-1"><Eye size={11} /> {fmt(r.views_count)}</span>
+                    <span className="flex items-center gap-1"><Heart size={11} fill="white" /> {fmt(r.likes_count)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
       {commentsPost && <CommentsSheet post={commentsPost} onClose={() => setCommentsPost(null)} onMutate={updatePost} />}
-      {tab === 'reels' && reels.length > 0 && <ReelsFeed reels={reels} onMutate={updateReel} initialReelId={reelId} onExit={exitReels} />}
+      {openReelId && reels.length > 0 && <ReelsFeed reels={reels} onMutate={updateReel} initialReelId={openReelId} onExit={exitReels} />}
     </section>
   );
 };
