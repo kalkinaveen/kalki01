@@ -19,6 +19,11 @@ DEFAULT_CONFIG = {
         "followers": 128400,
         "following": 42,
         "verified": True,
+        "instagram_url": "",
+        "follow_label": "FOLLOW",
+        "message_kind": "telegram",
+        "message_url": "",
+        "message_label": "MESSAGE",
     },
     "site": {
         "name": "ERRORHACKER",

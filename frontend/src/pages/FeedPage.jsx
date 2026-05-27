@@ -41,37 +41,85 @@ const sharePostOrReel = async ({ type, id, caption, displayName }) => {
   }
 };
 
-const ProfileHeader = ({ profile, postCount, reelCount, brandLogo }) => (
-  <div className="px-4 sm:px-6 py-6 sm:py-10 border-b border-[var(--eh-border)]">
-    <div className="max-w-4xl mx-auto flex flex-col sm:flex-row gap-6 sm:gap-10 items-center sm:items-start">
-      <div className="relative shrink-0">
-        <div className="w-24 h-24 sm:w-36 sm:h-36 rounded-full overflow-hidden p-[3px]" style={{ background: 'conic-gradient(from 180deg, var(--eh-green), #4de0ff, #a855f7, var(--eh-green))' }}>
-          <div className="w-full h-full rounded-full overflow-hidden bg-black">
-            <img src={brandLogo} alt={profile.username} className="w-full h-full object-cover" />
+const buildMessageUrl = (profile) => {
+  const kind = (profile.message_kind || 'telegram').toLowerCase();
+  const dest = (profile.message_url || '').trim();
+  if (!dest) {
+    if (kind === 'track') return '/track';
+    return ''; // no destination configured
+  }
+  // If already a full URL, pass through
+  if (/^https?:\/\//i.test(dest)) return dest;
+  switch (kind) {
+    case 'telegram': {
+      const h = dest.replace(/^@/, '').replace(/^https?:\/\/(t\.me|telegram\.me)\//i, '');
+      return `https://t.me/${h}`;
+    }
+    case 'whatsapp': {
+      const digits = dest.replace(/\D/g, '');
+      return `https://wa.me/${digits}`;
+    }
+    case 'instagram': {
+      const h = dest.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '');
+      return `https://instagram.com/${h}`;
+    }
+    case 'email':
+      return `mailto:${dest}`;
+    case 'track':
+      return '/track';
+    case 'url':
+    default:
+      return dest;
+  }
+};
+
+const ProfileHeader = ({ profile, postCount, reelCount, brandLogo }) => {
+  const followUrl = (profile.instagram_url || '').trim();
+  const messageUrl = buildMessageUrl(profile);
+  const followLabel = profile.follow_label || 'FOLLOW';
+  const messageLabel = profile.message_label || 'MESSAGE';
+  const isInternalMessage = messageUrl.startsWith('/');
+  const followIsExternal = /^https?:\/\//i.test(followUrl);
+  return (
+    <div className="px-4 sm:px-6 py-6 sm:py-10 border-b border-[var(--eh-border)]">
+      <div className="max-w-4xl mx-auto flex flex-col sm:flex-row gap-6 sm:gap-10 items-center sm:items-start">
+        <div className="relative shrink-0">
+          <div className="w-24 h-24 sm:w-36 sm:h-36 rounded-full overflow-hidden p-[3px]" style={{ background: 'conic-gradient(from 180deg, var(--eh-green), #4de0ff, #a855f7, var(--eh-green))' }}>
+            <div className="w-full h-full rounded-full overflow-hidden bg-black">
+              <img src={brandLogo} alt={profile.username} className="w-full h-full object-cover" />
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 text-center sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap mb-3">
+            <h1 className="eh-display text-xl sm:text-2xl font-light">{profile.username}</h1>
+            {profile.verified && <BadgeCheck size={20} className="text-[#4de0ff]" />}
+            {followIsExternal ? (
+              <a href={followUrl} target="_blank" rel="noreferrer" data-testid="feed-follow-btn" className="ml-2 text-xs eh-mono px-3 py-1.5 rounded bg-[var(--eh-green)] text-[#001a10] font-bold tracking-widest hover:opacity-90">{followLabel}</a>
+            ) : (
+              <Link to={followUrl || '/services'} data-testid="feed-follow-btn" className="ml-2 text-xs eh-mono px-3 py-1.5 rounded bg-[var(--eh-green)] text-[#001a10] font-bold tracking-widest hover:opacity-90">{followLabel}</Link>
+            )}
+            {messageUrl && (isInternalMessage ? (
+              <Link to={messageUrl} data-testid="feed-message-btn" className="text-xs eh-mono px-3 py-1.5 rounded border border-[var(--eh-border)] tracking-widest hover:border-[var(--eh-green)]">{messageLabel}</Link>
+            ) : (
+              <a href={messageUrl} target={messageUrl.startsWith('mailto:') ? undefined : '_blank'} rel="noreferrer" data-testid="feed-message-btn" className="text-xs eh-mono px-3 py-1.5 rounded border border-[var(--eh-border)] tracking-widest hover:border-[var(--eh-green)]">{messageLabel}</a>
+            ))}
+          </div>
+          <div className="flex justify-center sm:justify-start gap-6 sm:gap-10 mb-4 eh-mono text-sm">
+            <div><span className="font-bold text-base">{fmt(postCount + reelCount)}</span> <span className="opacity-70">posts</span></div>
+            <div><span className="font-bold text-base">{fmt(profile.followers)}</span> <span className="opacity-70">followers</span></div>
+            <div><span className="font-bold text-base">{fmt(profile.following)}</span> <span className="opacity-70">following</span></div>
+          </div>
+          <div className="eh-mono text-sm">
+            <div className="font-bold mb-1">{profile.displayName}</div>
+            {profile.bio && <div className="opacity-80 whitespace-pre-line leading-6">{profile.bio}</div>}
+            {profile.website && <a href={profile.website} target="_blank" rel="noreferrer" className="text-[var(--eh-green)] hover:underline">{profile.website.replace(/^https?:\/\//, '')}</a>}
           </div>
         </div>
       </div>
-      <div className="flex-1 text-center sm:text-left">
-        <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap mb-3">
-          <h1 className="eh-display text-xl sm:text-2xl font-light">{profile.username}</h1>
-          {profile.verified && <BadgeCheck size={20} className="text-[#4de0ff]" />}
-          <Link to="/services" className="ml-2 text-xs eh-mono px-3 py-1.5 rounded bg-[var(--eh-green)] text-[#001a10] font-bold tracking-widest hover:opacity-90">FOLLOW</Link>
-          <Link to="/track" className="text-xs eh-mono px-3 py-1.5 rounded border border-[var(--eh-border)] tracking-widest hover:border-[var(--eh-green)]">MESSAGE</Link>
-        </div>
-        <div className="flex justify-center sm:justify-start gap-6 sm:gap-10 mb-4 eh-mono text-sm">
-          <div><span className="font-bold text-base">{fmt(postCount + reelCount)}</span> <span className="opacity-70">posts</span></div>
-          <div><span className="font-bold text-base">{fmt(profile.followers)}</span> <span className="opacity-70">followers</span></div>
-          <div><span className="font-bold text-base">{fmt(profile.following)}</span> <span className="opacity-70">following</span></div>
-        </div>
-        <div className="eh-mono text-sm">
-          <div className="font-bold mb-1">{profile.displayName}</div>
-          {profile.bio && <div className="opacity-80 whitespace-pre-line leading-6">{profile.bio}</div>}
-          {profile.website && <a href={profile.website} target="_blank" rel="noreferrer" className="text-[var(--eh-green)] hover:underline">{profile.website.replace(/^https?:\/\//, '')}</a>}
-        </div>
-      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const CommentList = ({ items }) => (
   <div className="space-y-3">

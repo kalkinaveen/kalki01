@@ -698,6 +698,29 @@ const FeedManager = () => {
           <div><Label>VERIFIED BADGE</Label><label className="inline-flex items-center gap-2 eh-mono text-xs cursor-pointer mt-2"><input type="checkbox" checked={!!profile.verified} onChange={e => update('feedProfile.verified', e.target.checked)} className="w-4 h-4 accent-[var(--eh-green)]" /> {profile.verified ? 'ON' : 'OFF'}</label></div>
           <div className="sm:col-span-2 lg:col-span-3"><Label>BIO (multi-line)</Label><Textarea rows={3} value={profile.bio || ''} onChange={e => update('feedProfile.bio', e.target.value)} /></div>
         </div>
+        <div className="border-t border-[var(--eh-border)] mt-5 pt-5">
+          <div className="eh-kicker mb-3">// FOLLOW & MESSAGE BUTTONS</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label hint="full url e.g. https://instagram.com/yourhandle">FOLLOW URL (Instagram / Twitter / etc.)</Label><Input value={profile.instagram_url || ''} onChange={e => update('feedProfile.instagram_url', e.target.value)} placeholder="https://instagram.com/errorhacker" data-testid="admin-follow-url" /></div>
+            <div><Label>FOLLOW BUTTON LABEL</Label><Input value={profile.follow_label || 'FOLLOW'} onChange={e => update('feedProfile.follow_label', e.target.value)} placeholder="FOLLOW" /></div>
+            <div>
+              <Label>MESSAGE BUTTON OPENS</Label>
+              <select className="eh-input" value={profile.message_kind || 'telegram'} onChange={e => update('feedProfile.message_kind', e.target.value)} data-testid="admin-message-kind">
+                <option value="telegram">Telegram</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="instagram">Instagram DM</option>
+                <option value="email">Email</option>
+                <option value="url">Custom URL</option>
+                <option value="track">In-site Order Tracker</option>
+              </select>
+            </div>
+            <div>
+              <Label hint="Telegram @handle, WhatsApp digits with country code, Instagram handle, email, or full URL">MESSAGE DESTINATION</Label>
+              <Input value={profile.message_url || ''} onChange={e => update('feedProfile.message_url', e.target.value)} placeholder="@errorhacker / 919999999999 / you@x.com / https://..." data-testid="admin-message-url" />
+            </div>
+            <div className="sm:col-span-2"><Label>MESSAGE BUTTON LABEL</Label><Input value={profile.message_label || 'MESSAGE'} onChange={e => update('feedProfile.message_label', e.target.value)} placeholder="MESSAGE" /></div>
+          </div>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-4">

@@ -8,7 +8,7 @@ const DEFAULTS = {
   site: { ...M.SITE, logoUrl: 'https://customer-assets.emergentagent.com/job_functionality-139/artifacts/a8019kmd_WhatsApp%20Image%202026-05-23%20at%205.26.02%20PM.jpeg', brandColor: '#00ff9d', adminPass: 'admin123' },
   notifications: { telegram: { enabled: false, bot_token: '', chat_id: '' } },
   analytics: { enabled: false, googleId: '' },
-  feedProfile: { username: 'errorhacker', displayName: 'ERRORHACKER', bio: '// underground tech intel\n// 24/7 secure ops', website: 'https://errorhacker.site', followers: 128400, following: 42, verified: true },
+  feedProfile: { username: 'errorhacker', displayName: 'ERRORHACKER', bio: '// underground tech intel\n// 24/7 secure ops', website: 'https://errorhacker.site', followers: 128400, following: 42, verified: true, instagram_url: '', follow_label: 'FOLLOW', message_kind: 'telegram', message_url: '', message_label: 'MESSAGE' },
   nav: M.NAV,
   services: M.SERVICES,
   books: M.BOOKS,
