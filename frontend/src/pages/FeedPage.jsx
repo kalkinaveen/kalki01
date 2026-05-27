@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2, Share2 } from 'lucide-react';
+import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2, Share2, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,6 +17,11 @@ const fmt = (n) => {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
+};
+
+const isVideoUrl = (url) => {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/i.test(url);
 };
 
 const sharePostOrReel = async ({ type, id, caption, displayName }) => {
@@ -89,32 +94,48 @@ const CommentList = ({ items }) => (
 );
 
 // Single post card in vertical feed (Instagram-style)
-const PostCard = ({ post, brandLogo, onMutate, onOpenComments }) => {
+const PostCard = ({ post, brandLogo, onMutate, onOpenComments, mutedAudio, onToggleMuted }) => {
   const { user } = useAuth();
   const nav = useNavigate();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likes, setLikes] = useState(post.likes_count);
   const cardRef = useRef(null);
+  const videoRef = useRef(null);
   const viewedRef = useRef(false);
   const [doubleTapHeart, setDoubleTapHeart] = useState(false);
+  const isVideo = isVideoUrl(post.image_url);
 
   useEffect(() => {
     if (!cardRef.current) return;
     const io = new IntersectionObserver(entries => {
       entries.forEach(e => {
-        if (e.isIntersecting && !viewedRef.current) {
+        // mark view once at 50%
+        if (e.isIntersecting && e.intersectionRatio >= 0.5 && !viewedRef.current) {
           viewedRef.current = true;
           api.feedViewPost(post.id, getViewSession()).catch(() => {});
         }
+        // autoplay video when in view, pause otherwise
+        if (isVideo && videoRef.current) {
+          if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+            videoRef.current.muted = mutedAudio;
+            const p = videoRef.current.play();
+            if (p && p.catch) p.catch(() => { videoRef.current.muted = true; videoRef.current.play().catch(()=>{}); });
+          } else {
+            videoRef.current.pause();
+          }
+        }
       });
-    }, { threshold: 0.5 });
+    }, { threshold: [0, 0.5, 0.6] });
     io.observe(cardRef.current);
     return () => io.disconnect();
-  }, [post.id]);
+  }, [post.id, isVideo, mutedAudio]);
+
+  // Reflect global mute toggle on the video
+  useEffect(() => { if (isVideo && videoRef.current) videoRef.current.muted = mutedAudio; }, [mutedAudio, isVideo]);
 
   const doLike = async (forceLike = false) => {
     if (!user) { toast.error('Login to like'); nav('/login'); return; }
-    if (forceLike && liked) return; // double-tap should never unlike
+    if (forceLike && liked) return;
     try {
       const r = await api.feedLikePost(post.id);
       setLiked(r.liked); setLikes(r.likes_count);
@@ -144,7 +165,25 @@ const PostCard = ({ post, brandLogo, onMutate, onOpenComments }) => {
       </div>
       {/* media */}
       <div className="relative bg-black select-none" onDoubleClick={handleDoubleTap}>
-        <img src={post.image_url} loading="lazy" className="w-full max-h-[80vh] object-contain" alt="" />
+        {isVideo ? (
+          <>
+            <video
+              ref={videoRef}
+              src={post.image_url}
+              className="w-full max-h-[80vh] object-contain bg-black"
+              loop
+              playsInline
+              muted={mutedAudio}
+              preload="metadata"
+              onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
+            />
+            <button onClick={onToggleMuted} aria-label="toggle audio" className="absolute bottom-3 right-3 w-9 h-9 grid place-items-center rounded-full bg-black/60 text-white">
+              {mutedAudio ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </button>
+          </>
+        ) : (
+          <img src={post.image_url} loading="lazy" className="w-full max-h-[80vh] object-contain" alt="" />
+        )}
         {doubleTapHeart && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none">
             <Heart size={96} fill="#ff2a3a" color="#ff2a3a" className="drop-shadow-[0_0_20px_rgba(255,42,58,.7)] eh-pop" />
@@ -205,10 +244,17 @@ const CommentsSheet = ({ post, onClose, onMutate }) => {
         <div className="flex-1 overflow-y-auto eh-scroll p-3">
           <CommentList items={comments} />
         </div>
-        <form onSubmit={submit} className="border-t border-[var(--eh-border)] flex">
-          <input value={text} onChange={e => setText(e.target.value)} data-testid="post-sheet-comment-input" placeholder={user ? 'Add a comment…' : 'Login to comment'} disabled={!user} className="flex-1 bg-transparent px-3 py-3 text-sm outline-none disabled:opacity-50" />
-          <button data-testid="post-sheet-comment-submit" disabled={busy || !text.trim() || !user} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
-        </form>
+        {user ? (
+          <form onSubmit={submit} className="border-t border-[var(--eh-border)] flex">
+            <input value={text} onChange={e => setText(e.target.value)} data-testid="post-sheet-comment-input" placeholder="Add a comment…" className="flex-1 bg-transparent px-3 py-3 text-sm outline-none" />
+            <button data-testid="post-sheet-comment-submit" disabled={busy || !text.trim()} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
+          </form>
+        ) : (
+          <div className="border-t border-[var(--eh-border)] p-3 flex items-center gap-3 bg-[rgba(0,255,157,.05)]">
+            <div className="flex-1 text-xs eh-mono opacity-80">Join the conversation</div>
+            <button onClick={() => nav('/login', { state: { from: '/feed' } })} data-testid="post-sheet-login-cta" className="eh-btn-primary text-xs px-4 py-2"><LogIn size={12} /> LOG IN TO COMMENT</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -378,10 +424,17 @@ const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
               <button onClick={() => setCommentsFor(null)} aria-label="close"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto eh-scroll p-3 text-white"><CommentList items={comments} /></div>
-            <form onSubmit={submitComment} className="border-t border-white/10 flex">
-              <input value={text} onChange={e => setText(e.target.value)} placeholder={user ? 'Add a comment…' : 'Login to comment'} disabled={!user} className="flex-1 bg-transparent px-3 py-3 text-sm text-white outline-none disabled:opacity-50" />
-              <button disabled={busy || !text.trim() || !user} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
-            </form>
+            {user ? (
+              <form onSubmit={submitComment} className="border-t border-white/10 flex">
+                <input value={text} onChange={e => setText(e.target.value)} placeholder="Add a comment…" className="flex-1 bg-transparent px-3 py-3 text-sm text-white outline-none" />
+                <button disabled={busy || !text.trim()} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
+              </form>
+            ) : (
+              <div className="border-t border-white/10 p-3 flex items-center gap-3 bg-[rgba(0,255,157,.06)]">
+                <div className="flex-1 text-xs eh-mono opacity-80 text-white">Join the conversation</div>
+                <button onClick={() => { setCommentsFor(null); nav('/login', { state: { from: '/feed' } }); }} data-testid="reel-sheet-login-cta" className="eh-btn-primary text-xs px-4 py-2"><LogIn size={12} /> LOG IN TO COMMENT</button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -399,6 +452,7 @@ const FeedPage = () => {
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentsPost, setCommentsPost] = useState(null);
+  const [postsMuted, setPostsMuted] = useState(true); // start muted for browser autoplay policy; user can unmute
 
   useEffect(() => {
     setLoading(true);
@@ -449,7 +503,7 @@ const FeedPage = () => {
         ) : tab === 'posts' ? (
           <div className="py-2">
             {posts.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
-            {posts.map(p => <PostCard key={p.id} post={p} brandLogo={config.site.logoUrl} onMutate={updatePost} onOpenComments={setCommentsPost} />)}
+            {posts.map(p => <PostCard key={p.id} post={p} brandLogo={config.site.logoUrl} onMutate={updatePost} onOpenComments={setCommentsPost} mutedAudio={postsMuted} onToggleMuted={() => setPostsMuted(m => !m)} />)}
           </div>
         ) : (
           <div className="py-10 text-center">
