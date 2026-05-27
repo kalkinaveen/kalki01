@@ -469,32 +469,31 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
   const nav = useNavigate();
   const containerRef = useRef(null);
   const videoRefs = useRef({});
-  const [muted, setMuted] = useState(false); // audio ON by default
+  const [muted, setMuted] = useState(true); // always start muted — iOS Safari refuses autoplay-with-audio anyway. User opts in via tap.
   const [activeId, setActiveId] = useState(null);
   const [commentsFor, setCommentsFor] = useState(null);
   const [comments, setComments] = useState([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [showUnmuteHint, setShowUnmuteHint] = useState(false);
+  const [showUnmuteHint, setShowUnmuteHint] = useState(true); // show hint until first unmute
 
-  // iOS Safari: unmute MUST happen synchronously inside the user-gesture handler,
-  // otherwise the browser silently re-mutes the video. Don't go through a state→effect cycle.
+  // iOS Safari fix: unmuting an already-playing video doesn't grant audio.
+  // We must PAUSE → set muted=false → PLAY synchronously inside the user-gesture handler.
+  // Pausing first invalidates the "ambient autoplay" state, so the next play() is treated as
+  // a fresh user-initiated playback that is allowed to carry audio.
   const handleToggleMute = () => {
     const next = !muted;
     const v = activeId ? videoRefs.current[activeId] : null;
     if (v) {
+      const t = v.currentTime;
+      try { v.pause(); } catch {}
       v.muted = next;
-      // Play synchronously while we still have the gesture token
+      try { v.currentTime = t; } catch {}
       const p = v.play();
-      if (p && p.catch) {
-        p.catch(() => {
-          v.muted = true;
-          setMuted(true);
-          setShowUnmuteHint(true);
-        });
-      }
+      if (p && p.catch) p.catch(() => { v.muted = true; setMuted(true); });
     }
     setMuted(next);
+    if (!next) setShowUnmuteHint(false);
   };
 
   // Each item has _kind: 'post' | 'reel'. Posts may also be videos (.mp4 in image_url).
@@ -611,6 +610,8 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
                   className="absolute inset-0 w-full h-full object-contain bg-black"
                   loop
                   playsInline
+                  muted
+                  autoPlay
                   preload="metadata"
                   poster={it.thumb_url || undefined}
                   onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
