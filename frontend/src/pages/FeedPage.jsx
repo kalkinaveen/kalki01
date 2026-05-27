@@ -209,6 +209,152 @@ const PostCard = ({ post, brandLogo, onMutate, onOpenComments, mutedAudio, onTog
   );
 };
 
+// Instagram-style profile grid tile for posts
+const PostTile = ({ post, onOpen }) => {
+  const isVideo = isVideoUrl(post.image_url);
+  return (
+    <button onClick={() => onOpen(post)} data-testid={`post-grid-tile-${post.id}`} className="group relative aspect-square overflow-hidden bg-[var(--eh-bg-2)]">
+      {isVideo ? (
+        <>
+          <video src={post.image_url} className="w-full h-full object-cover" muted preload="metadata" />
+          <div className="absolute top-1.5 right-1.5"><Film size={14} className="text-white drop-shadow" /></div>
+        </>
+      ) : (
+        <img src={post.image_url} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+      )}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-5 eh-mono text-white font-bold text-sm">
+          <span className="flex items-center gap-1.5"><Heart size={18} fill="white" /> {fmt(post.likes_count)}</span>
+          <span className="flex items-center gap-1.5"><MessageCircle size={18} fill="white" /> {fmt(post.comments_count)}</span>
+        </div>
+      </div>
+      {post.pinned && <span className="absolute top-1.5 left-1.5 text-[9px] eh-mono px-1.5 py-0.5 rounded bg-black/70 text-[var(--eh-green)] tracking-widest">PINNED</span>}
+    </button>
+  );
+};
+
+// Instagram-style post modal: image left + comments panel right (desktop) or stacked (mobile)
+const PostModal = ({ post, onClose, onMutate }) => {
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const videoRef = useRef(null);
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [liked, setLiked] = useState(post.liked_by_me);
+  const [likes, setLikes] = useState(post.likes_count);
+  const [muted, setMuted] = useState(true);
+  const [doubleTapHeart, setDoubleTapHeart] = useState(false);
+  const isVideo = isVideoUrl(post.image_url);
+  const viewedRef = useRef(false);
+
+  useEffect(() => {
+    api.feedPostComments(post.id).then(setComments).catch(() => {});
+    if (!viewedRef.current) {
+      viewedRef.current = true;
+      api.feedViewPost(post.id, getViewSession()).catch(() => {});
+    }
+  }, [post.id]);
+
+  useEffect(() => {
+    if (isVideo && videoRef.current) {
+      videoRef.current.muted = muted;
+      videoRef.current.play().catch(() => { if (videoRef.current) { videoRef.current.muted = true; setMuted(true); videoRef.current.play().catch(()=>{}); } });
+    }
+  }, [isVideo, muted]);
+
+  const doLike = async (forceLike = false) => {
+    if (!user) { toast.error('Login to like'); nav('/login'); return; }
+    if (forceLike && liked) return;
+    try {
+      const r = await api.feedLikePost(post.id);
+      setLiked(r.liked); setLikes(r.likes_count);
+      onMutate?.({ ...post, liked_by_me: r.liked, likes_count: r.likes_count });
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const handleDoubleTap = () => {
+    if (!user) return;
+    if (!liked) doLike(true);
+    setDoubleTapHeart(true);
+    setTimeout(() => setDoubleTapHeart(false), 700);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    if (!user) { toast.error('Login to comment'); nav('/login'); return; }
+    setBusy(true);
+    try {
+      const c = await api.feedAddPostComment(post.id, text.trim());
+      setComments(prev => [...prev, c]); setText('');
+      onMutate?.({ ...post, comments_count: (post.comments_count || 0) + 1 });
+    } catch (err) { toast.error(err.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-6" onClick={onClose} data-testid={`post-modal-${post.id}`}>
+      <button onClick={onClose} aria-label="close" data-testid="post-modal-close" className="fixed top-4 right-4 z-[90] w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white hover:bg-black/80"><X size={20} /></button>
+      <div onClick={e => e.stopPropagation()} className="w-full md:max-w-5xl md:max-h-[92vh] eh-panel grid grid-rows-[auto_1fr] md:grid-rows-1 md:grid-cols-[1fr_360px] overflow-hidden bg-[#0d1115]">
+        {/* media side */}
+        <div className="relative bg-black flex items-center justify-center min-h-[40vh] md:min-h-0 md:max-h-[92vh]" onDoubleClick={handleDoubleTap}>
+          {isVideo ? (
+            <>
+              <video
+                ref={videoRef}
+                src={post.image_url}
+                className="max-w-full max-h-[55vh] md:max-h-[92vh] object-contain"
+                loop
+                playsInline
+                preload="metadata"
+                onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
+              />
+              <button onClick={() => setMuted(m => !m)} aria-label="toggle audio" className="absolute bottom-3 right-3 w-9 h-9 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+            </>
+          ) : (
+            <img src={post.image_url} className="max-w-full max-h-[55vh] md:max-h-[92vh] object-contain" alt="" />
+          )}
+          {doubleTapHeart && (
+            <div className="absolute inset-0 grid place-items-center pointer-events-none">
+              <Heart size={96} fill="#ff2a3a" color="#ff2a3a" className="drop-shadow-[0_0_20px_rgba(255,42,58,.7)] eh-pop" />
+            </div>
+          )}
+        </div>
+        {/* side panel */}
+        <div className="flex flex-col border-t md:border-t-0 md:border-l border-[var(--eh-border)] min-h-0 max-h-[60vh] md:max-h-none">
+          <div className="flex items-center gap-2 p-3 border-b border-[var(--eh-border)] text-sm font-bold">errorhacker <BadgeCheck size={14} className="text-[#4de0ff]" /></div>
+          {post.location && <div className="px-3 py-2 eh-mono text-[11px] opacity-70 flex items-center gap-1 border-b border-[var(--eh-border)]"><MapPin size={11} /> {post.location}</div>}
+          <div className="flex-1 overflow-y-auto eh-scroll p-3">
+            {post.caption && <div className="text-sm mb-4 leading-6"><span className="font-bold mr-2">errorhacker</span>{post.caption}</div>}
+            <CommentList items={comments} />
+          </div>
+          <div className="border-t border-[var(--eh-border)] p-3">
+            <div className="flex items-center gap-4 mb-2">
+              <button onClick={() => doLike(false)} data-testid={`post-modal-like-${post.id}`} aria-label="like" className="active:scale-90 transition-transform"><Heart size={24} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} /></button>
+              <MessageCircle size={24} />
+              <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid={`post-modal-share-${post.id}`} aria-label="share" className="active:scale-90 transition-transform"><Share2 size={22} /></button>
+            </div>
+            <div className="eh-mono text-xs font-bold mb-1">{fmt(likes)} likes · {fmt(post.views_count)} views</div>
+            <div className="eh-mono text-[10px] opacity-50 uppercase">{new Date(post.created_at).toLocaleDateString()}</div>
+          </div>
+          {user ? (
+            <form onSubmit={submit} className="border-t border-[var(--eh-border)] flex">
+              <input value={text} onChange={e => setText(e.target.value)} data-testid="post-modal-comment-input" placeholder="Add a comment…" className="flex-1 bg-transparent px-3 py-3 text-sm outline-none" />
+              <button data-testid="post-modal-comment-submit" disabled={busy || !text.trim()} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
+            </form>
+          ) : (
+            <div className="border-t border-[var(--eh-border)] p-3 flex items-center gap-3 bg-[rgba(0,255,157,.05)]">
+              <div className="flex-1 text-xs eh-mono opacity-80">Join the conversation</div>
+              <button onClick={() => nav('/login', { state: { from: '/feed' } })} data-testid="post-modal-login-cta" className="eh-btn-primary text-xs px-4 py-2"><LogIn size={12} /> LOG IN TO COMMENT</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Comments-only bottom sheet for posts
 const CommentsSheet = ({ post, onClose, onMutate }) => {
   const { user } = useAuth();
@@ -456,7 +602,7 @@ const FeedPage = () => {
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentsPost, setCommentsPost] = useState(null);
-  const [postsMuted, setPostsMuted] = useState(true); // start muted for browser autoplay policy; user can unmute
+  const [openPostId, setOpenPostId] = useState(null);
   const [openReelId, setOpenReelId] = useState(null);
 
   useEffect(() => {
@@ -467,16 +613,9 @@ const FeedPage = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  // Scroll to shared post on load
+  // Open post modal on deep link
   useEffect(() => {
-    if (postId && posts.length) {
-      setTab('posts');
-      const tryScroll = () => {
-        const el = document.getElementById(`post-${postId}`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
-      setTimeout(tryScroll, 250);
-    }
+    if (postId && posts.length) { setTab('posts'); setOpenPostId(postId); }
   }, [postId, posts.length]);
 
   useEffect(() => {
@@ -493,6 +632,11 @@ const FeedPage = () => {
 
   const openReel = (id) => { setOpenReelId(id); window.history.replaceState(null, '', `/feed/r/${id}`); };
 
+  const openPost = (post) => { setOpenPostId(post.id); window.history.replaceState(null, '', `/feed/p/${post.id}`); };
+  const closePost = () => { setOpenPostId(null); window.history.replaceState(null, '', '/feed'); };
+
+  const openPostObj = useMemo(() => posts.find(p => p.id === openPostId) || null, [openPostId, posts]);
+
   return (
     <section className="min-h-[80vh] eh-grid-bg">
       <ProfileHeader profile={profile} postCount={postCount} reelCount={reelCount} brandLogo={config.site.logoUrl} />
@@ -508,9 +652,11 @@ const FeedPage = () => {
         {loading ? (
           <div className="py-20 grid place-items-center opacity-70"><Loader2 className="animate-spin" /></div>
         ) : tab === 'posts' ? (
-          <div className="py-2">
+          <div className="py-3">
             {posts.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
-            {posts.map(p => <PostCard key={p.id} post={p} brandLogo={config.site.logoUrl} onMutate={updatePost} onOpenComments={setCommentsPost} mutedAudio={postsMuted} onToggleMuted={() => setPostsMuted(m => !m)} />)}
+            <div className="grid grid-cols-3 gap-1 sm:gap-1.5 px-1 sm:px-0">
+              {posts.map(p => <PostTile key={p.id} post={p} onOpen={openPost} />)}
+            </div>
           </div>
         ) : (
           <div className="py-3">
@@ -535,6 +681,7 @@ const FeedPage = () => {
           </div>
         )}
       </div>
+      {openPostObj && <PostModal post={openPostObj} onClose={closePost} onMutate={updatePost} />}
       {commentsPost && <CommentsSheet post={commentsPost} onClose={() => setCommentsPost(null)} onMutate={updatePost} />}
       {openReelId && reels.length > 0 && <ReelsFeed reels={reels} onMutate={updateReel} initialReelId={openReelId} onExit={exitReels} />}
     </section>
