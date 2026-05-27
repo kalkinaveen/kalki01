@@ -274,49 +274,53 @@ const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
   const [busy, setBusy] = useState(false);
   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
 
-  // Track active reel via intersection
+  // 1. IntersectionObserver only decides which reel is "active"
   useEffect(() => {
     if (!containerRef.current) return;
     const obs = new IntersectionObserver(entries => {
+      // pick the entry with the highest intersectionRatio that's at least 70% visible
+      let best = null;
       entries.forEach(e => {
-        const id = e.target.getAttribute('data-reel-id');
-        const v = videoRefs.current[id];
-        if (!v) return;
-        if (e.isIntersecting && e.intersectionRatio > 0.7) {
-          setActiveId(id);
-          v.currentTime = v.currentTime || 0;
-          // try unmuted playback first
-          v.muted = muted;
-          const tryPlay = v.play();
-          if (tryPlay && tryPlay.catch) {
-            tryPlay.catch(() => {
-              // browser blocked autoplay-with-audio → fallback to muted
-              v.muted = true;
-              setMuted(true);
-              setShowUnmuteHint(true);
-              v.play().catch(() => {});
-            });
-          }
-          // record view once
-          if (!v.dataset.viewed) {
-            v.dataset.viewed = '1';
-            api.feedViewReel(id, getViewSession()).catch(() => {});
-          }
-        } else {
-          v.pause();
-        }
+        if (e.intersectionRatio >= 0.7 && (!best || e.intersectionRatio > best.intersectionRatio)) best = e;
       });
-    }, { root: containerRef.current, threshold: [0, 0.7, 1] });
+      if (best) setActiveId(best.target.getAttribute('data-reel-id'));
+    }, { root: containerRef.current, threshold: [0, 0.5, 0.7, 1] });
     Array.from(containerRef.current.querySelectorAll('[data-reel-id]')).forEach(el => obs.observe(el));
     return () => obs.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reels.length]);
 
-  // Apply mute toggle to all videos
+  // 2. Single source of truth: whenever activeId or muted changes, hard-sync ALL videos.
+  //    - Every non-active video: pause + mute + rewind so it can't leak audio.
+  //    - Active video: apply user's mute preference and play; if blocked by autoplay policy, fall back to muted.
   useEffect(() => {
-    Object.values(videoRefs.current).forEach(v => { if (v) v.muted = muted; });
+    Object.entries(videoRefs.current).forEach(([id, v]) => {
+      if (!v) return;
+      if (id !== activeId) {
+        v.muted = true;
+        if (!v.paused) v.pause();
+        try { v.currentTime = 0; } catch {}
+        return;
+      }
+      // active
+      v.muted = muted;
+      const p = v.play();
+      if (p && p.catch) {
+        p.catch(() => {
+          // Autoplay-with-sound blocked → fall back to muted and prompt user
+          v.muted = true;
+          setMuted(true);
+          setShowUnmuteHint(true);
+          v.play().catch(() => {});
+        });
+      }
+      // record view once per active reel
+      if (!v.dataset.viewed) {
+        v.dataset.viewed = '1';
+        api.feedViewReel(id, getViewSession()).catch(() => {});
+      }
+    });
     if (!muted) setShowUnmuteHint(false);
-  }, [muted]);
+  }, [activeId, muted, reels.length]);
 
   // Scroll to initial reel from deep-link
   useEffect(() => {
