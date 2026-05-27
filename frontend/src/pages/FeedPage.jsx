@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2, Share2 } from 'lucide-react';
+import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -177,7 +177,7 @@ const PostModal = ({ post, onClose, onMutate }) => {
             <div className="flex items-center gap-4 mb-2">
               <button onClick={toggleLike} data-testid="post-like-btn" className="transition-transform active:scale-90"><Heart size={22} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} /></button>
               <MessageCircle size={22} />
-              <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid="post-share-btn" aria-label="Share post" className="transition-transform active:scale-90 ml-auto"><Share2 size={22} /></button>
+              <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid="post-share-btn" aria-label="Share post" className="transition-transform active:scale-90 hover:opacity-70"><SendIcon size={22} strokeWidth={1.8} /></button>
             </div>
             <div className="eh-mono text-xs font-bold mb-1">{fmt(likes)} likes · {fmt(post.views_count)} views</div>
             <div className="eh-mono text-[10px] opacity-50 uppercase">{new Date(post.created_at).toLocaleDateString()}</div>
@@ -247,8 +247,8 @@ const ReelPlayer = ({ reel, onClose, onMutate }) => {
             <MessageCircle size={28} />
             <span className="text-[11px] font-bold">{fmt(comments.length)}</span>
           </button>
-          <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid="reel-share-btn" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-            <Share2 size={28} />
+          <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid="reel-share-btn" aria-label="Share reel" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+            <SendIcon size={28} strokeWidth={1.8} />
             <span className="text-[11px] font-bold">Share</span>
           </button>
           <div className="flex flex-col items-center gap-1 opacity-90">
