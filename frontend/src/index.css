@@ -249,6 +249,19 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
 .eh-scroll::-webkit-scrollbar-track { background: transparent; }
 .eh-scroll::-webkit-scrollbar-thumb { background: rgba(0,255,157,.25); border-radius:8px; }
 
+/* Hidden scrollbar for reels vertical feed */
+.eh-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.eh-no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Double-tap heart pop animation */
+@keyframes eh-pop {
+  0%   { transform: scale(.4); opacity: 0; }
+  20%  { transform: scale(1.15); opacity: 1; }
+  60%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(.95); opacity: 0; }
+}
+.eh-pop { animation: eh-pop .7s ease-out forwards; }
+
 /* ERRORHACKER title — ERROR in red, HACKER in green */
 .eh-title-error {
   color: #ff2a3a;

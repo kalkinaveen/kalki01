@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Heart, MessageCircle, Eye, Send as SendIcon, X, BadgeCheck, Grid3x3, Film, Volume2, VolumeX, MapPin, Loader2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,6 +17,23 @@ const fmt = (n) => {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
+};
+
+const sharePostOrReel = async ({ type, id, caption, displayName }) => {
+  const url = `${window.location.origin}/feed/${type === 'reel' ? 'r' : 'p'}/${id}`;
+  const title = `${displayName || 'ERRORHACKER'} on ERRORHACKER Feed`;
+  const text = caption ? `${caption.slice(0, 120)}${caption.length > 120 ? '…' : ''}` : 'Check this out on ERRORHACKER';
+  try {
+    if (navigator.share) { await navigator.share({ title, text, url }); return; }
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success('Link copied', { description: url });
+  } catch {
+    window.prompt('Copy this link:', url);
+  }
 };
 
 const ProfileHeader = ({ profile, postCount, reelCount, brandLogo }) => (
@@ -51,35 +68,6 @@ const ProfileHeader = ({ profile, postCount, reelCount, brandLogo }) => (
   </div>
 );
 
-const PostTile = ({ post, onOpen }) => (
-  <button onClick={() => onOpen(post)} data-testid={`feed-post-tile-${post.id}`} className="group relative aspect-square overflow-hidden bg-[var(--eh-bg-2)]">
-    <img src={post.image_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-      <div className="flex items-center gap-5 eh-mono text-white font-bold">
-        <span className="flex items-center gap-1.5"><Heart size={18} fill="white" /> {fmt(post.likes_count)}</span>
-        <span className="flex items-center gap-1.5"><MessageCircle size={18} fill="white" /> {fmt(post.comments_count)}</span>
-      </div>
-    </div>
-    {post.pinned && <span className="absolute top-2 left-2 text-[9px] eh-mono px-1.5 py-0.5 rounded bg-black/70 text-[var(--eh-green)] tracking-widest">PINNED</span>}
-  </button>
-);
-
-const ReelTile = ({ reel, onOpen }) => (
-  <button onClick={() => onOpen(reel)} data-testid={`feed-reel-tile-${reel.id}`} className="group relative overflow-hidden bg-[var(--eh-bg-2)]" style={{ aspectRatio: '9/16' }}>
-    {reel.thumb_url ? (
-      <img src={reel.thumb_url} alt="" className="w-full h-full object-cover" />
-    ) : (
-      <video src={reel.video_url} className="w-full h-full object-cover" muted preload="metadata" />
-    )}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-    <div className="absolute top-2 right-2"><Film size={14} className="text-white" /></div>
-    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between eh-mono text-white text-[11px] font-bold">
-      <span className="flex items-center gap-1"><Eye size={12} /> {fmt(reel.views_count)}</span>
-      <span className="flex items-center gap-1"><Heart size={12} fill="white" /> {fmt(reel.likes_count)}</span>
-    </div>
-  </button>
-);
-
 const CommentList = ({ items }) => (
   <div className="space-y-3">
     {items.length === 0 && <div className="opacity-60 eh-mono text-xs text-center py-4">No comments yet. Be the first.</div>}
@@ -100,49 +88,99 @@ const CommentList = ({ items }) => (
   </div>
 );
 
-const sharePostOrReel = async ({ type, id, caption, displayName }) => {
-  const url = `${window.location.origin}/feed/${type === 'reel' ? 'r' : 'p'}/${id}`;
-  const title = `${displayName || 'ERRORHACKER'} on ERRORHACKER Feed`;
-  const text = caption ? `${caption.slice(0, 120)}${caption.length > 120 ? '…' : ''}` : 'Check this out on ERRORHACKER';
-  try {
-    if (navigator.share) {
-      await navigator.share({ title, text, url });
-      return;
-    }
-  } catch (e) {
-    if (e?.name === 'AbortError') return; // user cancelled
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    toast.success('Link copied', { description: url });
-  } catch {
-    // last-resort fallback
-    window.prompt('Copy this link:', url);
-  }
-};
-
-const PostModal = ({ post, onClose, onMutate }) => {
+// Single post card in vertical feed (Instagram-style)
+const PostCard = ({ post, brandLogo, onMutate, onOpenComments }) => {
   const { user } = useAuth();
   const nav = useNavigate();
-  const [comments, setComments] = useState([]);
-  const [text, setText] = useState('');
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likes, setLikes] = useState(post.likes_count);
-  const [busy, setBusy] = useState(false);
+  const cardRef = useRef(null);
+  const viewedRef = useRef(false);
+  const [doubleTapHeart, setDoubleTapHeart] = useState(false);
 
   useEffect(() => {
-    api.feedPostComments(post.id).then(setComments).catch(() => {});
-    api.feedViewPost(post.id, getViewSession()).catch(() => {});
+    if (!cardRef.current) return;
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting && !viewedRef.current) {
+          viewedRef.current = true;
+          api.feedViewPost(post.id, getViewSession()).catch(() => {});
+        }
+      });
+    }, { threshold: 0.5 });
+    io.observe(cardRef.current);
+    return () => io.disconnect();
   }, [post.id]);
 
-  const toggleLike = async () => {
+  const doLike = async (forceLike = false) => {
     if (!user) { toast.error('Login to like'); nav('/login'); return; }
+    if (forceLike && liked) return; // double-tap should never unlike
     try {
       const r = await api.feedLikePost(post.id);
       setLiked(r.liked); setLikes(r.likes_count);
       onMutate?.({ ...post, liked_by_me: r.liked, likes_count: r.likes_count });
     } catch (e) { toast.error(e.message); }
   };
+
+  const handleDoubleTap = () => {
+    if (!user) return;
+    if (!liked) doLike(true);
+    setDoubleTapHeart(true);
+    setTimeout(() => setDoubleTapHeart(false), 700);
+  };
+
+  return (
+    <article ref={cardRef} id={`post-${post.id}`} data-testid={`feed-post-card-${post.id}`} className="border-b border-[var(--eh-border)] pb-4">
+      {/* header */}
+      <div className="flex items-center gap-3 px-3 py-3">
+        <div className="w-9 h-9 rounded-full overflow-hidden p-[2px] shrink-0" style={{ background: 'conic-gradient(from 180deg, var(--eh-green), #4de0ff, #a855f7, var(--eh-green))' }}>
+          <img src={brandLogo} className="w-full h-full rounded-full object-cover bg-black" alt="" />
+        </div>
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-sm font-bold truncate">errorhacker</span>
+          <BadgeCheck size={14} className="text-[#4de0ff] shrink-0" />
+        </div>
+        {post.location && <span className="eh-mono text-[10px] opacity-60 ml-auto flex items-center gap-1 truncate max-w-[40%]"><MapPin size={10} /> {post.location}</span>}
+      </div>
+      {/* media */}
+      <div className="relative bg-black select-none" onDoubleClick={handleDoubleTap}>
+        <img src={post.image_url} loading="lazy" className="w-full max-h-[80vh] object-contain" alt="" />
+        {doubleTapHeart && (
+          <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <Heart size={96} fill="#ff2a3a" color="#ff2a3a" className="drop-shadow-[0_0_20px_rgba(255,42,58,.7)] eh-pop" />
+          </div>
+        )}
+      </div>
+      {/* actions */}
+      <div className="flex items-center gap-4 px-3 pt-3">
+        <button onClick={() => doLike(false)} data-testid={`post-card-like-${post.id}`} aria-label="like" className="active:scale-90 transition-transform"><Heart size={26} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} /></button>
+        <button onClick={() => onOpenComments(post)} data-testid={`post-card-comments-${post.id}`} aria-label="comments" className="active:scale-90 transition-transform"><MessageCircle size={26} /></button>
+        <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid={`post-card-share-${post.id}`} aria-label="share" className="active:scale-90 transition-transform"><Share2 size={24} /></button>
+      </div>
+      {/* meta */}
+      <div className="px-3 pt-2 text-sm">
+        <div className="font-bold eh-mono text-xs">{fmt(likes)} likes · {fmt(post.views_count)} views</div>
+        {post.caption && <div className="mt-1.5 leading-6 line-clamp-3"><span className="font-bold mr-2">errorhacker</span>{post.caption}</div>}
+        {post.comments_count > 0 && (
+          <button onClick={() => onOpenComments(post)} className="mt-1.5 text-xs opacity-60 hover:opacity-100">View all {fmt(post.comments_count)} comments</button>
+        )}
+        <div className="eh-mono text-[10px] opacity-50 uppercase mt-1.5">{new Date(post.created_at).toLocaleDateString()}</div>
+      </div>
+    </article>
+  );
+};
+
+// Comments-only bottom sheet for posts
+const CommentsSheet = ({ post, onClose, onMutate }) => {
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.feedPostComments(post.id).then(setComments).catch(() => {});
+  }, [post.id]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -153,132 +191,200 @@ const PostModal = ({ post, onClose, onMutate }) => {
       const c = await api.feedAddPostComment(post.id, text.trim());
       setComments(prev => [...prev, c]); setText('');
       onMutate?.({ ...post, comments_count: (post.comments_count || 0) + 1 });
-    } catch (e) { toast.error(e.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setBusy(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="w-full max-w-5xl max-h-[92vh] eh-panel grid grid-cols-1 md:grid-cols-[1fr_360px] overflow-hidden bg-[#0d1115]">
-        <div className="bg-black flex items-center justify-center max-h-[60vh] md:max-h-[92vh]">
-          <img src={post.image_url} className="max-w-full max-h-[60vh] md:max-h-[92vh] object-contain" alt="" />
+    <div className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="w-full sm:max-w-md sm:rounded eh-panel max-h-[85vh] flex flex-col bg-[#0d1115]">
+        <div className="flex items-center justify-between p-3 border-b border-[var(--eh-border)]">
+          <div className="font-bold text-sm">Comments</div>
+          <button onClick={onClose} aria-label="close" className="opacity-70 hover:opacity-100"><X size={18} /></button>
         </div>
-        <div className="flex flex-col h-[40vh] md:h-[92vh] border-l border-[var(--eh-border)]">
-          <div className="flex items-center justify-between p-3 border-b border-[var(--eh-border)]">
-            <div className="flex items-center gap-2 text-sm font-bold">errorhacker <BadgeCheck size={14} className="text-[#4de0ff]" /></div>
-            <button onClick={onClose} className="opacity-70 hover:opacity-100"><X size={18} /></button>
-          </div>
-          {post.location && <div className="px-3 py-2 eh-mono text-[11px] opacity-70 flex items-center gap-1 border-b border-[var(--eh-border)]"><MapPin size={11} /> {post.location}</div>}
-          <div className="flex-1 overflow-y-auto eh-scroll p-3">
-            {post.caption && <div className="text-sm mb-4 leading-6"><span className="font-bold mr-2">errorhacker</span>{post.caption}</div>}
-            <CommentList items={comments} />
-          </div>
-          <div className="border-t border-[var(--eh-border)] p-3">
-            <div className="flex items-center gap-4 mb-2">
-              <button onClick={toggleLike} data-testid="post-like-btn" className="transition-transform active:scale-90"><Heart size={22} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} /></button>
-              <MessageCircle size={22} />
-              <button onClick={() => sharePostOrReel({ type: 'post', id: post.id, caption: post.caption })} data-testid="post-share-btn" aria-label="Share post" className="transition-transform active:scale-90 ml-auto"><Share2 size={22} /></button>
-            </div>
-            <div className="eh-mono text-xs font-bold mb-1">{fmt(likes)} likes · {fmt(post.views_count)} views</div>
-            <div className="eh-mono text-[10px] opacity-50 uppercase">{new Date(post.created_at).toLocaleDateString()}</div>
-          </div>
-          <form onSubmit={submit} className="border-t border-[var(--eh-border)] flex">
-            <input value={text} onChange={e => setText(e.target.value)} data-testid="post-comment-input" placeholder={user ? 'Add a comment…' : 'Login to comment'} disabled={!user} className="flex-1 bg-transparent px-3 py-3 text-sm outline-none disabled:opacity-50" />
-            <button data-testid="post-comment-submit" disabled={busy || !text.trim() || !user} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
-          </form>
+        <div className="flex-1 overflow-y-auto eh-scroll p-3">
+          <CommentList items={comments} />
         </div>
+        <form onSubmit={submit} className="border-t border-[var(--eh-border)] flex">
+          <input value={text} onChange={e => setText(e.target.value)} data-testid="post-sheet-comment-input" placeholder={user ? 'Add a comment…' : 'Login to comment'} disabled={!user} className="flex-1 bg-transparent px-3 py-3 text-sm outline-none disabled:opacity-50" />
+          <button data-testid="post-sheet-comment-submit" disabled={busy || !text.trim() || !user} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
+        </form>
       </div>
     </div>
   );
 };
 
-const ReelPlayer = ({ reel, onClose, onMutate }) => {
+// Vertical TikTok/Instagram-Reels-style feed
+const ReelsFeed = ({ reels, onMutate, initialReelId, onExit }) => {
   const { user } = useAuth();
   const nav = useNavigate();
-  const videoRef = useRef(null);
-  const [muted, setMuted] = useState(true);
-  const [liked, setLiked] = useState(reel.liked_by_me);
-  const [likes, setLikes] = useState(reel.likes_count);
+  const containerRef = useRef(null);
+  const videoRefs = useRef({});
+  const [muted, setMuted] = useState(false); // audio ON by default
+  const [activeId, setActiveId] = useState(null);
+  const [commentsFor, setCommentsFor] = useState(null);
   const [comments, setComments] = useState([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [showComments, setShowComments] = useState(false);
+  const [showUnmuteHint, setShowUnmuteHint] = useState(false);
 
+  // Track active reel via intersection
   useEffect(() => {
-    api.feedReelComments(reel.id).then(setComments).catch(() => {});
-    api.feedViewReel(reel.id, getViewSession()).catch(() => {});
-  }, [reel.id]);
+    if (!containerRef.current) return;
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        const id = e.target.getAttribute('data-reel-id');
+        const v = videoRefs.current[id];
+        if (!v) return;
+        if (e.isIntersecting && e.intersectionRatio > 0.7) {
+          setActiveId(id);
+          v.currentTime = v.currentTime || 0;
+          // try unmuted playback first
+          v.muted = muted;
+          const tryPlay = v.play();
+          if (tryPlay && tryPlay.catch) {
+            tryPlay.catch(() => {
+              // browser blocked autoplay-with-audio → fallback to muted
+              v.muted = true;
+              setMuted(true);
+              setShowUnmuteHint(true);
+              v.play().catch(() => {});
+            });
+          }
+          // record view once
+          if (!v.dataset.viewed) {
+            v.dataset.viewed = '1';
+            api.feedViewReel(id, getViewSession()).catch(() => {});
+          }
+        } else {
+          v.pause();
+        }
+      });
+    }, { root: containerRef.current, threshold: [0, 0.7, 1] });
+    Array.from(containerRef.current.querySelectorAll('[data-reel-id]')).forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reels.length]);
 
-  const toggleLike = async () => {
+  // Apply mute toggle to all videos
+  useEffect(() => {
+    Object.values(videoRefs.current).forEach(v => { if (v) v.muted = muted; });
+    if (!muted) setShowUnmuteHint(false);
+  }, [muted]);
+
+  // Scroll to initial reel from deep-link
+  useEffect(() => {
+    if (!initialReelId || !containerRef.current) return;
+    const el = containerRef.current.querySelector(`[data-reel-id="${initialReelId}"]`);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }, [initialReelId, reels.length]);
+
+  const toggleLike = async (reel) => {
     if (!user) { toast.error('Login to like'); nav('/login'); return; }
     try {
       const r = await api.feedLikeReel(reel.id);
-      setLiked(r.liked); setLikes(r.likes_count);
       onMutate?.({ ...reel, liked_by_me: r.liked, likes_count: r.likes_count });
     } catch (e) { toast.error(e.message); }
   };
 
-  const submit = async (e) => {
+  const openComments = async (reel) => {
+    setCommentsFor(reel);
+    try { setComments(await api.feedReelComments(reel.id)); } catch { setComments([]); }
+  };
+
+  const submitComment = async (e) => {
     e.preventDefault();
     if (!text.trim()) return;
     if (!user) { toast.error('Login to comment'); nav('/login'); return; }
     setBusy(true);
     try {
-      const c = await api.feedAddReelComment(reel.id, text.trim());
+      const c = await api.feedAddReelComment(commentsFor.id, text.trim());
       setComments(prev => [...prev, c]); setText('');
-      onMutate?.({ ...reel, comments_count: (reel.comments_count || 0) + 1 });
-    } catch (e) { toast.error(e.message); }
+      onMutate?.({ ...commentsFor, comments_count: (commentsFor.comments_count || 0) + 1 });
+    } catch (err) { toast.error(err.message); }
     finally { setBusy(false); }
   };
 
+  if (reels.length === 0) {
+    return <div className="py-20 text-center opacity-60 eh-mono text-xs">No reels yet.</div>;
+  }
+
   return (
-    <div className="fixed inset-0 z-[80] bg-black flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="relative w-full max-w-md aspect-[9/16] max-h-[92vh] bg-black overflow-hidden rounded">
-        <video ref={videoRef} src={reel.video_url} className="absolute inset-0 w-full h-full object-contain bg-black" autoPlay loop muted={muted} playsInline onClick={() => videoRef.current && (videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause())} />
-        <button onClick={onClose} className="absolute top-3 left-3 w-9 h-9 grid place-items-center rounded-full bg-black/50 text-white z-10"><X size={18} /></button>
-        <button onClick={() => setMuted(m => !m)} className="absolute top-3 right-3 w-9 h-9 grid place-items-center rounded-full bg-black/50 text-white z-10">{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
-        {/* Right action rail */}
-        <div className="absolute right-3 bottom-24 flex flex-col items-center gap-5 text-white z-10">
-          <button onClick={toggleLike} data-testid="reel-like-btn" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-            <Heart size={28} fill={liked ? '#ff2a3a' : 'none'} color={liked ? '#ff2a3a' : 'currentColor'} />
-            <span className="text-[11px] font-bold">{fmt(likes)}</span>
-          </button>
-          <button onClick={() => setShowComments(true)} data-testid="reel-open-comments" className="flex flex-col items-center gap-1">
-            <MessageCircle size={28} />
-            <span className="text-[11px] font-bold">{fmt(comments.length)}</span>
-          </button>
-          <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid="reel-share-btn" aria-label="Share reel" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
-            <Share2 size={28} />
-            <span className="text-[11px] font-bold">Share</span>
-          </button>
-          <div className="flex flex-col items-center gap-1 opacity-90">
-            <Eye size={26} />
-            <span className="text-[11px] font-bold">{fmt(reel.views_count)}</span>
-          </div>
-        </div>
-        {/* Bottom caption */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="font-bold text-sm">errorhacker</span>
-            <BadgeCheck size={14} className="text-[#4de0ff]" />
-          </div>
-          {reel.caption && <div className="text-xs leading-5 opacity-95 line-clamp-2">{reel.caption}</div>}
-        </div>
-        {/* Comments slide-up */}
-        {showComments && (
-          <div className="absolute inset-0 bg-black/85 z-20 flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black">
+      <button onClick={onExit} data-testid="reels-close" aria-label="close reels" className="fixed top-4 left-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white"><X size={20} /></button>
+      <button onClick={() => setMuted(m => !m)} data-testid="reels-mute-toggle" aria-label="toggle audio" className="fixed top-4 right-4 z-20 w-10 h-10 grid place-items-center rounded-full bg-black/60 text-white">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+
+      <div ref={containerRef} className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory eh-no-scrollbar">
+        {reels.map(reel => (
+          <section key={reel.id} data-reel-id={reel.id} data-testid={`reel-section-${reel.id}`} className="relative h-[100dvh] snap-start snap-always bg-black flex items-center justify-center">
+            <video
+              ref={el => { if (el) videoRefs.current[reel.id] = el; }}
+              src={reel.video_url}
+              className="absolute inset-0 w-full h-full object-contain bg-black"
+              loop
+              playsInline
+              preload="metadata"
+              poster={reel.thumb_url || undefined}
+              onClick={(e) => {
+                const v = e.currentTarget;
+                if (v.paused) v.play().catch(()=>{});
+                else v.pause();
+              }}
+            />
+            {/* Right action rail */}
+            <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 text-white z-10">
+              <button onClick={() => toggleLike(reel)} data-testid={`reel-card-like-${reel.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                <Heart size={30} fill={reel.liked_by_me ? '#ff2a3a' : 'none'} color={reel.liked_by_me ? '#ff2a3a' : 'currentColor'} />
+                <span className="text-[11px] font-bold">{fmt(reel.likes_count)}</span>
+              </button>
+              <button onClick={() => openComments(reel)} data-testid={`reel-card-comments-${reel.id}`} className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                <MessageCircle size={30} />
+                <span className="text-[11px] font-bold">{fmt(reel.comments_count)}</span>
+              </button>
+              <button onClick={() => sharePostOrReel({ type: 'reel', id: reel.id, caption: reel.caption })} data-testid={`reel-card-share-${reel.id}`} aria-label="share" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+                <Share2 size={28} />
+                <span className="text-[11px] font-bold">Share</span>
+              </button>
+              <div className="flex flex-col items-center gap-1 opacity-90">
+                <Eye size={26} />
+                <span className="text-[11px] font-bold">{fmt(reel.views_count)}</span>
+              </div>
+            </div>
+            {/* Bottom caption */}
+            <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 pb-6 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="font-bold text-sm">errorhacker</span>
+                <BadgeCheck size={14} className="text-[#4de0ff]" />
+              </div>
+              {reel.caption && <div className="text-xs leading-5 opacity-95 line-clamp-3">{reel.caption}</div>}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {/* Tap-to-unmute hint */}
+      {showUnmuteHint && muted && (
+        <button onClick={() => setMuted(false)} data-testid="reels-unmute-hint" className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-full bg-black/70 border border-white/20 text-white text-xs eh-mono flex items-center gap-2 backdrop-blur">
+          <VolumeX size={14} /> tap to unmute
+        </button>
+      )}
+
+      {/* Comments sheet */}
+      {commentsFor && (
+        <div className="fixed inset-0 z-[90] bg-black/85 flex items-end justify-center" onClick={() => setCommentsFor(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full sm:max-w-md eh-panel rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col bg-[#0d1115]">
             <div className="flex items-center justify-between p-3 border-b border-white/10 text-white">
               <div className="font-bold text-sm">Comments</div>
-              <button onClick={() => setShowComments(false)}><X size={18} /></button>
+              <button onClick={() => setCommentsFor(null)} aria-label="close"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto eh-scroll p-3 text-white"><CommentList items={comments} /></div>
-            <form onSubmit={submit} className="border-t border-white/10 flex">
+            <form onSubmit={submitComment} className="border-t border-white/10 flex">
               <input value={text} onChange={e => setText(e.target.value)} placeholder={user ? 'Add a comment…' : 'Login to comment'} disabled={!user} className="flex-1 bg-transparent px-3 py-3 text-sm text-white outline-none disabled:opacity-50" />
               <button disabled={busy || !text.trim() || !user} className="px-4 text-[var(--eh-green)] font-bold disabled:opacity-30">Post</button>
             </form>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -286,13 +392,13 @@ const ReelPlayer = ({ reel, onClose, onMutate }) => {
 const FeedPage = () => {
   const { config } = useSiteConfig();
   const { postId, reelId } = useParams();
+  const nav = useNavigate();
   const profile = config.feedProfile || { username: 'errorhacker', displayName: config.site?.name || 'ERRORHACKER', bio: '', followers: 0, following: 0, verified: true };
   const [tab, setTab] = useState(reelId ? 'reels' : 'posts');
   const [posts, setPosts] = useState([]);
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openPost, setOpenPost] = useState(null);
-  const [openReel, setOpenReel] = useState(null);
+  const [commentsPost, setCommentsPost] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -302,38 +408,35 @@ const FeedPage = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  // Auto-open shared post/reel from deep link
+  // Scroll to shared post on load
   useEffect(() => {
     if (postId && posts.length) {
-      const p = posts.find(x => x.id === postId);
-      if (p) { setOpenPost(p); setTab('posts'); }
-      else if (!loading) toast.error('Post not found');
+      setTab('posts');
+      const tryScroll = () => {
+        const el = document.getElementById(`post-${postId}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      setTimeout(tryScroll, 250);
     }
-  }, [postId, posts, loading]);
-  useEffect(() => {
-    if (reelId && reels.length) {
-      const r = reels.find(x => x.id === reelId);
-      if (r) { setOpenReel(r); setTab('reels'); }
-      else if (!loading) toast.error('Reel not found');
-    }
-  }, [reelId, reels, loading]);
+  }, [postId, posts.length]);
 
-  const handleOpenPost = (p) => { setOpenPost(p); window.history.replaceState(null, '', `/feed/p/${p.id}`); };
-  const handleOpenReel = (r) => { setOpenReel(r); window.history.replaceState(null, '', `/feed/r/${r.id}`); };
-  const handleClosePost = () => { setOpenPost(null); window.history.replaceState(null, '', '/feed'); };
-  const handleCloseReel = () => { setOpenReel(null); window.history.replaceState(null, '', '/feed'); };
+  useEffect(() => {
+    if (reelId && reels.length) setTab('reels');
+  }, [reelId, reels.length]);
 
   const postCount = useMemo(() => posts.length, [posts]);
   const reelCount = useMemo(() => reels.length, [reels]);
 
-  const updatePost = (p) => setPosts(prev => prev.map(x => x.id === p.id ? p : x));
-  const updateReel = (r) => setReels(prev => prev.map(x => x.id === r.id ? r : x));
+  const updatePost = useCallback((p) => setPosts(prev => prev.map(x => x.id === p.id ? p : x)), []);
+  const updateReel = useCallback((r) => setReels(prev => prev.map(x => x.id === r.id ? r : x)), []);
+
+  const exitReels = () => { nav('/feed'); setTab('posts'); };
 
   return (
     <section className="min-h-[80vh] eh-grid-bg">
       <ProfileHeader profile={profile} postCount={postCount} reelCount={reelCount} brandLogo={config.site.logoUrl} />
-      <div className="max-w-4xl mx-auto px-3 sm:px-5">
-        <div className="flex justify-center border-b border-[var(--eh-border)]">
+      <div className="max-w-xl mx-auto">
+        <div className="flex justify-center border-b border-[var(--eh-border)] sticky top-[64px] z-10 backdrop-blur bg-[rgba(5,6,8,.85)]">
           <button onClick={() => setTab('posts')} data-testid="feed-tab-posts" className={`flex items-center gap-2 px-5 py-3 text-xs eh-mono tracking-widest uppercase ${tab === 'posts' ? 'text-[var(--eh-green)] border-t-2 border-[var(--eh-green)]' : 'opacity-70'}`}>
             <Grid3x3 size={14} /> POSTS
           </button>
@@ -344,19 +447,19 @@ const FeedPage = () => {
         {loading ? (
           <div className="py-20 grid place-items-center opacity-70"><Loader2 className="animate-spin" /></div>
         ) : tab === 'posts' ? (
-          <div className="grid grid-cols-3 gap-1 sm:gap-1.5 py-4">
-            {posts.length === 0 && <div className="col-span-3 py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
-            {posts.map(p => <PostTile key={p.id} post={p} onOpen={handleOpenPost} />)}
+          <div className="py-2">
+            {posts.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
+            {posts.map(p => <PostCard key={p.id} post={p} brandLogo={config.site.logoUrl} onMutate={updatePost} onOpenComments={setCommentsPost} />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-1.5 py-4">
-            {reels.length === 0 && <div className="col-span-3 py-20 text-center opacity-60 eh-mono text-xs">No reels yet.</div>}
-            {reels.map(r => <ReelTile key={r.id} reel={r} onOpen={handleOpenReel} />)}
+          <div className="py-10 text-center">
+            <div className="eh-mono text-xs opacity-60 mb-4">Tap any reel to enter full-screen mode</div>
+            <button onClick={() => nav('/feed/r/' + (reels[0]?.id || ''))} disabled={!reels.length} data-testid="feed-open-reels" className="eh-btn-primary text-xs"><Film size={14} /> WATCH REELS ({reelCount})</button>
           </div>
         )}
       </div>
-      {openPost && <PostModal post={openPost} onClose={handleClosePost} onMutate={updatePost} />}
-      {openReel && <ReelPlayer reel={openReel} onClose={handleCloseReel} onMutate={updateReel} />}
+      {commentsPost && <CommentsSheet post={commentsPost} onClose={() => setCommentsPost(null)} onMutate={updatePost} />}
+      {tab === 'reels' && reels.length > 0 && <ReelsFeed reels={reels} onMutate={updateReel} initialReelId={reelId} onExit={exitReels} />}
     </section>
   );
 };
