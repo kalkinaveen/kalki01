@@ -611,7 +611,6 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
                   loop
                   playsInline
                   muted
-                  autoPlay
                   preload="metadata"
                   poster={it.thumb_url || undefined}
                   onClick={(e) => { const v = e.currentTarget; v.paused ? v.play().catch(()=>{}) : v.pause(); }}
