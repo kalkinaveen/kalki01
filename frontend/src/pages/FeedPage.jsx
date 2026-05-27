@@ -637,13 +637,26 @@ const FeedPage = () => {
 
   const openPostObj = useMemo(() => posts.find(p => p.id === openPostId) || null, [openPostId, posts]);
 
+  // Combined Posts + Reels feed for the "ALL" tab — sorted by created_at desc, pinned first
+  const combined = useMemo(() => {
+    const items = [
+      ...posts.map(p => ({ ...p, _kind: 'post' })),
+      ...reels.map(r => ({ ...r, _kind: 'reel' })),
+    ];
+    items.sort((a, b) => {
+      if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    return items;
+  }, [posts, reels]);
+
   return (
     <section className="min-h-[80vh] eh-grid-bg">
       <ProfileHeader profile={profile} postCount={postCount} reelCount={reelCount} brandLogo={config.site.logoUrl} />
       <div className="max-w-xl mx-auto">
         <div className="flex justify-center border-b border-[var(--eh-border)] sticky top-[64px] z-10 backdrop-blur bg-[rgba(5,6,8,.85)]">
           <button onClick={() => setTab('posts')} data-testid="feed-tab-posts" className={`flex items-center gap-2 px-5 py-3 text-xs eh-mono tracking-widest uppercase ${tab === 'posts' ? 'text-[var(--eh-green)] border-t-2 border-[var(--eh-green)]' : 'opacity-70'}`}>
-            <Grid3x3 size={14} /> POSTS
+            <Grid3x3 size={14} /> ALL
           </button>
           <button onClick={() => setTab('reels')} data-testid="feed-tab-reels" className={`flex items-center gap-2 px-5 py-3 text-xs eh-mono tracking-widest uppercase ${tab === 'reels' ? 'text-[var(--eh-green)] border-t-2 border-[var(--eh-green)]' : 'opacity-70'}`}>
             <Film size={14} /> REELS
@@ -653,9 +666,27 @@ const FeedPage = () => {
           <div className="py-20 grid place-items-center opacity-70"><Loader2 className="animate-spin" /></div>
         ) : tab === 'posts' ? (
           <div className="py-3">
-            {posts.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No posts yet.</div>}
+            {combined.length === 0 && <div className="py-20 text-center opacity-60 eh-mono text-xs">No posts or reels yet.</div>}
             <div className="grid grid-cols-3 gap-1 sm:gap-1.5 px-1 sm:px-0">
-              {posts.map(p => <PostTile key={p.id} post={p} onOpen={openPost} />)}
+              {combined.map(item => item._kind === 'reel' ? (
+                <button key={`r-${item.id}`} onClick={() => openReel(item.id)} data-testid={`feed-grid-reel-${item.id}`} className="group relative aspect-square overflow-hidden bg-[var(--eh-bg-2)]">
+                  {item.thumb_url ? (
+                    <img src={item.thumb_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <video src={item.video_url} className="w-full h-full object-cover" muted preload="metadata" />
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <div className="flex items-center gap-5 eh-mono text-white font-bold text-sm">
+                      <span className="flex items-center gap-1.5"><Heart size={18} fill="white" /> {fmt(item.likes_count)}</span>
+                      <span className="flex items-center gap-1.5"><Eye size={18} /> {fmt(item.views_count)}</span>
+                    </div>
+                  </div>
+                  <div className="absolute top-1.5 right-1.5"><Film size={14} className="text-white drop-shadow" /></div>
+                  {item.pinned && <span className="absolute top-1.5 left-1.5 text-[9px] eh-mono px-1.5 py-0.5 rounded bg-black/70 text-[var(--eh-green)] tracking-widest">PINNED</span>}
+                </button>
+              ) : (
+                <PostTile key={`p-${item.id}`} post={item} onOpen={openPost} />
+              ))}
             </div>
           </div>
         ) : (
