@@ -393,7 +393,7 @@ const RecoveryPage = () => {
       <TrustBar trust={cfg.trust} stats={stats} />
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-6">
-        <div className="lg:order-1 order-2 eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">
+        <div className="eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">
           <Stepper active={step} />
 
           {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} />}
@@ -413,7 +413,7 @@ const RecoveryPage = () => {
             )}
           </div>
         </div>
-        <div className="lg:order-2 order-1 min-w-0">
+        <div className="min-w-0">
           <PriceCard service={service} urgency={data.urgency} currency={data.currency} />
           <div className="eh-panel p-4 mt-3">
             <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRIVACY</div>
