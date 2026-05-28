@@ -1275,16 +1275,20 @@ async def admin_add_team(body: Dict[str, Any] = Body(...), x_admin_token: Option
         "daily_upload_limit": int(body.get("daily_upload_limit", 10)),
         "max_upload_mb": int(body.get("max_upload_mb", 15)),
     }
+    # If a password was provided, set/reset it for both new and existing users
+    pw = body.get("password") or ""
+    if pw:
+        if len(pw) < 6:
+            raise HTTPException(status_code=400, detail="password must be 6+ chars")
+        upd["password_hash"] = _hash_pw(pw)
     if not u:
-        # create stub user with provided password
-        pw = body.get("password")
-        if not pw or len(pw) < 6:
+        # Brand-new account requires a password
+        if not pw:
             raise HTTPException(status_code=400, detail="password (6+ chars) required to create new mod")
         u = {
             "user_id": f"user_{uuid.uuid4().hex[:12]}",
             "email": email,
             "name": body.get("name") or email.split("@")[0],
-            "password_hash": _hash_pw(pw),
             "createdAt": _now_iso(),
             **upd,
         }
