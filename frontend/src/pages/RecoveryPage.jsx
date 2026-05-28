@@ -98,24 +98,24 @@ const TrustBar = ({ trust, stats }) => (
 const StepService = ({ services, value, onChange }) => (
   <div className="space-y-2.5">
     <div className="eh-kicker mb-1">// SELECT THE ISSUE</div>
-    <div className="grid sm:grid-cols-2 gap-3">
+    <div className="grid sm:grid-cols-2 gap-2.5 sm:gap-3">
       {services.filter(s => s.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(s => {
         const sel = value === s.id;
         return (
           <button key={s.id} type="button" onClick={() => onChange(s.id)} data-testid={`recovery-svc-${s.issue_key}`}
-            className={`text-left p-4 rounded-md border transition-colors ${sel ? 'border-[var(--eh-green)] bg-[rgba(0,255,157,.05)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <div className="font-bold text-sm">{s.name}</div>
-              {sel && <CheckCircle2 size={16} className="text-[var(--eh-green)] shrink-0" />}
+            className={`text-left p-3.5 sm:p-4 rounded-md border transition-colors min-w-0 overflow-hidden ${sel ? 'border-[var(--eh-green)] bg-[rgba(0,255,157,.05)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>
+            <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
+              <div className="font-bold text-sm break-words min-w-0 flex-1" style={{ fontFamily: 'Inter, sans-serif' }}>{s.name}</div>
+              {sel && <CheckCircle2 size={16} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
             </div>
-            <div className="flex items-center gap-3 eh-mono text-[10px] opacity-70 mb-2">
+            <div className="flex items-center gap-2 eh-mono text-[10px] opacity-70 mb-2 flex-wrap">
               <span>ETA {s.eta_min_days}–{s.eta_max_days}d</span>
-              <span>·</span>
+              <span className="opacity-50">·</span>
               <span>{s.success_rate}% success</span>
             </div>
             <div className="space-y-1">
               {(s.bullets || []).slice(0, 3).map((b, i) => (
-                <div key={i} className="eh-mono text-[11px] opacity-70 flex gap-1.5"><span className="text-[var(--eh-green)]">›</span> {b}</div>
+                <div key={i} className="eh-mono text-[10.5px] sm:text-[11px] opacity-70 flex gap-1.5 break-words"><span className="text-[var(--eh-green)] shrink-0">›</span> <span className="min-w-0">{b}</span></div>
               ))}
             </div>
           </button>
@@ -392,8 +392,8 @@ const RecoveryPage = () => {
 
       <TrustBar trust={cfg.trust} stats={stats} />
 
-      <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-        <div className="lg:order-1 order-2 eh-panel p-5 sm:p-7">
+      <div className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-6">
+        <div className="lg:order-1 order-2 eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">
           <Stepper active={step} />
 
           {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} />}
@@ -413,7 +413,7 @@ const RecoveryPage = () => {
             )}
           </div>
         </div>
-        <div className="lg:order-2 order-1">
+        <div className="lg:order-2 order-1 min-w-0">
           <PriceCard service={service} urgency={data.urgency} currency={data.currency} />
           <div className="eh-panel p-4 mt-3">
             <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRIVACY</div>

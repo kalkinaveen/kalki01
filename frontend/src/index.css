@@ -205,8 +205,9 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-caret { display:inline-block; width:.55ch; background: var(--eh-green); animation: eh-blink 1s steps(2,start) infinite; margin-left:2px; }
 
 /* Section heading kicker */
-.eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.3em; font-family:'Share Tech Mono', monospace; font-size: .8rem; }
-.eh-kicker::before { content:''; width:8px; height:8px; border-radius:50%; background: var(--eh-green); box-shadow: 0 0 10px var(--eh-green); }
+.eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
+@media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }
+.eh-kicker::before { content:''; width:8px; height:8px; border-radius:50%; background: var(--eh-green); box-shadow: 0 0 10px var(--eh-green); flex-shrink: 0; }
 
 /* Card hover */
 .eh-card { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
