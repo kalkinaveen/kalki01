@@ -223,15 +223,25 @@ const StepContact = ({ value, onPatch, hero }) => (
   </div>
 );
 
-const SuccessScreen = ({ caseId, hero }) => (
+const SuccessScreen = ({ caseId, hero }) => {
+  const nav = useNavigate();
+  // Auto-redirect to tracker after 4s so the customer always knows where to check status next time
+  useEffect(() => {
+    const t = setTimeout(() => nav(`/track?id=${caseId}`), 4000);
+    return () => clearTimeout(t);
+  }, [caseId, nav]);
+  return (
   <div className="eh-panel p-6 sm:p-8 text-center" data-testid="recovery-success">
     <div className="w-16 h-16 rounded-full grid place-items-center mx-auto mb-4 bg-[rgba(0,255,157,.12)]">
       <CheckCircle2 size={32} className="text-[var(--eh-green)]" />
     </div>
-    <div className="eh-kicker mb-2">// CASE SUBMITTED</div>
+    <div className="eh-kicker mb-2 justify-center">// CASE SUBMITTED</div>
     <h3 className="eh-display text-2xl font-black mb-2">Your Case Will Be Reviewed Within 24h</h3>
     <div className="eh-mono text-xs opacity-70 mb-1">Case ID</div>
-    <div className="eh-neon eh-mono font-bold text-lg mb-6 break-all">{caseId}</div>
+    <div className="eh-neon eh-mono font-bold text-lg mb-5 break-all" data-testid="recovery-case-id">{caseId}</div>
+    <div className="eh-panel p-3 mb-6 bg-[rgba(0,255,157,.06)] border border-[rgba(0,255,157,.25)] flex items-center justify-center gap-2 eh-mono text-[11px]">
+      <span className="w-1.5 h-1.5 rounded-full bg-[var(--eh-green)] animate-pulse" /> // REDIRECTING TO LIVE TRACKER IN 4s
+    </div>
     <div className="grid sm:grid-cols-2 gap-3 text-left mb-6">
       {[
         { n: 1, t: 'Case Review', d: 'Your case is reviewed by our expert team within 24 hours.' },
@@ -246,14 +256,18 @@ const SuccessScreen = ({ caseId, hero }) => (
         </div>
       ))}
     </div>
-    {hero?.telegram_url && (
-      <a href={hero.telegram_url} target="_blank" rel="noreferrer" className="eh-btn-primary inline-flex items-center gap-2" data-testid="recovery-success-tg">
-        <TgIcon size={14} /> CONTINUE ON TELEGRAM
-      </a>
-    )}
-    <div className="mt-6 eh-mono text-[11px] opacity-50">256-bit encrypted · Used only for your case review</div>
+    <div className="flex flex-col sm:flex-row gap-2 justify-center">
+      <Link to={`/track?id=${caseId}`} className="eh-btn-primary inline-flex items-center justify-center gap-2" data-testid="recovery-go-track"><ArrowRight size={14} /> TRACK MY CASE NOW</Link>
+      {hero?.telegram_url && (
+        <a href={hero.telegram_url} target="_blank" rel="noreferrer" className="eh-mono text-xs px-4 py-2.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] inline-flex items-center justify-center gap-2" data-testid="recovery-success-tg">
+          <TgIcon size={14} /> CONTINUE ON TELEGRAM
+        </a>
+      )}
+    </div>
+    <div className="mt-6 eh-mono text-[11px] opacity-50">// Bookmark your case URL — you can revisit anytime</div>
   </div>
-);
+  );
+};
 
 const ReviewsSection = ({ reviews, services }) => {
   const [filter, setFilter] = useState('all');
