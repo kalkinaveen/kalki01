@@ -637,6 +637,18 @@ async def recovery_stats():
     success = int((recovered / total) * 100) if total else 0
     return {"total": total, "recovered": recovered, "weekly_recovered": weekly, "success_rate": success}
 
+@api.post("/recovery/upload-proof")
+async def recovery_upload_proof(file: UploadFile = File(...)):
+    """Public proof uploader — images only, 5MB cap. No auth required so customers can submit."""
+    ct = file.content_type or ""
+    if not ct.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files allowed")
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5MB)")
+    file_id = await fs_bucket.upload_from_stream(file.filename or "proof.bin", raw, metadata={"content_type": ct, "kind": "recovery_proof"})
+    return {"url": f"/api/feed/media/{file_id}"}
+
 # ---- Uploads ---------------------------------------------------------------
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 

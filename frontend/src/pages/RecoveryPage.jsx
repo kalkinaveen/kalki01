@@ -350,7 +350,7 @@ const RecoveryPage = () => {
     if (file.size > 5 * 1024 * 1024) { toast.error('File too large', { description: 'Max 5MB per image' }); return; }
     setUploadBusy(true);
     try {
-      const { absoluteUrl } = await api.feedUploadMedia(file);
+      const { absoluteUrl } = await api.recoveryUploadProof(file);
       setData(d => ({ ...d, proof_urls: [...(d.proof_urls || []), absoluteUrl] }));
     } catch (e) { toast.error('Upload failed', { description: e.message }); }
     finally { setUploadBusy(false); }

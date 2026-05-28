@@ -129,6 +129,14 @@ export const api = {
   recoveryUpdateReview: (id, data) => req(`/recovery/reviews/${id}`, { method: 'PATCH', body: data, admin: true }),
   recoveryDeleteReview: (id) => req(`/recovery/reviews/${id}`, { method: 'DELETE', admin: true }),
   recoveryStats: () => req('/recovery/stats'),
+  recoveryUploadProof: async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(`${BACKEND_URL}/api/recovery/upload-proof`, { method: 'POST', body: fd });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); const err = new Error(e.detail || `Upload failed (${r.status})`); err.status = r.status; throw err; }
+    const data = await r.json();
+    return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
+  },
   // team management (owner only)
   teamList: () => req('/admin/team', { admin: true }),
   teamAdd: (data) => req('/admin/team', { method: 'POST', body: data, admin: true }),
