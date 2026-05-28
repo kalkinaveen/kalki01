@@ -233,6 +233,21 @@ async def _ensure_config():
             updates["nav"] = new_nav
     except Exception:
         pass
+    # Replace 'Blogs' nav item with 'Recovery'
+    try:
+        nav = updates.get("nav") or doc.get("nav") or []
+        changed = False
+        new_nav = []
+        for n in nav:
+            if n.get("to") in ("/blogs", "/blog"):
+                new_nav.append({"label": "Recovery", "to": "/recovery"})
+                changed = True
+            else:
+                new_nav.append(n)
+        if changed:
+            updates["nav"] = new_nav
+    except Exception:
+        pass
     if updates:
         updates["updated_at"] = datetime.utcnow().isoformat()
         await db.site_config.update_one({"_id": "main"}, {"$set": updates})

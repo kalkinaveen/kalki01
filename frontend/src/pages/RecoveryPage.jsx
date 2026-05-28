@@ -21,7 +21,7 @@ const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
 const PriceCard = ({ service, urgency, currency = 'INR' }) => {
   if (!service) {
     return (
-      <div className="eh-panel p-5 sticky top-24">
+      <div className="eh-panel p-5 lg:sticky lg:top-24">
         <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRICE ESTIMATE</div>
         <div className="eh-display text-2xl font-black eh-neon mb-2">{currency === 'USD' ? '$' : '₹'}—</div>
         <div className="eh-mono text-xs opacity-60">Select a service to see your price range.</div>
@@ -33,16 +33,16 @@ const PriceCard = ({ service, urgency, currency = 'INR' }) => {
   const max = Math.round(service.price_max * mult);
   const sym = currency === 'USD' ? '$' : '₹';
   return (
-    <div className="eh-panel p-5 sticky top-24" data-testid="recovery-price-card">
+    <div className="eh-panel p-5 lg:sticky lg:top-24" data-testid="recovery-price-card">
       <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRICE ESTIMATE</div>
       <div className="eh-display text-2xl sm:text-3xl font-black eh-neon mb-1 break-all">{sym}{fmt(min)} – {sym}{fmt(max)}</div>
       <div className="eh-mono text-[10px] opacity-50 mb-4">{currency}</div>
       <div className="space-y-2.5 eh-mono text-xs">
-        <div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[var(--eh-green)] shrink-0" /> Highest Priority Processing</div>
-        <div className="flex items-center gap-2"><Lock size={14} className="text-[var(--eh-green)] shrink-0" /> Secure Transfer Protocol</div>
-        <div className="flex items-center gap-2"><Clock size={14} className="text-[var(--eh-green)] shrink-0" /> ETA: {service.eta_min_days}–{service.eta_max_days} days</div>
-        <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[var(--eh-green)] shrink-0" /> Payment On Delivery</div>
-        <div className="flex items-center gap-2 opacity-80"><BadgeCheck size={14} className="text-[#4de0ff] shrink-0" /> Success rate: {service.success_rate}%</div>
+        <div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[var(--eh-green)] shrink-0" /> <span className="break-words">Highest Priority Processing</span></div>
+        <div className="flex items-center gap-2"><Lock size={14} className="text-[var(--eh-green)] shrink-0" /> <span className="break-words">Secure Transfer Protocol</span></div>
+        <div className="flex items-center gap-2"><Clock size={14} className="text-[var(--eh-green)] shrink-0" /> <span className="break-words">ETA: {service.eta_min_days}–{service.eta_max_days} days</span></div>
+        <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[var(--eh-green)] shrink-0" /> <span className="break-words">Payment On Delivery</span></div>
+        <div className="flex items-center gap-2 opacity-80"><BadgeCheck size={14} className="text-[#4de0ff] shrink-0" /> <span className="break-words">Success rate: {service.success_rate}%</span></div>
       </div>
     </div>
   );
@@ -51,18 +51,18 @@ const PriceCard = ({ service, urgency, currency = 'INR' }) => {
 const Stepper = ({ active }) => {
   const labels = ['Pick Service', 'Case Details', 'Contact Info'];
   return (
-    <div className="flex items-center gap-1 sm:gap-2 mb-6 overflow-x-auto eh-no-scrollbar">
+    <div className="flex items-center gap-1 sm:gap-2 mb-6 -mx-1 px-1 overflow-x-auto eh-no-scrollbar">
       {labels.map((l, i) => {
         const idx = STEPS.indexOf(active);
         const isActive = i === idx;
         const isDone = i < idx;
         return (
           <React.Fragment key={l}>
-            <div className={`flex items-center gap-2 px-3 py-2 rounded eh-mono text-[11px] tracking-widest uppercase shrink-0 ${isActive ? 'bg-[rgba(0,255,157,.12)] text-[var(--eh-green)] border border-[var(--eh-green)]' : isDone ? 'opacity-90' : 'opacity-50'}`}>
-              <span className={`w-5 h-5 grid place-items-center rounded-full text-[10px] font-bold ${isActive || isDone ? 'bg-[var(--eh-green)] text-[#001a10]' : 'border border-[var(--eh-border)]'}`}>{isDone ? '✓' : i + 1}</span>
+            <div className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded eh-mono text-[10px] sm:text-[11px] tracking-widest uppercase shrink-0 whitespace-nowrap ${isActive ? 'bg-[rgba(0,255,157,.12)] text-[var(--eh-green)] border border-[var(--eh-green)]' : isDone ? 'opacity-90' : 'opacity-50'}`}>
+              <span className={`w-5 h-5 grid place-items-center rounded-full text-[10px] font-bold shrink-0 ${isActive || isDone ? 'bg-[var(--eh-green)] text-[#001a10]' : 'border border-[var(--eh-border)]'}`}>{isDone ? '✓' : i + 1}</span>
               <span>{l}</span>
             </div>
-            {i < labels.length - 1 && <ChevronRight size={14} className="opacity-40 shrink-0" />}
+            {i < labels.length - 1 && <ChevronRight size={12} className="opacity-40 shrink-0" />}
           </React.Fragment>
         );
       })}
@@ -393,7 +393,7 @@ const RecoveryPage = () => {
       <TrustBar trust={cfg.trust} stats={stats} />
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-        <div className="eh-panel p-5 sm:p-7">
+        <div className="lg:order-1 order-2 eh-panel p-5 sm:p-7">
           <Stepper active={step} />
 
           {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} />}
@@ -413,7 +413,7 @@ const RecoveryPage = () => {
             )}
           </div>
         </div>
-        <div>
+        <div className="lg:order-2 order-1">
           <PriceCard service={service} urgency={data.urgency} currency={data.currency} />
           <div className="eh-panel p-4 mt-3">
             <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRIVACY</div>
