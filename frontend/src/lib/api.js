@@ -129,6 +129,19 @@ export const api = {
   recoveryUpdateReview: (id, data) => req(`/recovery/reviews/${id}`, { method: 'PATCH', body: data, admin: true }),
   recoveryDeleteReview: (id) => req(`/recovery/reviews/${id}`, { method: 'DELETE', admin: true }),
   recoveryStats: () => req('/recovery/stats'),
+  // team management (owner only)
+  teamList: () => req('/admin/team', { admin: true }),
+  teamAdd: (data) => req('/admin/team', { method: 'POST', body: data, admin: true }),
+  teamUpdate: (id, data) => req(`/admin/team/${id}`, { method: 'PATCH', body: data, admin: true }),
+  teamRemove: (id) => req(`/admin/team/${id}`, { method: 'DELETE', admin: true }),
+  auditList: () => req('/admin/audit', { admin: true }),
+  // feed hide / restore
+  feedHidePost: (id) => req(`/feed/posts/${id}/hide`, { method: 'POST', admin: true }),
+  feedRestorePost: (id) => req(`/feed/posts/${id}/restore`, { method: 'POST', admin: true }),
+  feedTrashPosts: () => req('/feed/posts/trash', { admin: true }),
+  feedHideReel: (id) => req(`/feed/reels/${id}/hide`, { method: 'POST', admin: true }),
+  feedRestoreReel: (id) => req(`/feed/reels/${id}/restore`, { method: 'POST', admin: true }),
+  feedTrashReels: () => req('/feed/reels/trash', { admin: true }),
   // uploads
   uploadImage: async (file) => {
     const fd = new FormData();

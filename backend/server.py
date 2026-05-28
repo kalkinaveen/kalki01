@@ -279,6 +279,51 @@ async def _check_admin(token: Optional[str]):
         raise HTTPException(status_code=401, detail="Invalid admin token")
     return True
 
+async def _check_feed_writer(request: Request, x_admin_token: Optional[str] = None) -> Dict[str, Any]:
+    """Returns {role, by} on success. Allows admin token OR JWT user with role in {owner, feed_mod}."""
+    if x_admin_token:
+        creds = await _ensure_admin()
+        if x_admin_token in (creds.get("tokens") or []):
+            return {"role": "owner", "by": "admin_token", "user_id": None}
+    user = await _get_user_from_request(request)
+    if user and user.get("role") in ("owner", "feed_mod") and not user.get("disabled"):
+        return {"role": user["role"], "by": user.get("email"), "user_id": user.get("user_id")}
+    raise HTTPException(status_code=401, detail="Not authorized")
+
+async def _enforce_mod_quota(actor: Dict[str, Any], file_size: int = 0):
+    """For feed_mod actor, check daily upload limit and per-file max size."""
+    if actor.get("role") != "feed_mod" or not actor.get("user_id"):
+        return
+    u = await db.users.find_one({"user_id": actor["user_id"]})
+    if not u:
+        raise HTTPException(status_code=401, detail="Moderator account missing")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    daily_limit = int(u.get("daily_upload_limit") or 10)
+    max_mb = int(u.get("max_upload_mb") or 15)
+    if file_size and file_size > max_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"File exceeds your {max_mb} MB limit")
+    log_doc = u.get("upload_log") or {}
+    used = int(log_doc.get(today) or 0)
+    if used >= daily_limit:
+        raise HTTPException(status_code=429, detail=f"Daily upload limit reached ({daily_limit}). Try again tomorrow.")
+    # increment
+    await db.users.update_one({"user_id": actor["user_id"]}, {"$set": {f"upload_log.{today}": used + 1}})
+
+async def _audit(actor: Dict[str, Any], action: str, target_id: str = "", meta: Optional[Dict[str, Any]] = None):
+    try:
+        await db.mod_audit_log.insert_one({
+            "id": f"AUD-{uuid.uuid4().hex[:10]}",
+            "at": _now_iso(),
+            "actor_role": actor.get("role"),
+            "actor": actor.get("by"),
+            "actor_user_id": actor.get("user_id"),
+            "action": action,
+            "target_id": target_id,
+            "meta": meta or {},
+        })
+    except Exception as e:
+        log.warning("audit failed: %s", e)
+
 def _clean(doc: Dict[str, Any]) -> Dict[str, Any]:
     if not doc:
         return {}
@@ -928,17 +973,20 @@ async def _enrich_feed_item(item: Dict[str, Any], kind: str, user: Optional[Dict
     return item
 
 @api.post("/feed/upload-media")
-async def feed_upload_media(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
-    await _check_admin(x_admin_token)
+async def feed_upload_media(request: Request, file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
     ct = file.content_type or ""
     is_video = ct.startswith("video/")
     is_image = ct.startswith("image/")
     if not (is_video or is_image):
         raise HTTPException(status_code=400, detail="Only image or video allowed")
     raw = await file.read()
-    limit = 50 * 1024 * 1024 if is_video else 5 * 1024 * 1024
-    if len(raw) > limit:
-        raise HTTPException(status_code=413, detail=f"File too large (max {limit // (1024*1024)}MB)")
+    # global ceiling first
+    hard_limit = 50 * 1024 * 1024 if is_video else 5 * 1024 * 1024
+    if len(raw) > hard_limit:
+        raise HTTPException(status_code=413, detail=f"File too large (max {hard_limit // (1024*1024)}MB)")
+    # per-mod quota
+    await _enforce_mod_quota(actor, file_size=len(raw))
     if is_image:
         # reuse simple uploads collection
         uid = uuid.uuid4().hex
@@ -1023,10 +1071,10 @@ async def feed_get_media(media_id: str, request: Request):
         },
     )
 
-# Posts CRUD (admin)
+# Posts CRUD (writer = admin or feed_mod)
 @api.post("/feed/posts")
-async def feed_create_post(body: PostIn, x_admin_token: Optional[str] = Header(None)):
-    await _check_admin(x_admin_token)
+async def feed_create_post(body: PostIn, request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
     doc = {
         "id": f"POST-{uuid.uuid4().hex[:10]}",
         "image_url": body.image_url,
@@ -1035,23 +1083,49 @@ async def feed_create_post(body: PostIn, x_admin_token: Optional[str] = Header(N
         "likes_base": int(body.likes_base or 0),
         "views_base": int(body.views_base or 0),
         "pinned": bool(body.pinned),
+        "hidden": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": actor.get("by"),
+        "created_by_role": actor.get("role"),
     }
     await db.feed_posts.insert_one(doc)
+    await _audit(actor, "create_post", doc["id"])
     return await _enrich_feed_item(doc, "post", None)
 
 @api.patch("/feed/posts/{post_id}")
-async def feed_update_post(post_id: str, body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
-    await _check_admin(x_admin_token)
+async def feed_update_post(post_id: str, body: Dict[str, Any], request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
     body.pop("_id", None); body.pop("id", None); body.pop("created_at", None)
+    # mods can't change hidden via PATCH — only via dedicated endpoints
+    if actor.get("role") == "feed_mod":
+        body.pop("hidden", None); body.pop("hidden_at", None)
     res = await db.feed_posts.update_one({"id": post_id}, {"$set": body})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Post not found")
     doc = await db.feed_posts.find_one({"id": post_id})
+    await _audit(actor, "update_post", post_id, {"keys": list(body.keys())})
     return await _enrich_feed_item(doc, "post", None)
+
+@api.post("/feed/posts/{post_id}/hide")
+async def feed_hide_post(post_id: str, request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
+    res = await db.feed_posts.update_one({"id": post_id}, {"$set": {"hidden": True, "hidden_at": _now_iso(), "hidden_by": actor.get("by")}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Post not found")
+    await _audit(actor, "hide_post", post_id)
+    return {"ok": True, "id": post_id, "hidden": True}
+
+@api.post("/feed/posts/{post_id}/restore")
+async def feed_restore_post(post_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.feed_posts.update_one({"id": post_id}, {"$set": {"hidden": False}, "$unset": {"hidden_at": "", "hidden_by": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return {"ok": True, "id": post_id, "hidden": False}
 
 @api.delete("/feed/posts/{post_id}")
 async def feed_delete_post(post_id: str, x_admin_token: Optional[str] = Header(None)):
+    # owner only — mods cannot permanently delete
     await _check_admin(x_admin_token)
     await db.feed_posts.delete_one({"id": post_id})
     await db.feed_likes.delete_many({"post_id": post_id})
@@ -1060,23 +1134,40 @@ async def feed_delete_post(post_id: str, x_admin_token: Optional[str] = Header(N
     return {"ok": True}
 
 @api.get("/feed/posts")
-async def feed_list_posts(request: Request, limit: int = 30):
+async def feed_list_posts(request: Request, limit: int = 30, include_hidden: bool = False, x_admin_token: Optional[str] = Header(None)):
     user = await _get_user_from_request(request)
-    rows = await db.feed_posts.find().sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
+    q: Dict[str, Any] = {}
+    can_view_hidden = False
+    if include_hidden:
+        # only admin or owner/mod can request hidden
+        if x_admin_token:
+            try: await _check_admin(x_admin_token); can_view_hidden = True
+            except HTTPException: pass
+        elif user and user.get("role") in ("owner", "feed_mod"):
+            can_view_hidden = True
+    if not can_view_hidden:
+        q["$or"] = [{"hidden": {"$exists": False}}, {"hidden": False}]
+    rows = await db.feed_posts.find(q).sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
     return [await _enrich_feed_item(r, "post", user) for r in rows]
+
+@api.get("/feed/posts/trash")
+async def feed_list_trashed_posts(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.feed_posts.find({"hidden": True}).sort("hidden_at", -1).to_list(200)
+    return [await _enrich_feed_item(r, "post", None) for r in rows]
 
 @api.get("/feed/posts/{post_id}")
 async def feed_get_post(post_id: str, request: Request):
     user = await _get_user_from_request(request)
     doc = await db.feed_posts.find_one({"id": post_id})
-    if not doc:
+    if not doc or (doc.get("hidden") and (not user or user.get("role") not in ("owner", "feed_mod"))):
         raise HTTPException(status_code=404, detail="Post not found")
     return await _enrich_feed_item(doc, "post", user)
 
-# Reels CRUD (admin)
+# Reels CRUD (writer = admin or feed_mod)
 @api.post("/feed/reels")
-async def feed_create_reel(body: ReelIn, x_admin_token: Optional[str] = Header(None)):
-    await _check_admin(x_admin_token)
+async def feed_create_reel(body: ReelIn, request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
     doc = {
         "id": f"REEL-{uuid.uuid4().hex[:10]}",
         "video_url": body.video_url,
@@ -1085,20 +1176,44 @@ async def feed_create_reel(body: ReelIn, x_admin_token: Optional[str] = Header(N
         "likes_base": int(body.likes_base or 0),
         "views_base": int(body.views_base or 0),
         "pinned": bool(body.pinned),
+        "hidden": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": actor.get("by"),
+        "created_by_role": actor.get("role"),
     }
     await db.feed_reels.insert_one(doc)
+    await _audit(actor, "create_reel", doc["id"])
     return await _enrich_feed_item(doc, "reel", None)
 
 @api.patch("/feed/reels/{reel_id}")
-async def feed_update_reel(reel_id: str, body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
-    await _check_admin(x_admin_token)
+async def feed_update_reel(reel_id: str, body: Dict[str, Any], request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
     body.pop("_id", None); body.pop("id", None); body.pop("created_at", None)
+    if actor.get("role") == "feed_mod":
+        body.pop("hidden", None); body.pop("hidden_at", None)
     res = await db.feed_reels.update_one({"id": reel_id}, {"$set": body})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Reel not found")
     doc = await db.feed_reels.find_one({"id": reel_id})
+    await _audit(actor, "update_reel", reel_id, {"keys": list(body.keys())})
     return await _enrich_feed_item(doc, "reel", None)
+
+@api.post("/feed/reels/{reel_id}/hide")
+async def feed_hide_reel(reel_id: str, request: Request, x_admin_token: Optional[str] = Header(None)):
+    actor = await _check_feed_writer(request, x_admin_token)
+    res = await db.feed_reels.update_one({"id": reel_id}, {"$set": {"hidden": True, "hidden_at": _now_iso(), "hidden_by": actor.get("by")}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    await _audit(actor, "hide_reel", reel_id)
+    return {"ok": True, "id": reel_id, "hidden": True}
+
+@api.post("/feed/reels/{reel_id}/restore")
+async def feed_restore_reel(reel_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.feed_reels.update_one({"id": reel_id}, {"$set": {"hidden": False}, "$unset": {"hidden_at": "", "hidden_by": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    return {"ok": True, "id": reel_id, "hidden": False}
 
 @api.delete("/feed/reels/{reel_id}")
 async def feed_delete_reel(reel_id: str, x_admin_token: Optional[str] = Header(None)):
@@ -1110,10 +1225,107 @@ async def feed_delete_reel(reel_id: str, x_admin_token: Optional[str] = Header(N
     return {"ok": True}
 
 @api.get("/feed/reels")
-async def feed_list_reels(request: Request, limit: int = 30):
+async def feed_list_reels(request: Request, limit: int = 30, include_hidden: bool = False, x_admin_token: Optional[str] = Header(None)):
     user = await _get_user_from_request(request)
-    rows = await db.feed_reels.find().sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
+    q: Dict[str, Any] = {}
+    can_view_hidden = False
+    if include_hidden:
+        if x_admin_token:
+            try: await _check_admin(x_admin_token); can_view_hidden = True
+            except HTTPException: pass
+        elif user and user.get("role") in ("owner", "feed_mod"):
+            can_view_hidden = True
+    if not can_view_hidden:
+        q["$or"] = [{"hidden": {"$exists": False}}, {"hidden": False}]
+    rows = await db.feed_reels.find(q).sort([("pinned", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 100))
     return [await _enrich_feed_item(r, "reel", user) for r in rows]
+
+@api.get("/feed/reels/trash")
+async def feed_list_trashed_reels(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.feed_reels.find({"hidden": True}).sort("hidden_at", -1).to_list(200)
+    return [await _enrich_feed_item(r, "reel", None) for r in rows]
+
+# ---- Team & moderators (owner only) --------------------------------------
+@api.get("/admin/team")
+async def admin_list_team(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.users.find({"role": {"$in": ["feed_mod", "owner"]}}).to_list(200)
+    out = []
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for u in rows:
+        u.pop("_id", None); u.pop("password_hash", None)
+        u["today_uploads"] = int((u.get("upload_log") or {}).get(today) or 0)
+        out.append(u)
+    return out
+
+@api.post("/admin/team")
+async def admin_add_team(body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    email = (body.get("email") or "").strip().lower()
+    role = body.get("role") or "feed_mod"
+    if role not in ("feed_mod", "owner"):
+        raise HTTPException(status_code=400, detail="role must be feed_mod or owner")
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    u = await db.users.find_one({"email": email})
+    upd = {
+        "role": role,
+        "disabled": False,
+        "daily_upload_limit": int(body.get("daily_upload_limit", 10)),
+        "max_upload_mb": int(body.get("max_upload_mb", 15)),
+    }
+    if not u:
+        # create stub user with provided password
+        pw = body.get("password")
+        if not pw or len(pw) < 6:
+            raise HTTPException(status_code=400, detail="password (6+ chars) required to create new mod")
+        u = {
+            "user_id": f"user_{uuid.uuid4().hex[:12]}",
+            "email": email,
+            "name": body.get("name") or email.split("@")[0],
+            "password_hash": _hash_pw(pw),
+            "createdAt": _now_iso(),
+            **upd,
+        }
+        await db.users.insert_one(u)
+    else:
+        await db.users.update_one({"user_id": u["user_id"]}, {"$set": upd})
+        u = await db.users.find_one({"user_id": u["user_id"]})
+    u.pop("_id", None); u.pop("password_hash", None)
+    return u
+
+@api.patch("/admin/team/{user_id}")
+async def admin_update_team(user_id: str, body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    allowed = {}
+    for k in ("role", "disabled", "daily_upload_limit", "max_upload_mb", "name"):
+        if k in body: allowed[k] = body[k]
+    if "role" in allowed and allowed["role"] not in ("feed_mod", "owner", "customer"):
+        raise HTTPException(status_code=400, detail="invalid role")
+    if "password" in body and body["password"]:
+        if len(body["password"]) < 6:
+            raise HTTPException(status_code=400, detail="password too short")
+        allowed["password_hash"] = _hash_pw(body["password"])
+    res = await db.users.update_one({"user_id": user_id}, {"$set": allowed})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="user not found")
+    u = await db.users.find_one({"user_id": user_id})
+    u.pop("_id", None); u.pop("password_hash", None)
+    return u
+
+@api.delete("/admin/team/{user_id}")
+async def admin_remove_team(user_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.users.update_one({"user_id": user_id}, {"$set": {"role": "customer", "disabled": False}})
+    return {"ok": True, "demoted": res.matched_count}
+
+@api.get("/admin/audit")
+async def admin_list_audit(x_admin_token: Optional[str] = Header(None), limit: int = 200):
+    await _check_admin(x_admin_token)
+    rows = await db.mod_audit_log.find().sort("at", -1).to_list(min(max(limit, 1), 500))
+    for r in rows: r.pop("_id", None)
+    return rows
 
 # Like / unlike
 async def _toggle_like(kind: str, content_id: str, user: Dict[str, Any]):

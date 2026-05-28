@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import RecoveryManager from './admin/RecoveryManager';
+import TeamManager from './admin/TeamManager';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -17,7 +18,6 @@ const sections = [
   { to: 'books',       label: 'Books',        icon: BookOpen,        group: 'content' },
   { to: 'memberships', label: 'Memberships',  icon: CreditCard,      group: 'content' },
   { to: 'comparison',  label: 'Plan Compare', icon: BadgeCheck,      group: 'content' },
-  { to: 'blogs',       label: 'Blogs',        icon: FileText,        group: 'content' },
   { to: 'tools',       label: 'Tools',        icon: Terminal,        group: 'content' },
   { to: 'how',         label: 'How It Works', icon: Cpu,             group: 'content' },
   { to: 'partners',    label: 'Partners',     icon: Award,           group: 'content' },
@@ -33,17 +33,18 @@ const sections = [
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
+  { to: 'team',        label: 'Team',         icon: UserCog,         group: 'main', ownerOnly: true },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
 ];
 
-const Sidebar = ({ active, setActive, onLogout }) => (
+const Sidebar = ({ active, setActive, onLogout, mode }) => (
   <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-[var(--eh-border)] eh-grid-bg h-screen sticky top-0">
     <div className="p-5 border-b border-[var(--eh-border)] flex items-center gap-3">
       <Logo size={36} />
-      <div><div className="eh-brand font-black tracking-widest text-sm eh-neon-soft">CONTROL</div><div className="text-[10px] eh-mono opacity-60">// admin panel</div></div>
+      <div><div className="eh-brand font-black tracking-widest text-sm eh-neon-soft">CONTROL</div><div className="text-[10px] eh-mono opacity-60">// {mode === 'feed_mod' ? 'feed moderator' : 'admin panel'}</div></div>
     </div>
     <nav className="p-3 flex-1 eh-scroll overflow-y-auto">
-      {sections.map(s => { const I = s.icon; return (
+      {sections.filter(s => mode === 'owner' || (mode === 'feed_mod' && s.to === 'feed')).map(s => { const I = s.icon; return (
         <button key={s.to} onClick={()=>setActive(s.to)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded mb-1 text-[12px] eh-mono tracking-widest uppercase text-left ${active===s.to ? 'bg-[rgba(0,255,157,.1)] text-[var(--eh-green)] border border-[rgba(0,255,157,.3)]' : 'hover:bg-white/5'}`}>
           <I size={14} /> {s.label}
         </button>
@@ -1333,7 +1334,6 @@ const Overview = ({ setActive }) => {
   const quickActions = [
     { label: 'NEW SERVICE',    icon: Wrench,      to: 'services',  color: 'rgba(0,255,157,.15)' },
     { label: 'NEW BOOK',       icon: BookOpen,    to: 'books',     color: 'rgba(77,224,255,.15)' },
-    { label: 'NEW BLOG',       icon: FileText,    to: 'blogs',     color: 'rgba(255,200,40,.15)' },
     { label: 'NEW FEED POST',  icon: Activity,    to: 'feed',      color: 'rgba(255,80,120,.15)' },
     { label: 'PAYMENTS',       icon: CreditCard,  to: 'payments',  color: 'rgba(180,120,255,.15)' },
     { label: 'COUPONS',        icon: Zap,         to: 'coupons',   color: 'rgba(0,255,157,.15)' },
@@ -1386,7 +1386,6 @@ const Overview = ({ setActive }) => {
             { key: 'services',     count: config.services.length,     label: 'SERVICES',    icon: Wrench },
             { key: 'books',        count: config.books.length,        label: 'BOOKS',       icon: BookOpen },
             { key: 'memberships',  count: config.memberships.length,  label: 'TIERS',       icon: CreditCard },
-            { key: 'blogs',        count: config.blogs.length,        label: 'BLOGS',       icon: FileText },
             { key: 'tools',        count: config.tools.length,        label: 'TOOLS',       icon: Terminal },
             { key: 'faqs',         count: config.faqs.length,         label: 'FAQS',        icon: MessageSquare },
           ].map(c => { const I = c.icon; return (
@@ -1454,83 +1453,145 @@ const Overview = ({ setActive }) => {
 };
 
 const Login = ({ onOk }) => {
+  const [tab, setTab] = useState('admin');
   const [pw, setPw] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const submit = async e => {
-    e.preventDefault();
-    setBusy(true);
+  const [modEmail, setModEmail] = useState('');
+  const [modPw, setModPw] = useState('');
+  const submitAdmin = async e => {
+    e.preventDefault(); setBusy(true);
     try {
       const res = await api.login(pw);
       if (res?.token) {
         localStorage.setItem('eh_admin_token', res.token);
         localStorage.setItem('eh_admin', '1');
-        onOk();
+        onOk('owner');
       }
-    } catch (err) {
-      toast.error(err.status === 401 ? 'Access denied' : (err.message || 'Login failed'));
-    } finally { setBusy(false); }
+    } catch (err) { toast.error(err.status === 401 ? 'Access denied' : (err.message || 'Login failed')); }
+    finally { setBusy(false); }
+  };
+  const submitMod = async e => {
+    e.preventDefault(); setBusy(true);
+    try {
+      const res = await api.authLogin(modEmail.trim().toLowerCase(), modPw);
+      const role = res?.user?.role;
+      if (!role || !['owner', 'feed_mod'].includes(role)) {
+        toast.error('This account is not a team member.');
+      } else {
+        onOk(role);
+      }
+    } catch (err) { toast.error(err.status === 401 ? 'Invalid email or password' : (err.message || 'Login failed')); }
+    finally { setBusy(false); }
   };
   return (
     <div className="min-h-screen flex items-center justify-center eh-grid-bg p-6">
-      <form onSubmit={submit} className="w-full max-w-sm eh-panel eh-brackets p-7"><span className="br-bl" /><span className="br-br" />
-        <div className="flex items-center gap-3 mb-5"><Logo size={40} /><div><div className="eh-brand font-black tracking-widest eh-neon-soft">CONTROL</div><div className="text-[10px] eh-mono opacity-60">// admin login</div></div></div>
-        <div className="eh-mono text-xs opacity-70 mb-2 flex items-center gap-2"><Lock size={12} color="var(--eh-green)" /> ACCESS_KEY</div>
-        <div className="relative">
-          <input type={show?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="> ********" className="eh-input pr-10" autoFocus />
-          <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+      <div className="w-full max-w-sm eh-panel eh-brackets p-7"><span className="br-bl" /><span className="br-br" />
+        <div className="flex items-center gap-3 mb-5"><Logo size={40} /><div><div className="eh-brand font-black tracking-widest eh-neon-soft">CONTROL</div><div className="text-[10px] eh-mono opacity-60">// {tab === 'admin' ? 'admin login' : 'team member login'}</div></div></div>
+        <div className="flex gap-1 mb-4">
+          <button type="button" onClick={()=>setTab('admin')} className={`flex-1 text-[11px] eh-mono tracking-widest px-3 py-2 rounded ${tab==='admin'?'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[var(--eh-green)]':'border border-[var(--eh-border)]'}`}>OWNER</button>
+          <button type="button" onClick={()=>setTab('mod')} className={`flex-1 text-[11px] eh-mono tracking-widest px-3 py-2 rounded ${tab==='mod'?'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[var(--eh-green)]':'border border-[var(--eh-border)]'}`} data-testid="admin-login-mod-tab">MODERATOR</button>
         </div>
-        <button disabled={busy} className="eh-btn-primary w-full mt-5 text-xs">{busy ? 'AUTHENTICATING...' : 'AUTHENTICATE'}</button>
-        <div className="eh-mono text-[11px] opacity-50 mt-4 text-center">default: admin123 · change after first login</div>
-      </form>
+        {tab === 'admin' ? (
+          <form onSubmit={submitAdmin}>
+            <div className="eh-mono text-xs opacity-70 mb-2 flex items-center gap-2"><Lock size={12} color="var(--eh-green)" /> ACCESS_KEY</div>
+            <div className="relative">
+              <input type={show?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="> ********" className="eh-input pr-10" autoFocus />
+              <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+            </div>
+            <button disabled={busy} className="eh-btn-primary w-full mt-5 text-xs">{busy ? 'AUTHENTICATING...' : 'AUTHENTICATE'}</button>
+            <div className="eh-mono text-[11px] opacity-50 mt-4 text-center">default: admin123 · change after first login</div>
+          </form>
+        ) : (
+          <form onSubmit={submitMod}>
+            <div className="eh-mono text-xs opacity-70 mb-2 flex items-center gap-2"><Mail size={12} color="var(--eh-green)" /> EMAIL</div>
+            <input type="email" value={modEmail} onChange={e=>setModEmail(e.target.value)} placeholder="mod@example.com" className="eh-input mb-3" autoFocus data-testid="admin-mod-email" />
+            <div className="eh-mono text-xs opacity-70 mb-2 flex items-center gap-2"><Lock size={12} color="var(--eh-green)" /> PASSWORD</div>
+            <input type="password" value={modPw} onChange={e=>setModPw(e.target.value)} placeholder="********" className="eh-input" data-testid="admin-mod-pw" />
+            <button disabled={busy} className="eh-btn-primary w-full mt-5 text-xs" data-testid="admin-mod-submit">{busy ? 'AUTHENTICATING...' : 'AUTHENTICATE'}</button>
+            <div className="eh-mono text-[11px] opacity-50 mt-4 text-center">// only team members can enter</div>
+          </form>
+        )}
+      </div>
     </div>
   );
 };
 
 const AdminPanel = () => {
   const navigate = useNavigate();
-  const [authed, setAuthed] = useState(() => localStorage.getItem('eh_admin') === '1' && !!localStorage.getItem('eh_admin_token'));
+  const [mode, setMode] = useState(null); // 'owner' | 'feed_mod' | null
   const [active, setActive] = useState('overview');
-  if (!authed) return <Login onOk={() => setAuthed(true)} />;
+
+  useEffect(() => {
+    // Owner via admin token?
+    if (localStorage.getItem('eh_admin') === '1' && localStorage.getItem('eh_admin_token')) {
+      setMode('owner'); return;
+    }
+    // Mod via user JWT?
+    api.authMe().then(u => {
+      if (u && ['owner', 'feed_mod'].includes(u.role) && !u.disabled) {
+        setMode(u.role);
+        if (u.role === 'feed_mod') setActive('feed');
+      } else {
+        setMode(false);
+      }
+    }).catch(() => setMode(false));
+  }, []);
+
+  if (mode === null) return <div className="min-h-screen grid place-items-center eh-grid-bg"><Loader2 className="animate-spin" /></div>;
+  if (!mode) return <Login onOk={(r) => { setMode(r); if (r === 'feed_mod') setActive('feed'); }} />;
+
   const logout = async () => {
     try { await api.logout(); } catch (_) {}
     localStorage.removeItem('eh_admin'); localStorage.removeItem('eh_admin_token');
-    setAuthed(false); navigate('/admin');
+    setMode(false); navigate('/admin');
+  };
+
+  const allowed = (tab) => {
+    if (mode === 'owner') return true;
+    return tab === 'feed';
   };
 
   return (
     <div className="min-h-screen flex bg-[var(--eh-bg)]">
-      <Sidebar active={active} setActive={setActive} onLogout={logout} />
+      <Sidebar active={active} setActive={setActive} onLogout={logout} mode={mode} />
       <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-x-hidden">
         <div className="md:hidden mb-4 flex gap-2 overflow-x-auto eh-scroll pb-2">
-          {sections.map(s => (<button key={s.to} onClick={()=>setActive(s.to)} className={`shrink-0 px-3 py-2 rounded text-[11px] eh-mono tracking-widest uppercase ${active===s.to ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>{s.label}</button>))}
+          {sections.filter(s => mode === 'owner' || s.to === 'feed').map(s => (<button key={s.to} onClick={()=>setActive(s.to)} className={`shrink-0 px-3 py-2 rounded text-[11px] eh-mono tracking-widest uppercase ${active===s.to ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>{s.label}</button>))}
         </div>
 
-        {active==='overview'    && <Overview setActive={setActive} />}
-        {active==='branding'    && <Branding />}
-        {active==='hero'        && <HeroEditor />}
-        {active==='navigation'  && <NavigationEditor />}
-        {active==='services'    && <ServicesEditor />}
-        {active==='books'       && <BooksEditor />}
-        {active==='memberships' && <MembershipsEditor />}
-        {active==='comparison'  && <ComparisonEditor />}
-        {active==='blogs'       && <BlogsEditor />}
-        {active==='tools'       && <ToolsEditor />}
-        {active==='how'         && <HowEditor />}
-        {active==='partners'    && <PartnersEditor />}
-        {active==='testimonials'&& <TestimonialsEditor />}
-        {active==='activity'    && <ActivityEditor />}
-        {active==='stats'       && <StatsEditor />}
-        {active==='faqs'        && <FAQEditor />}
-        {active==='orders'      && <Orders />}
-        {active==='recovery'    && <RecoveryManager />}
-        {active==='users'       && <UsersTab />}
-        {active==='referrals'   && <ReferralsTab />}
-        {active==='feed'        && <FeedManager />}
-        {active==='payments'    && <PaymentSettingsTab />}
-        {active==='coupons'     && <CouponsTab />}
-        {active==='notifications'&& <NotificationsTab />}
-        {active==='settings'    && <SettingsTab />}
+        {mode === 'feed_mod' && (
+          <div className="mb-4 eh-panel p-3 flex items-center gap-2 bg-[rgba(0,255,157,.04)]">
+            <ShieldCheck size={14} className="text-[var(--eh-green)]" />
+            <span className="eh-mono text-[11px] opacity-80">// MODERATOR MODE · Limited access · Posts you create are subject to owner review</span>
+          </div>
+        )}
+
+        {allowed('overview') && active==='overview'    && <Overview setActive={setActive} />}
+        {allowed('branding') && active==='branding'    && <Branding />}
+        {allowed('hero') && active==='hero'        && <HeroEditor />}
+        {allowed('navigation') && active==='navigation'  && <NavigationEditor />}
+        {allowed('services') && active==='services'    && <ServicesEditor />}
+        {allowed('books') && active==='books'       && <BooksEditor />}
+        {allowed('memberships') && active==='memberships' && <MembershipsEditor />}
+        {allowed('comparison') && active==='comparison'  && <ComparisonEditor />}
+        {allowed('tools') && active==='tools'       && <ToolsEditor />}
+        {allowed('how') && active==='how'         && <HowEditor />}
+        {allowed('partners') && active==='partners'    && <PartnersEditor />}
+        {allowed('testimonials') && active==='testimonials'&& <TestimonialsEditor />}
+        {allowed('activity') && active==='activity'    && <ActivityEditor />}
+        {allowed('stats') && active==='stats'       && <StatsEditor />}
+        {allowed('faqs') && active==='faqs'        && <FAQEditor />}
+        {allowed('orders') && active==='orders'      && <Orders />}
+        {allowed('recovery') && active==='recovery'    && <RecoveryManager />}
+        {allowed('users') && active==='users'       && <UsersTab />}
+        {allowed('referrals') && active==='referrals'   && <ReferralsTab />}
+        {allowed('feed') && active==='feed'        && <FeedManager />}
+        {allowed('payments') && active==='payments'    && <PaymentSettingsTab />}
+        {allowed('coupons') && active==='coupons'     && <CouponsTab />}
+        {allowed('notifications') && active==='notifications'&& <NotificationsTab />}
+        {allowed('team') && active==='team'        && <TeamManager />}
+        {allowed('settings') && active==='settings'    && <SettingsTab />}
       </main>
     </div>
   );
