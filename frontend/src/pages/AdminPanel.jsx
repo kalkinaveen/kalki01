@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
+import RecoveryManager from './admin/RecoveryManager';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -25,6 +26,7 @@ const sections = [
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
   { to: 'faqs',        label: 'FAQs',         icon: MessageSquare,   group: 'content' },
   { to: 'orders',      label: 'Orders',       icon: ShoppingBag,     group: 'main' },
+  { to: 'recovery',    label: 'Recovery',     icon: ShieldCheck,     group: 'main' },
   { to: 'users',       label: 'Users',        icon: User,            group: 'main' },
   { to: 'referrals',   label: 'Referrals',    icon: Gift,            group: 'main' },
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
@@ -1521,6 +1523,7 @@ const AdminPanel = () => {
         {active==='stats'       && <StatsEditor />}
         {active==='faqs'        && <FAQEditor />}
         {active==='orders'      && <Orders />}
+        {active==='recovery'    && <RecoveryManager />}
         {active==='users'       && <UsersTab />}
         {active==='referrals'   && <ReferralsTab />}
         {active==='feed'        && <FeedManager />}

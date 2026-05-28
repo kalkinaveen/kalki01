@@ -115,6 +115,20 @@ export const api = {
     const data = await res.json();
     return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
   },
+  // recovery
+  recoveryConfig: () => req('/recovery/config'),
+  recoveryConfigUpdate: (data) => req('/recovery/config', { method: 'PUT', body: data, admin: true }),
+  recoveryCreateCase: (data) => req('/recovery/cases', { method: 'POST', body: data }),
+  recoveryListCases: () => req('/recovery/cases', { admin: true }),
+  recoveryGetCase: (id) => req(`/recovery/cases/${id}`),
+  recoveryUpdateCase: (id, data) => req(`/recovery/cases/${id}`, { method: 'PATCH', body: data, admin: true }),
+  recoveryDeleteCase: (id) => req(`/recovery/cases/${id}`, { method: 'DELETE', admin: true }),
+  recoveryListReviews: (svc) => req(`/recovery/reviews${svc ? `?service_key=${svc}` : ''}`),
+  recoveryListReviewsAll: () => req('/recovery/reviews?all=true', { admin: true }),
+  recoveryCreateReview: (data) => req('/recovery/reviews', { method: 'POST', body: data, admin: true }),
+  recoveryUpdateReview: (id, data) => req(`/recovery/reviews/${id}`, { method: 'PATCH', body: data, admin: true }),
+  recoveryDeleteReview: (id) => req(`/recovery/reviews/${id}`, { method: 'DELETE', admin: true }),
+  recoveryStats: () => req('/recovery/stats'),
   // uploads
   uploadImage: async (file) => {
     const fd = new FormData();

@@ -13,6 +13,7 @@ import ServicesPage from './pages/ServicesPage';
 import ServiceDetail from './pages/ServiceDetail';
 import BooksPage from './pages/BooksPage';
 import MembershipsPage from './pages/MembershipsPage';
+import RecoveryPage from './pages/RecoveryPage';
 import BlogsPage from './pages/BlogsPage';
 import ToolsPage from './pages/ToolsPage';
 import InfoPage from './pages/InfoPage';
@@ -75,7 +76,9 @@ function App() {
                 <Route path="/services/:id" element={<SiteShell><ServiceDetail /></SiteShell>} />
                 <Route path="/books" element={<SiteShell><BooksPage /></SiteShell>} />
                 <Route path="/memberships" element={<SiteShell><MembershipsPage /></SiteShell>} />
-                <Route path="/blogs" element={<SiteShell><BlogsPage /></SiteShell>} />
+                <Route path="/recovery" element={<SiteShell><RecoveryPage /></SiteShell>} />
+                <Route path="/blogs" element={<SiteShell><RecoveryPage /></SiteShell>} />
+                <Route path="/blog" element={<SiteShell><RecoveryPage /></SiteShell>} />
                 <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
                 <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
                 <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />

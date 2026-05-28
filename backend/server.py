@@ -13,7 +13,7 @@ Endpoints:
   PATCH  /api/orders/{id}       update status (admin)
   DELETE /api/orders            clear all orders (admin)
 """
-from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File, Request, Response, Depends, Cookie
+from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File, Request, Response, Depends, Cookie, Body
 from fastapi.responses import Response as FastResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -47,6 +47,9 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("eh")
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 # --------------------------------------------------------------------------
 # Models
 class OrderIn(BaseModel):
@@ -72,6 +75,52 @@ class TelegramTestIn(BaseModel):
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
     message: Optional[str] = "ERRORHACKER // Telegram test alert ok_"
+
+# ---- Recovery models ----
+class RecoveryCaseIn(BaseModel):
+    service_id: str
+    service_name: Optional[str] = None
+    issue: Optional[str] = None
+    platform: str
+    account_url: Optional[str] = ""
+    follower_tier: Optional[str] = ""
+    urgency: Optional[str] = "medium"  # low | medium | high
+    description: Optional[str] = ""
+    proof_urls: List[str] = []
+    name: str
+    email: EmailStr
+    phone: Optional[str] = ""
+    telegram: Optional[str] = ""
+    whatsapp: Optional[str] = ""
+    estimated_price: Optional[float] = 0
+    currency: Optional[str] = "INR"
+    contact_pref: Optional[str] = "telegram"
+
+class RecoveryCaseStatusIn(BaseModel):
+    status: str  # new | reviewing | engaged | recovering | recovered | closed | rejected
+    admin_note: Optional[str] = None
+
+class RecoveryServiceIn(BaseModel):
+    name: str
+    issue_key: str
+    price_min: float = 0
+    price_max: float = 0
+    eta_min_days: int = 1
+    eta_max_days: int = 30
+    success_rate: int = 92
+    bullets: List[str] = []
+    active: bool = True
+    sort: int = 0
+
+class RecoveryReviewIn(BaseModel):
+    name: str
+    handle: Optional[str] = ""
+    avatar_url: Optional[str] = ""
+    quote: str
+    rating: int = 5
+    service_key: Optional[str] = ""
+    approved: bool = True
+    sort: int = 0
 
 # ---- Auth models ----
 class RegisterIn(BaseModel):
@@ -233,6 +282,36 @@ async def _telegram_send(bot_token: str, chat_id: str, text: str) -> Dict[str, A
         except Exception:
             return {"ok": False, "status": r.status_code}
 
+async def _notify_recovery_case(case: Dict[str, Any]):
+    try:
+        cfg = await _ensure_config()
+        notif = (cfg.get("notifications") or {}).get("telegram") or {}
+        if not notif.get("enabled"):
+            return
+        bot = notif.get("bot_token", "")
+        chat = notif.get("chat_id", "")
+        urg = (case.get("urgency") or "").upper()
+        text = (
+            "<b>NEW RECOVERY CASE // ERRORHACKER</b>\n"
+            f"<b>Case:</b> {case.get('id')}\n"
+            f"<b>Service:</b> {case.get('service_name') or '—'}\n"
+            f"<b>Platform:</b> {case.get('platform')}\n"
+            f"<b>Urgency:</b> {urg}\n"
+            f"<b>Account:</b> {case.get('account_url') or '—'}\n"
+            f"<b>Name:</b> {case.get('name')}\n"
+            f"<b>Email:</b> {case.get('email')}\n"
+            f"<b>Telegram:</b> {case.get('telegram') or '—'}\n"
+            f"<b>WhatsApp:</b> {case.get('whatsapp') or '—'}\n"
+            f"<b>Estimate:</b> {case.get('estimated_price')} {case.get('currency')}\n"
+            f"<b>Description:</b>\n{(case.get('description') or '—')[:600]}\n"
+            f"<b>Proofs:</b> {len(case.get('proof_urls') or [])} file(s)"
+        )
+        res = await _telegram_send(bot, chat, text)
+        if not res.get("ok"):
+            log.warning("telegram recovery notify failed: %s", res)
+    except Exception as e:
+        log.warning("telegram recovery notify exception: %s", e)
+
 async def _notify_order(order: Dict[str, Any]):
     try:
         cfg = await _ensure_config()
@@ -364,6 +443,139 @@ async def clear_orders(x_admin_token: Optional[str] = Header(None)):
     await _check_admin(x_admin_token)
     res = await db.orders.delete_many({})
     return {"deleted": res.deleted_count}
+
+# ---- Recovery: services (config-stored) -----------------------------------
+@api.get("/recovery/config")
+async def recovery_config():
+    cfg = await _ensure_config()
+    return {
+        "services": cfg.get("recovery", {}).get("services", []),
+        "platforms": cfg.get("recovery", {}).get("platforms", []),
+        "hero": cfg.get("recovery", {}).get("hero", {}),
+        "trust": cfg.get("recovery", {}).get("trust", {}),
+        "default_currency": (cfg.get("payments", {}).get("default_currency") or "INR"),
+    }
+
+@api.put("/recovery/config")
+async def recovery_config_update(body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    cfg = await _ensure_config()
+    rec = cfg.get("recovery") or {}
+    for k in ("services", "platforms", "hero", "trust"):
+        if k in body:
+            rec[k] = body[k]
+    await db.site_config.update_one({"_id": "main"}, {"$set": {"recovery": rec, "updated_at": _now_iso()}})
+    return {"ok": True, "recovery": rec}
+
+# ---- Recovery: cases ------------------------------------------------------
+@api.post("/recovery/cases")
+async def recovery_create_case(body: RecoveryCaseIn, request: Request):
+    user = await _get_user_from_request(request)
+    case = {
+        "id": f"REC-{uuid.uuid4().hex[:10].upper()}",
+        **body.dict(),
+        "status": "new",
+        "admin_note": "",
+        "createdAt": _now_iso(),
+    }
+    if user:
+        case["user_id"] = user["user_id"]
+        case["userEmail"] = user.get("email")
+    await db.recovery_cases.insert_one(case)
+    case.pop("_id", None)
+    asyncio.create_task(_notify_recovery_case(case))
+    return case
+
+@api.get("/recovery/cases")
+async def recovery_list_cases(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.recovery_cases.find().sort("createdAt", -1).to_list(1000)
+    for r in rows:
+        r.pop("_id", None)
+    return rows
+
+@api.get("/recovery/cases/{case_id}")
+async def recovery_get_case(case_id: str):
+    row = await db.recovery_cases.find_one({"id": case_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="Case not found")
+    row.pop("_id", None)
+    return row
+
+@api.patch("/recovery/cases/{case_id}")
+async def recovery_update_case(case_id: str, body: RecoveryCaseStatusIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    upd = {"status": body.status}
+    if body.admin_note is not None:
+        upd["admin_note"] = body.admin_note
+    res = await db.recovery_cases.update_one({"id": case_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Case not found")
+    row = await db.recovery_cases.find_one({"id": case_id})
+    row.pop("_id", None)
+    return row
+
+@api.delete("/recovery/cases/{case_id}")
+async def recovery_delete_case(case_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.recovery_cases.delete_one({"id": case_id})
+    return {"deleted": res.deleted_count}
+
+# ---- Recovery: reviews ----------------------------------------------------
+@api.get("/recovery/reviews")
+async def recovery_list_reviews(service_key: Optional[str] = None, all: bool = False, x_admin_token: Optional[str] = Header(None)):
+    query: Dict[str, Any] = {}
+    if not all:
+        query["approved"] = True
+    else:
+        # only admin can list unapproved
+        await _check_admin(x_admin_token)
+    if service_key:
+        query["service_key"] = service_key
+    rows = await db.recovery_reviews.find(query).sort([("sort", 1), ("createdAt", -1)]).to_list(500)
+    for r in rows:
+        r.pop("_id", None)
+    return rows
+
+@api.post("/recovery/reviews")
+async def recovery_create_review(body: RecoveryReviewIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rev = {
+        "id": f"REV-{uuid.uuid4().hex[:8]}",
+        **body.dict(),
+        "createdAt": _now_iso(),
+    }
+    await db.recovery_reviews.insert_one(rev)
+    rev.pop("_id", None)
+    return rev
+
+@api.patch("/recovery/reviews/{review_id}")
+async def recovery_update_review(review_id: str, body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    body.pop("id", None); body.pop("_id", None); body.pop("createdAt", None)
+    res = await db.recovery_reviews.update_one({"id": review_id}, {"$set": body})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Review not found")
+    row = await db.recovery_reviews.find_one({"id": review_id})
+    row.pop("_id", None)
+    return row
+
+@api.delete("/recovery/reviews/{review_id}")
+async def recovery_delete_review(review_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.recovery_reviews.delete_one({"id": review_id})
+    return {"deleted": res.deleted_count}
+
+# ---- Recovery: stats (public) ---------------------------------------------
+@api.get("/recovery/stats")
+async def recovery_stats():
+    total = await db.recovery_cases.count_documents({})
+    recovered = await db.recovery_cases.count_documents({"status": "recovered"})
+    # cases this week
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    weekly = await db.recovery_cases.count_documents({"status": "recovered", "createdAt": {"$gte": since}})
+    success = int((recovered / total) * 100) if total else 0
+    return {"total": total, "recovered": recovered, "weekly_recovered": weekly, "success_rate": success}
 
 # ---- Uploads ---------------------------------------------------------------
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
