@@ -1528,7 +1528,8 @@ const AdminPanel = () => {
       setMode('owner'); return;
     }
     // Mod via user JWT?
-    api.authMe().then(u => {
+    api.authMe().then(resp => {
+      const u = resp?.user || resp;
       if (u && ['owner', 'feed_mod'].includes(u.role) && !u.disabled) {
         setMode(u.role);
         if (u.role === 'feed_mod') setActive('feed');
