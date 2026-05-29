@@ -246,6 +246,7 @@ const ServicesTab = ({ cfg, setCfg }) => {
 const ReviewsTab = ({ cfg }) => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('pending'); // pending | approved | all
   const [draft, setDraft] = useState({ name: '', handle: '', avatar_url: '', quote: '', rating: 5, service_key: '', approved: true, sort: 0 });
 
   const load = async () => {
@@ -279,10 +280,14 @@ const ReviewsTab = ({ cfg }) => {
     catch (e) { toast.error(e.message); }
   };
 
+  const pendingCount = rows.filter(r => !r.approved).length;
+  const approvedCount = rows.filter(r => r.approved).length;
+  const filtered = filter === 'all' ? rows : filter === 'pending' ? rows.filter(r => !r.approved) : rows.filter(r => r.approved);
+
   return (
     <div>
       <div className="eh-panel p-4 mb-5">
-        <div className="eh-mono text-xs opacity-70 mb-3 tracking-widest">// ADD NEW REVIEW</div>
+        <div className="eh-mono text-xs opacity-70 mb-3 tracking-widest">// ADD NEW REVIEW (manual / pre-seeded)</div>
         <div className="grid sm:grid-cols-2 gap-3">
           <input className="eh-input" placeholder="Name (e.g. Laura P)" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} />
           <input className="eh-input" placeholder="Handle / Title (e.g. @cybergirl or 'Founder, PowerBolt')" value={draft.handle} onChange={e => setDraft({ ...draft, handle: e.target.value })} />
@@ -306,20 +311,52 @@ const ReviewsTab = ({ cfg }) => {
         <button onClick={add} className="eh-btn-primary text-xs mt-3 flex items-center gap-1.5"><Plus size={12} /> ADD REVIEW</button>
       </div>
 
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button onClick={() => setFilter('pending')} data-testid="admin-reviews-filter-pending" className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${filter === 'pending' ? 'border-[#ffd34d] text-[#ffd34d] bg-[rgba(255,211,77,.08)]' : 'border-[var(--eh-border)]'}`}>
+          PENDING ({pendingCount}){pendingCount > 0 && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-[#ffd34d] animate-pulse" />}
+        </button>
+        <button onClick={() => setFilter('approved')} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${filter === 'approved' ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>APPROVED ({approvedCount})</button>
+        <button onClick={() => setFilter('all')} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${filter === 'all' ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>ALL ({rows.length})</button>
+      </div>
+
       {loading ? <div className="text-center py-10"><Loader2 className="animate-spin inline-block" /></div> : (
         <div className="space-y-3">
-          {rows.length === 0 && <div className="eh-panel p-10 text-center eh-mono text-xs opacity-60">No reviews yet.</div>}
-          {rows.map(r => (
-            <div key={r.id} className={`eh-panel p-4 ${!r.approved ? 'opacity-60' : ''}`}>
+          {filtered.length === 0 && <div className="eh-panel p-10 text-center eh-mono text-xs opacity-60">No reviews in this view.</div>}
+          {filtered.map(r => (
+            <div key={r.id} className={`eh-panel p-4 ${!r.approved ? 'border-l-2 border-l-[#ffd34d]' : ''}`} data-testid={`admin-review-${r.id}`}>
               <div className="flex gap-3 items-start">
                 {r.avatar_url ? <img src={r.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : <div className="w-10 h-10 rounded-full grid place-items-center text-sm eh-mono shrink-0" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(r.name || 'A')[0].toUpperCase()}</div>}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap"><div className="font-bold text-sm">{r.name}</div>{r.handle && <div className="eh-mono text-[10px] opacity-60">{r.handle}</div>}<div className="flex gap-0.5 text-[var(--eh-green)]">{Array.from({ length: r.rating || 5 }).map((_, i) => <Star key={i} size={11} fill="currentColor" />)}</div></div>
-                  <div className="text-sm opacity-90 mt-1">"{r.quote}"</div>
-                  <div className="eh-mono text-[10px] opacity-50 mt-1">{r.service_key || 'all services'} · sort {r.sort || 0}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="font-bold text-sm">{r.name}</div>
+                    {r.handle && <div className="eh-mono text-[10px] opacity-60">{r.handle}</div>}
+                    <div className="flex gap-0.5 text-[var(--eh-green)]">{Array.from({ length: r.rating || 5 }).map((_, i) => <Star key={i} size={11} fill="currentColor" />)}</div>
+                    {r.source === 'customer' && <span className="eh-mono text-[9px] tracking-widest px-1.5 py-0.5 rounded bg-[rgba(77,224,255,.15)] text-[#4de0ff] flex items-center gap-1"><BadgeCheck size={10} /> CUSTOMER</span>}
+                    {r.case_id && <a href={`/track?id=${r.case_id}`} target="_blank" rel="noreferrer" className="eh-mono text-[9px] opacity-60 hover:opacity-100 underline">{r.case_id}</a>}
+                  </div>
+                  <div className="text-sm opacity-90 mt-1 leading-6">"{r.quote}"</div>
+                  {!!(r.media_urls || []).length && (
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mt-2 max-w-md">
+                      {r.media_urls.map((m, i) => (
+                        <a key={i} href={m.url} target="_blank" rel="noreferrer" className="block aspect-square rounded overflow-hidden border border-[var(--eh-border)] bg-black/40 relative group">
+                          {m.kind === 'video' ? (
+                            <>
+                              <video src={m.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 grid place-items-center bg-black/30 group-hover:bg-black/10"><ImageIcon size={14} className="text-white" /></div>
+                            </>
+                          ) : (
+                            <img src={m.url} alt="" className="w-full h-full object-cover" />
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div className="eh-mono text-[10px] opacity-50 mt-2">{r.service_key || 'all services'} · sort {r.sort || 0}{r.email ? ` · ${r.email}` : ''} · {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</div>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <button onClick={() => patch(r.id, { approved: !r.approved })} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${r.approved ? 'border-[var(--eh-green)] text-[var(--eh-green)]' : 'border-[var(--eh-border)]'}`}>{r.approved ? 'APPROVED' : 'HIDDEN'}</button>
+                  <button onClick={() => patch(r.id, { approved: !r.approved })} data-testid={`admin-review-approve-${r.id}`} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border flex items-center justify-center gap-1.5 ${r.approved ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[#ffd34d] text-[#ffd34d] hover:bg-[rgba(255,211,77,.08)]'}`}>
+                    {r.approved ? <><Check size={11} /> APPROVED</> : <><Eye size={11} /> APPROVE</>}
+                  </button>
                   <button onClick={() => remove(r.id)} className="text-[10px] eh-mono text-red-400 hover:text-red-300 px-3 py-1.5 rounded border border-red-400/30 flex items-center justify-center gap-1.5"><Trash2 size={11} /> DELETE</button>
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X } from 'lucide-react';
 import { api } from '../lib/api';
 import PaymentBox from '../components/PaymentBox';
+import RecoveryReviewForm from '../components/RecoveryReviewForm';
 
 const ORDER_STAGES = [
   { key: 'received', icon: Package, label: 'Order Received', desc: 'Encrypted handshake complete. Order queued.' },
@@ -229,6 +230,7 @@ const OrderTracker = () => {
           </div>
         )}
         {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} />}
+        {recCase && ['recovered', 'closed'].includes(recCase.status) && <RecoveryReviewForm caseId={recCase.id} />}
         {order && <OrderView order={order} setOrder={setOrder} />}
         {!recCase && !order && !err && id === '' && (
           <div className="eh-panel p-5 text-center eh-mono text-xs opacity-60">

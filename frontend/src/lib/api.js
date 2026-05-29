@@ -137,6 +137,16 @@ export const api = {
     const data = await r.json();
     return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
   },
+  recoveryCanReview: (caseId) => req(`/recovery/cases/${caseId}/can-review`),
+  recoverySubmitReview: (data) => req('/recovery/reviews/submit', { method: 'POST', body: data }),
+  recoveryUploadReviewMedia: async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(`${BACKEND_URL}/api/recovery/reviews/upload-media`, { method: 'POST', body: fd });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); const err = new Error(e.detail || `Upload failed (${r.status})`); err.status = r.status; throw err; }
+    const data = await r.json();
+    return { ...data, absoluteUrl: `${BACKEND_URL}${data.url}` };
+  },
   // team management (owner only)
   teamList: () => req('/admin/team', { admin: true }),
   teamAdd: (data) => req('/admin/team', { method: 'POST', body: data, admin: true }),

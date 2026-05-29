@@ -121,6 +121,9 @@ class RecoveryReviewIn(BaseModel):
     service_key: Optional[str] = ""
     approved: bool = True
     sort: int = 0
+    media_urls: List[Dict[str, Any]] = []  # [{ url, kind: 'image'|'video', content_type }]
+    case_id: Optional[str] = ""
+    email: Optional[str] = ""
 
 # ---- Auth models ----
 class RegisterIn(BaseModel):
@@ -625,6 +628,86 @@ async def recovery_delete_review(review_id: str, x_admin_token: Optional[str] = 
     await _check_admin(x_admin_token)
     res = await db.recovery_reviews.delete_one({"id": review_id})
     return {"deleted": res.deleted_count}
+
+# ---- Recovery: customer-submitted reviews (pending admin approval) --------
+@api.get("/recovery/cases/{case_id}/can-review")
+async def recovery_can_review(case_id: str):
+    case = await db.recovery_cases.find_one({"id": case_id})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    eligible = case.get("status") in ("recovered", "closed")
+    already = await db.recovery_reviews.find_one({"case_id": case_id})
+    return {
+        "can_review": bool(eligible and not already),
+        "eligible_status": eligible,
+        "already_submitted": bool(already),
+        "case_status": case.get("status"),
+        "service_key": case.get("issue") or "",
+        "service_name": case.get("service_name") or "",
+        "name": case.get("name") or "",
+        "email": case.get("email") or "",
+    }
+
+@api.post("/recovery/reviews/submit")
+async def recovery_submit_review(body: RecoveryReviewIn):
+    """Public endpoint — customers submit a review after their case is recovered/closed.
+    Always saved with approved=false; admin must approve in the webpanel before it shows publicly."""
+    if not body.case_id:
+        raise HTTPException(status_code=400, detail="case_id is required")
+    case = await db.recovery_cases.find_one({"id": body.case_id})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.get("status") not in ("recovered", "closed"):
+        raise HTTPException(status_code=400, detail="Reviews can be submitted only after a case is recovered or closed")
+    existing = await db.recovery_reviews.find_one({"case_id": body.case_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="A review has already been submitted for this case")
+    data = body.dict()
+    data["approved"] = False  # force pending — admin must approve
+    # auto-fill service_key from case if not provided
+    if not data.get("service_key"):
+        data["service_key"] = case.get("issue") or ""
+    rev = {
+        "id": f"REV-{uuid.uuid4().hex[:8]}",
+        **data,
+        "createdAt": _now_iso(),
+        "source": "customer",
+    }
+    await db.recovery_reviews.insert_one(rev)
+    rev.pop("_id", None)
+    return rev
+
+@api.post("/recovery/reviews/upload-media")
+async def recovery_review_upload_media(file: UploadFile = File(...)):
+    """Public uploader for review media — accepts images (5MB) or videos (25MB)."""
+    ct = file.content_type or ""
+    is_video = ct.startswith("video/")
+    is_image = ct.startswith("image/")
+    if not (is_video or is_image):
+        raise HTTPException(status_code=400, detail="Only image or video files allowed")
+    raw = await file.read()
+    limit = 25 * 1024 * 1024 if is_video else 5 * 1024 * 1024
+    if len(raw) > limit:
+        raise HTTPException(status_code=413, detail=f"File too large (max {limit // (1024*1024)}MB)")
+    if is_image:
+        uid = uuid.uuid4().hex
+        await db.uploads.insert_one({
+            "_id": uid,
+            "content_type": ct,
+            "filename": file.filename or uid,
+            "size": len(raw),
+            "data": base64.b64encode(raw).decode("ascii"),
+            "createdAt": datetime.utcnow().isoformat(),
+            "kind": "recovery_review_media",
+        })
+        return {"url": f"/api/uploads/{uid}", "kind": "image", "content_type": ct, "size": len(raw)}
+    grid_id = await fs_bucket.upload_from_stream(
+        file.filename or f"review-{uuid.uuid4().hex}.mp4",
+        io.BytesIO(raw),
+        metadata={"content_type": ct, "size": len(raw), "kind": "recovery_review_media"},
+    )
+    sid = str(grid_id)
+    return {"url": f"/api/feed/media/{sid}", "kind": "video", "content_type": ct, "size": len(raw)}
 
 # ---- Recovery: stats (public) ---------------------------------------------
 @api.get("/recovery/stats")

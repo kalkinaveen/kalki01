@@ -98,24 +98,24 @@ const TrustBar = ({ trust, stats }) => (
 const StepService = ({ services, value, onChange }) => (
   <div className="space-y-2.5">
     <div className="eh-kicker mb-1">// SELECT THE ISSUE</div>
-    <div className="grid sm:grid-cols-2 gap-2.5 sm:gap-3">
+    <div className="grid sm:grid-cols-2 gap-3 sm:gap-3">
       {services.filter(s => s.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(s => {
         const sel = value === s.id;
         return (
           <button key={s.id} type="button" onClick={() => onChange(s.id)} data-testid={`recovery-svc-${s.issue_key}`}
-            className={`text-left p-3.5 sm:p-4 rounded-md border transition-colors min-w-0 overflow-hidden ${sel ? 'border-[var(--eh-green)] bg-[rgba(0,255,157,.05)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>
-            <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-              <div className="font-bold text-sm break-words min-w-0 flex-1" style={{ fontFamily: 'Inter, sans-serif' }}>{s.name}</div>
-              {sel && <CheckCircle2 size={16} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
+            className={`text-left p-4 sm:p-4 rounded-md border transition-colors min-w-0 overflow-hidden ${sel ? 'border-[var(--eh-green)] bg-[rgba(0,255,157,.05)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>
+            <div className="flex items-start justify-between gap-2 mb-2.5 min-w-0">
+              <div className="font-bold text-base sm:text-base leading-snug break-words min-w-0 flex-1" style={{ fontFamily: 'Inter, sans-serif' }}>{s.name}</div>
+              {sel && <CheckCircle2 size={18} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
             </div>
-            <div className="flex items-center gap-2 eh-mono text-[10px] opacity-70 mb-2 flex-wrap">
+            <div className="flex items-center gap-2 eh-mono text-[11px] sm:text-[11px] opacity-75 mb-2.5 flex-wrap">
               <span>ETA {s.eta_min_days}–{s.eta_max_days}d</span>
               <span className="opacity-50">·</span>
               <span>{s.success_rate}% success</span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {(s.bullets || []).slice(0, 3).map((b, i) => (
-                <div key={i} className="eh-mono text-[10.5px] sm:text-[11px] opacity-70 flex gap-1.5 break-words"><span className="text-[var(--eh-green)] shrink-0">›</span> <span className="min-w-0">{b}</span></div>
+                <div key={i} className="eh-mono text-[12px] sm:text-[12px] opacity-80 flex gap-1.5 leading-[1.45] break-words"><span className="text-[var(--eh-green)] shrink-0">›</span> <span className="min-w-0">{b}</span></div>
               ))}
             </div>
           </button>
@@ -269,6 +269,28 @@ const SuccessScreen = ({ caseId, hero }) => {
   );
 };
 
+const ReviewMedia = ({ items = [] }) => {
+  if (!items.length) return null;
+  return (
+    <div className={`grid gap-1.5 mb-3 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      {items.slice(0, 4).map((m, i) => (
+        <a key={i} href={m.url} target="_blank" rel="noreferrer" className="block aspect-square rounded overflow-hidden border border-[var(--eh-border)] bg-black/40 relative group">
+          {m.kind === 'video' ? (
+            <video src={m.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+          ) : (
+            <img src={m.url} alt="" className="w-full h-full object-cover" />
+          )}
+          {m.kind === 'video' && (
+            <div className="absolute inset-0 grid place-items-center bg-black/30 group-hover:bg-black/10 transition-colors">
+              <div className="w-9 h-9 rounded-full bg-black/60 grid place-items-center"><div className="w-0 h-0 ml-0.5" style={{ borderLeft: '8px solid var(--eh-green)', borderTop: '6px solid transparent', borderBottom: '6px solid transparent' }} /></div>
+            </div>
+          )}
+        </a>
+      ))}
+    </div>
+  );
+};
+
 const ReviewsSection = ({ reviews, services }) => {
   const [filter, setFilter] = useState('all');
   const filtered = filter === 'all' ? reviews : reviews.filter(r => r.service_key === filter);
@@ -290,6 +312,7 @@ const ReviewsSection = ({ reviews, services }) => {
           {filtered.map(r => (
             <div key={r.id} className="eh-panel p-5" data-testid={`recovery-review-${r.id}`}>
               <div className="flex gap-0.5 mb-3 text-[var(--eh-green)]">{Array.from({ length: r.rating || 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" />)}</div>
+              <ReviewMedia items={r.media_urls} />
               <div className="text-sm leading-6 mb-4 opacity-90">"{r.quote}"</div>
               <div className="flex items-center gap-3 pt-3 border-t border-[var(--eh-border)]">
                 {r.avatar_url ? (
@@ -298,7 +321,7 @@ const ReviewsSection = ({ reviews, services }) => {
                   <div className="w-9 h-9 rounded-full grid place-items-center text-xs eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(r.name || 'A')[0].toUpperCase()}</div>
                 )}
                 <div>
-                  <div className="font-bold text-sm">{r.name}</div>
+                  <div className="font-bold text-sm flex items-center gap-1.5">{r.name}{r.source === 'customer' && <BadgeCheck size={13} className="text-[var(--eh-green)]" title="Verified customer review" />}</div>
                   {r.handle && <div className="eh-mono text-[10px] opacity-60">{r.handle}</div>}
                 </div>
               </div>
