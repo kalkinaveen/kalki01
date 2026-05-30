@@ -504,6 +504,30 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
         raise HTTPException(status_code=404, detail="Order not found")
     row = await db.orders.find_one({"id": order_id})
     row.pop("_id", None)
+    # If this order is linked to a recovery case, auto-bump the case timeline so
+    # the customer sees their case progress without the admin doing two updates.
+    case_id = row.get("case_id")
+    if case_id:
+        # Map order status → recovery case status. We only bump forward, never backward.
+        ORDER_TO_CASE = {
+            "in-progress": "recovering",
+            "verified": "recovering",
+            "paid": "recovering",
+            "delivered": "recovered",
+        }
+        target = ORDER_TO_CASE.get(body.status)
+        if target:
+            case = await db.recovery_cases.find_one({"id": case_id})
+            if case:
+                # Forward-only progression: don't downgrade a case that's already past `target`.
+                CASE_ORDER = ["new", "reviewing", "engaged", "recovering", "recovered", "closed"]
+                cur = case.get("status") or "new"
+                try:
+                    if CASE_ORDER.index(target) > CASE_ORDER.index(cur):
+                        await db.recovery_cases.update_one({"id": case_id}, {"$set": {"status": target}})
+                except ValueError:
+                    # `closed`/`rejected` or unknown status — leave as is
+                    pass
     return row
 
 @api.delete("/orders")
