@@ -123,6 +123,7 @@ export const api = {
   recoveryGetCase: (id) => req(`/recovery/cases/${id}`),
   recoveryUpdateCase: (id, data) => req(`/recovery/cases/${id}`, { method: 'PATCH', body: data, admin: true }),
   recoveryDeleteCase: (id) => req(`/recovery/cases/${id}`, { method: 'DELETE', admin: true }),
+  recoverySendPayment: (id, data) => req(`/recovery/cases/${id}/send-payment`, { method: 'POST', body: data, admin: true }),
   recoveryListReviews: (svc) => req(`/recovery/reviews${svc ? `?service_key=${svc}` : ''}`),
   recoveryListReviewsAll: () => req('/recovery/reviews?all=true', { admin: true }),
   recoveryCreateReview: (data) => req('/recovery/reviews', { method: 'POST', body: data, admin: true }),

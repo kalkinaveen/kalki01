@@ -100,6 +100,11 @@ class RecoveryCaseStatusIn(BaseModel):
     status: str  # new | reviewing | engaged | recovering | recovered | closed | rejected
     admin_note: Optional[str] = None
 
+class RecoveryPaymentIn(BaseModel):
+    amount: float = Field(gt=0)
+    currency: str = "INR"
+    note: Optional[str] = ""
+
 class RecoveryServiceIn(BaseModel):
     name: str
     issue_key: str
@@ -583,6 +588,73 @@ async def recovery_delete_case(case_id: str, x_admin_token: Optional[str] = Head
     await _check_admin(x_admin_token)
     res = await db.recovery_cases.delete_one({"id": case_id})
     return {"deleted": res.deleted_count}
+
+@api.post("/recovery/cases/{case_id}/send-payment")
+async def recovery_send_payment(case_id: str, body: RecoveryPaymentIn, x_admin_token: Optional[str] = Header(None)):
+    """Admin-only: send a payment request for a recovery case.
+    Creates a linked order with the finalised amount so the customer can pay
+    through the existing UPI/Crypto PaymentBox on the /track page.
+    Idempotent — if a linked order already exists, updates its amount/note
+    instead of creating a new one and resends the alert."""
+    await _check_admin(x_admin_token)
+    case = await db.recovery_cases.find_one({"id": case_id})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    existing_oid = case.get("linked_order_id")
+    if existing_oid:
+        existing = await db.orders.find_one({"id": existing_oid})
+        if existing:
+            await db.orders.update_one(
+                {"id": existing_oid},
+                {"$set": {"amount": body.amount, "currency": body.currency, "notes": body.note or existing.get("notes", "")}},
+            )
+            order = await db.orders.find_one({"id": existing_oid})
+            order.pop("_id", None)
+        else:
+            existing_oid = None  # stale link, recreate below
+
+    if not existing_oid:
+        order = {
+            "id": f"ORD-{uuid.uuid4().hex[:10].upper()}",
+            "service": "recovery",
+            "serviceName": f"Recovery · {case.get('service_name') or case.get('issue') or 'Case'}",
+            "name": case.get("name") or "",
+            "email": case.get("email") or "",
+            "tg": case.get("telegram") or "",
+            "size": case.get("urgency") or "",
+            "target": case.get("account_url") or "",
+            "notes": body.note or "",
+            "amount": body.amount,
+            "currency": body.currency,
+            "status": "received",
+            "case_id": case_id,
+            "createdAt": datetime.utcnow().isoformat(),
+        }
+        if case.get("user_id"):
+            order["user_id"] = case["user_id"]
+            order["userEmail"] = case.get("userEmail") or case.get("email")
+        await db.orders.insert_one(order)
+        order.pop("_id", None)
+
+    # update case: link the order, store final quote, bump status to engaged if still early
+    case_upd: Dict[str, Any] = {
+        "linked_order_id": order["id"],
+        "final_amount": body.amount,
+        "final_currency": body.currency,
+        "payment_note": body.note or "",
+        "payment_sent_at": _now_iso(),
+    }
+    if case.get("status") in (None, "", "new", "reviewing"):
+        case_upd["status"] = "engaged"
+    await db.recovery_cases.update_one({"id": case_id}, {"$set": case_upd})
+
+    # fire telegram alerts so both team + customer get the heads-up
+    case2 = await db.recovery_cases.find_one({"id": case_id})
+    case2.pop("_id", None)
+    asyncio.create_task(_notify_recovery_case({**case2, "_event": "payment_sent"}))
+
+    return {"ok": True, "order": order, "case": case2}
 
 # ---- Recovery: reviews ----------------------------------------------------
 @api.get("/recovery/reviews")

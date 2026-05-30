@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Trash2, Plus, Save, Star, Edit3, Check, X, Eye, BadgeCheck, Send as TgIcon, Phone, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Trash2, Plus, Save, Star, Edit3, Check, X, Eye, BadgeCheck, Send as TgIcon, Phone, Image as ImageIcon, IndianRupee, ExternalLink, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 
@@ -154,6 +154,7 @@ const CasesTab = () => {
                   </div>
                 </div>
               )}
+              <SendPaymentPanel selected={selected} onUpdated={(c) => { setSelected(c); setRows(prev => prev.map(x => x.id === c.id ? c : x)); }} />
               <div>
                 <div className="eh-mono text-[10px] opacity-60 mb-1">UPDATE STATUS</div>
                 <div className="flex flex-wrap gap-1.5">
@@ -186,6 +187,83 @@ const Field = ({ l, v, link }) => (
     )}
   </div>
 );
+
+const CURRENCY_SYM = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
+
+const SendPaymentPanel = ({ selected, onUpdated }) => {
+  const linked = !!selected.linked_order_id;
+  const defaultAmount = selected.final_amount || selected.estimated_price || 0;
+  const [amount, setAmount] = useState(defaultAmount);
+  const [currency, setCurrency] = useState(selected.final_currency || selected.currency || 'INR');
+  const [note, setNote] = useState(selected.payment_note || '');
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(!linked);
+
+  useEffect(() => {
+    setAmount(selected.final_amount || selected.estimated_price || 0);
+    setCurrency(selected.final_currency || selected.currency || 'INR');
+    setNote(selected.payment_note || '');
+    setEditing(!selected.linked_order_id);
+  }, [selected.id, selected.linked_order_id, selected.final_amount, selected.estimated_price, selected.final_currency, selected.currency, selected.payment_note]);
+
+  const send = async () => {
+    if (!amount || Number(amount) <= 0) { toast.error('Enter a valid amount'); return; }
+    setBusy(true);
+    try {
+      const res = await api.recoverySendPayment(selected.id, { amount: Number(amount), currency, note });
+      toast.success(linked ? 'Payment request updated' : 'Payment request sent', { description: `Order ${res.order.id} linked to this case` });
+      setEditing(false);
+      onUpdated?.(res.case);
+    } catch (e) { toast.error(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const sym = CURRENCY_SYM[currency] || '';
+
+  return (
+    <div className="eh-panel p-4 bg-[rgba(0,255,157,.04)] border border-[rgba(0,255,157,.25)]" data-testid="recovery-payment-panel">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="eh-mono text-[10px] opacity-70 tracking-widest flex items-center gap-2"><CreditCard size={11} className="text-[var(--eh-green)]" /> // PAYMENT REQUEST</div>
+        {linked && <a href={`/track?id=${selected.linked_order_id}`} target="_blank" rel="noreferrer" className="eh-mono text-[10px] text-[var(--eh-green)] hover:underline flex items-center gap-1"><ExternalLink size={10} /> {selected.linked_order_id}</a>}
+      </div>
+
+      {linked && !editing ? (
+        <div className="space-y-2">
+          <div className="flex items-baseline gap-2">
+            <div className="eh-display text-2xl font-black eh-neon">{sym}{Number(selected.final_amount || 0).toLocaleString('en-IN')}</div>
+            <div className="eh-mono text-[10px] opacity-60">{selected.final_currency}</div>
+          </div>
+          {selected.payment_note && <div className="eh-mono text-[11px] opacity-70 leading-5">{selected.payment_note}</div>}
+          <div className="eh-mono text-[10px] opacity-50">// SENT {selected.payment_sent_at ? new Date(selected.payment_sent_at).toLocaleString() : ''}</div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setEditing(true)} data-testid="recovery-payment-edit" className="text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5"><Edit3 size={11} /> UPDATE AMOUNT</button>
+            <a href={`/track?id=${selected.linked_order_id}`} target="_blank" rel="noreferrer" className="text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5"><ExternalLink size={11} /> VIEW PAYMENT</a>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="eh-mono text-[10px] opacity-70 leading-5">{linked ? 'Updating the amount keeps the same payment link active.' : 'Set the final quote and send the customer a payment link. This auto-creates a linked order and shows UPI/Crypto box on their /track page. Case auto-bumps to ENGAGED.'}</div>
+          <div className="grid grid-cols-[1fr_100px] gap-2">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 eh-mono text-sm opacity-60">{sym}</span>
+              <input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} className="eh-input pl-7" placeholder="Final amount" data-testid="recovery-payment-amount" />
+            </div>
+            <select className="eh-input" value={currency} onChange={e => setCurrency(e.target.value)} data-testid="recovery-payment-currency">
+              {['INR', 'USD', 'EUR', 'GBP'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <textarea rows={2} className="eh-textarea" value={note} onChange={e => setNote(e.target.value)} placeholder="Note for customer (optional) — e.g. Pay after we confirm recovery on call" data-testid="recovery-payment-note" />
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={send} disabled={busy} className="eh-btn-primary text-xs flex items-center gap-1.5 disabled:opacity-50" data-testid="recovery-payment-send">
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <TgIcon size={12} />} {busy ? 'SENDING…' : linked ? 'UPDATE REQUEST' : 'SEND PAYMENT REQUEST'}
+            </button>
+            {linked && <button onClick={() => setEditing(false)} className="text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)]">CANCEL</button>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ServicesTab = ({ cfg, setCfg }) => {
   const [busy, setBusy] = useState(false);

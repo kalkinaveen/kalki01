@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X } from 'lucide-react';
+import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X, CreditCard } from 'lucide-react';
 import { api } from '../lib/api';
 import PaymentBox from '../components/PaymentBox';
 import RecoveryReviewForm from '../components/RecoveryReviewForm';
+
+const CURRENCY_SYM = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
 
 const ORDER_STAGES = [
   { key: 'received', icon: Package, label: 'Order Received', desc: 'Encrypted handshake complete. Order queued.' },
@@ -29,6 +31,17 @@ const inferKind = (id) => {
 
 const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
   const status = recCase.status || 'new';
+  const [linkedOrder, setLinkedOrder] = useState(null);
+
+  useEffect(() => {
+    if (recCase.linked_order_id) {
+      api.getOrder(recCase.linked_order_id).then(setLinkedOrder).catch(() => setLinkedOrder(null));
+    } else {
+      setLinkedOrder(null);
+    }
+  }, [recCase.linked_order_id]);
+
+  const paySym = CURRENCY_SYM[recCase.final_currency] || '';
   const terminal = RECOVERY_TERMINAL[status];
   const stageIdx = RECOVERY_STAGES.findIndex(s => s.key === status);
   return (
@@ -89,6 +102,23 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
           <div className="text-sm opacity-80 leading-6">{terminal.desc}</div>
         </div>
       )}
+
+      {recCase.linked_order_id && (
+        <div className="mt-6 eh-panel p-5 border border-[rgba(0,255,157,.35)] bg-[rgba(0,255,157,.05)]" data-testid="recovery-payment-banner">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div className="eh-mono text-[10px] tracking-widest text-[var(--eh-green)] flex items-center gap-1.5"><CreditCard size={12} /> // QUOTE READY · COMPLETE PAYMENT</div>
+            <div className="eh-mono text-[10px] opacity-50">ORDER {recCase.linked_order_id}</div>
+          </div>
+          {recCase.final_amount ? (
+            <div className="flex items-baseline gap-2 mb-1">
+              <div className="eh-display text-3xl sm:text-4xl font-black eh-neon">{paySym}{Number(recCase.final_amount).toLocaleString('en-IN')}</div>
+              <div className="eh-mono text-[10px] opacity-60">{recCase.final_currency}</div>
+            </div>
+          ) : null}
+          {recCase.payment_note && <div className="eh-mono text-[11px] opacity-80 leading-5 mt-1">// {recCase.payment_note}</div>}
+        </div>
+      )}
+      {linkedOrder && <PaymentBox order={linkedOrder} onUpdated={setLinkedOrder} />}
 
       <div className="mt-6 pt-5 border-t border-[var(--eh-border)] flex flex-wrap gap-3 items-center justify-between">
         <div className="eh-mono text-[10px] opacity-50">// AUTO-REFRESH EVERY 30s · CASE OPENED {recCase.createdAt ? new Date(recCase.createdAt).toLocaleString() : ''}</div>
