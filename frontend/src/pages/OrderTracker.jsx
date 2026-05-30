@@ -27,7 +27,7 @@ const inferKind = (id) => {
   return 'order';
 };
 
-const RecoveryView = ({ recCase, onRefresh, refreshing }) => {
+const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
   const status = recCase.status || 'new';
   const terminal = RECOVERY_TERMINAL[status];
   const stageIdx = RECOVERY_STAGES.findIndex(s => s.key === status);
@@ -92,7 +92,7 @@ const RecoveryView = ({ recCase, onRefresh, refreshing }) => {
 
       <div className="mt-6 pt-5 border-t border-[var(--eh-border)] flex flex-wrap gap-3 items-center justify-between">
         <div className="eh-mono text-[10px] opacity-50">// AUTO-REFRESH EVERY 30s · CASE OPENED {recCase.createdAt ? new Date(recCase.createdAt).toLocaleString() : ''}</div>
-        <a href="https://t.me/errorhacker" target="_blank" rel="noreferrer" className="eh-btn-primary text-xs flex items-center gap-1.5"><TgIcon size={12} /> CONTACT TEAM</a>
+        <a href={teamTgUrl || '#'} target="_blank" rel="noreferrer" data-testid="recovery-contact-team-btn" className={`eh-btn-primary text-xs flex items-center gap-1.5 ${!teamTgUrl ? 'opacity-50 pointer-events-none' : ''}`}><TgIcon size={12} /> CONTACT TEAM</a>
       </div>
     </div>
   );
@@ -149,6 +149,14 @@ const OrderTracker = () => {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [teamTgUrl, setTeamTgUrl] = useState('');
+
+  useEffect(() => {
+    // Pull the team Telegram URL the owner configured in Webpanel → Recovery → Hero & Trust.
+    // This replaces the previously hardcoded `https://t.me/errorhacker` link on the
+    // "CONTACT TEAM" button so it always matches the admin's current handle.
+    api.recoveryConfig().then(r => setTeamTgUrl(r?.hero?.telegram_url || '')).catch(() => {});
+  }, []);
 
   const lookup = async (rawId) => {
     setErr(''); setOrder(null); setRecCase(null);
@@ -229,7 +237,7 @@ const OrderTracker = () => {
             <AlertCircle size={16} color="var(--eh-red)" /><span className="text-sm">{err}</span>
           </div>
         )}
-        {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} />}
+        {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} teamTgUrl={teamTgUrl} />}
         {recCase && ['recovered', 'closed'].includes(recCase.status) && <RecoveryReviewForm caseId={recCase.id} />}
         {order && <OrderView order={order} setOrder={setOrder} />}
         {!recCase && !order && !err && id === '' && (
