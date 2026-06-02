@@ -1,11 +1,49 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X, CreditCard } from 'lucide-react';
+import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X, CreditCard, Bell } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import PaymentBox from '../components/PaymentBox';
 import RecoveryReviewForm from '../components/RecoveryReviewForm';
+import TelegramAccountCard from '../components/TelegramAccountCard';
 
 const CURRENCY_SYM = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
+
+/**
+ * Soft Telegram connect prompt that surfaces in /track once a result is shown.
+ *  - Logged-in users → reuse TelegramAccountCard (full link flow)
+ *  - Anonymous users → CTA to sign in so they can link Telegram
+ *  - If bot is not enabled, render nothing (TelegramAccountCard handles that gracefully)
+ */
+const TrackConnectTelegramCTA = () => {
+  const { user, loading } = useAuth();
+  const [botEnabled, setBotEnabled] = useState(true);
+  useEffect(() => {
+    if (user) return; // logged-in path uses the card and fetches status itself
+    api.recoveryConfig().catch(() => {}); // warm cache, no-op
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/me/telegram/status`).then(() => {}).catch(() => {});
+  }, [user]);
+  if (loading) return null;
+  if (user) return <div className="mt-6"><TelegramAccountCard /></div>;
+  if (!botEnabled) return null;
+  return (
+    <div className="eh-panel p-5 mt-6 bg-[rgba(0,255,157,.04)] border border-[rgba(0,255,157,.25)]" data-testid="track-tg-cta-anon">
+      <div className="flex items-start gap-3">
+        <Bell size={18} className="text-[var(--eh-green)] mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="eh-display text-base font-bold mb-1">Get live Telegram alerts</div>
+          <p className="eh-mono text-[11px] opacity-80 leading-6 mb-3">
+            Sign in to your ERRORHACKER account and link <span className="eh-neon-soft">@errorhackerbot</span> — we'll DM you the moment your status changes (no more refreshing this page).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link to="/login" className="eh-btn-primary text-xs inline-flex items-center gap-1.5" data-testid="track-tg-cta-login"><TgIcon size={12} /> SIGN IN TO CONNECT</Link>
+            <Link to="/signup" className="eh-btn-ghost text-xs">CREATE ACCOUNT</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ORDER_STAGES = [
   { key: 'received', icon: Package, label: 'Order Received', desc: 'Encrypted handshake complete. Order queued.' },
@@ -270,6 +308,7 @@ const OrderTracker = () => {
         {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} teamTgUrl={teamTgUrl} />}
         {recCase && ['recovered', 'closed'].includes(recCase.status) && <RecoveryReviewForm caseId={recCase.id} />}
         {order && <OrderView order={order} setOrder={setOrder} />}
+        {(recCase || order) && <TrackConnectTelegramCTA />}
         {!recCase && !order && !err && id === '' && (
           <div className="eh-panel p-5 text-center eh-mono text-xs opacity-60">
             Submitted a recovery case? <Link to="/recovery" className="eh-neon underline">Start a new case →</Link>
