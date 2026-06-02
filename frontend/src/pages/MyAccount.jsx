@@ -4,6 +4,7 @@ import { LogOut, Copy, Package, Loader2, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import TelegramAccountCard from '../components/TelegramAccountCard';
 
 const MyAccount = () => {
   const { user, loading, logout, exchangeGoogleSession } = useAuth();
@@ -71,11 +72,7 @@ const MyAccount = () => {
             <Link to="/me/referrals" className="eh-btn-primary text-xs"><Gift size={12} /> EARNINGS</Link>
           </div>
         </div>
-        <div className="eh-panel p-5">
-          <div className="eh-mono text-xs tracking-widest opacity-60 mb-2">// PROVIDER</div>
-          <div className="eh-display text-2xl font-black eh-neon mb-2">{(user.provider || 'password').toUpperCase()}</div>
-          <p className="eh-mono text-xs opacity-70 leading-6">Joined {new Date(user.created_at).toLocaleDateString()}</p>
-        </div>
+        <TelegramAccountCard />
       </div>
 
       <div>

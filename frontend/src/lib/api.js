@@ -46,6 +46,17 @@ export const api = {
   logout: () => req('/admin/logout', { method: 'POST', admin: true }).catch(() => null),
   changePassword: (new_password) => req('/admin/password', { method: 'POST', body: { new_password }, admin: true }),
   testTelegram: (bot_token, chat_id, message) => req('/admin/telegram/test', { method: 'POST', body: { bot_token, chat_id, message }, admin: true }),
+  // telegram customer bot
+  tgBotGet: () => req('/admin/telegram/bot', { admin: true }),
+  tgBotSave: (data) => req('/admin/telegram/bot', { method: 'PUT', body: data, admin: true }),
+  tgBotEnable: (backend_url) => req('/admin/telegram/bot/enable', { method: 'POST', body: { backend_url }, admin: true }),
+  tgBotDisable: () => req('/admin/telegram/bot/disable', { method: 'POST', admin: true }),
+  tgBotUsers: () => req('/admin/telegram/bot/users', { admin: true }),
+  tgBotBroadcast: (message) => req('/admin/telegram/bot/broadcast', { method: 'POST', body: { message }, admin: true }),
+  // me ↔ telegram link
+  meTelegramStatus: () => req('/me/telegram/status', { auth: true }),
+  meTelegramLinkCode: () => req('/me/telegram/link-code', { method: 'POST', auth: true }),
+  meTelegramUnlink: () => req('/me/telegram/unlink', { method: 'DELETE', auth: true }),
   // orders
   createOrder: (data) => req('/orders', { method: 'POST', body: data, auth: true }),
   listOrders: () => req('/orders', { admin: true }),

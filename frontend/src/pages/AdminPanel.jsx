@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { toast } from 'sonner';
 import RecoveryManager from './admin/RecoveryManager';
 import TeamManager from './admin/TeamManager';
+import TelegramBotPanel from './admin/TelegramBotPanel';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -1255,6 +1256,11 @@ const NotificationsTab = () => {
           <div>4. Paste it here, toggle <b>ENABLED</b>, hit <b>SAVE</b> at top.</div>
           <div>5. Open your site in another tab → check GA <b>Realtime</b> report to confirm.</div>
         </div>
+      </div>
+
+      <div className="mt-8 pt-8 border-t border-[var(--eh-border)]">
+        <div className="eh-kicker mb-3">// CUSTOMER BOT</div>
+        <TelegramBotPanel />
       </div>
     </Section>
   );

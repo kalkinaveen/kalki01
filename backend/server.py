@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from bson import ObjectId
-import os, uuid, logging, base64, asyncio, secrets, io
+import os, uuid, logging, base64, asyncio, secrets, io, random
 import httpx, bcrypt, jwt
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -350,6 +350,334 @@ async def _telegram_send(bot_token: str, chat_id: str, text: str) -> Dict[str, A
         except Exception:
             return {"ok": False, "status": r.status_code}
 
+# ---- Telegram Bot (inbound/customer-facing) --------------------------------
+async def _tg_call(bot_token: str, method: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not bot_token:
+        return {"ok": False, "error": "no_bot_token"}
+    url = f"https://api.telegram.org/bot{bot_token}/{method}"
+    async with httpx.AsyncClient(timeout=10) as cx:
+        try:
+            r = await cx.post(url, json=payload)
+            return r.json()
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+async def _tg_send(bot_token: str, chat_id: Any, text: str, reply_markup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    return await _tg_call(bot_token, "sendMessage", payload)
+
+async def _get_bot_token() -> str:
+    cfg = await _ensure_config()
+    notif = (cfg.get("notifications") or {}).get("telegram") or {}
+    return notif.get("bot_token", "") or ""
+
+DEFAULT_BOT_CFG: Dict[str, Any] = {
+    "enabled": False,
+    "username": "",
+    "webhook_secret": "",
+    "webhook_url": "",
+    "welcome_message": (
+        "<b>// ERRORHACKER LIVE OPS</b>\n\n"
+        "Track orders, get payment details and start recovery cases right here.\n\n"
+        "Tap a button below or use:\n"
+        "<code>/track ORD-XXX</code> · <code>/track REC-XXX</code>\n"
+        "<code>/orders</code> · <code>/pay ORD-XXX</code> · <code>/help</code>"
+    ),
+    "commands": {"track": True, "orders": True, "pay": True, "recover": True, "help": True},
+}
+
+async def _get_bot_cfg() -> Dict[str, Any]:
+    cfg = await _ensure_config()
+    bot = (cfg.get("telegram_bot") or {}).copy()
+    for k, v in DEFAULT_BOT_CFG.items():
+        if k not in bot:
+            bot[k] = v
+    return bot
+
+async def _save_bot_cfg(updates: Dict[str, Any]) -> Dict[str, Any]:
+    bot = await _get_bot_cfg()
+    bot.update(updates)
+    await db.site_config.update_one({"_id": "main"}, {"$set": {"telegram_bot": bot, "updated_at": _now_iso()}})
+    return bot
+
+def _bot_main_keyboard(bot_username: str = "", enabled: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
+    """Welcome / menu inline keyboard."""
+    enabled = enabled or {"track": True, "orders": True, "pay": True, "recover": True, "help": True}
+    rows = []
+    if enabled.get("track"):
+        rows.append([{"text": "📦 Track Order / Case", "callback_data": "menu_track"}])
+    if enabled.get("orders"):
+        rows.append([{"text": "🗂 My Orders", "callback_data": "menu_orders"}])
+    if enabled.get("pay"):
+        rows.append([{"text": "💳 Payment Info", "callback_data": "menu_pay"}])
+    if enabled.get("recover"):
+        rows.append([{"text": "🛡 Recover Account", "url": "https://errorhacker.site/recovery"}])
+    if enabled.get("help"):
+        rows.append([{"text": "ℹ Help", "callback_data": "menu_help"}])
+    return {"inline_keyboard": rows}
+
+def _status_emoji(s: str) -> str:
+    return {
+        "received": "📥", "verified": "✅", "in-progress": "⚙️", "delivered": "🎯", "paid": "💰",
+        "payment_review": "🕵️", "new": "🆕", "reviewing": "🔎", "engaged": "🤝",
+        "recovering": "⚙️", "recovered": "🎉", "closed": "🔒", "rejected": "⛔",
+    }.get((s or "").lower(), "•")
+
+async def _fmt_order(order_id: str) -> Optional[str]:
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        return None
+    lines = [
+        f"<b>ORDER</b> <code>{o['id']}</code>",
+        f"{_status_emoji(o.get('status', ''))} <b>{(o.get('status') or 'received').upper()}</b>",
+        f"<b>Service:</b> {o.get('serviceName') or o.get('service') or '—'}",
+    ]
+    if o.get("amount"):
+        sym = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}.get(o.get("currency", "INR"), "")
+        lines.append(f"<b>Amount:</b> {sym}{o.get('amount')} {o.get('currency', '')}")
+    if o.get("size"):
+        lines.append(f"<b>Size:</b> {o['size']}")
+    if o.get("target"):
+        lines.append(f"<b>Target:</b> {o['target'][:80]}")
+    if o.get("case_id"):
+        lines.append(f"🔗 Linked recovery case: <code>{o['case_id']}</code>")
+    return "\n".join(lines)
+
+async def _fmt_case(case_id: str) -> Optional[str]:
+    c = await db.recovery_cases.find_one({"id": case_id})
+    if not c:
+        return None
+    lines = [
+        f"<b>RECOVERY CASE</b> <code>{c['id']}</code>",
+        f"{_status_emoji(c.get('status', ''))} <b>{(c.get('status') or 'new').upper()}</b>",
+        f"<b>Service:</b> {c.get('service_name') or c.get('issue') or '—'}",
+        f"<b>Platform:</b> {(c.get('platform') or '—').upper()}",
+        f"<b>Urgency:</b> {(c.get('urgency') or 'medium').upper()}",
+    ]
+    if c.get("final_amount"):
+        sym = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}.get(c.get("final_currency", "INR"), "")
+        lines.append(f"💳 <b>Quote:</b> {sym}{c.get('final_amount')} {c.get('final_currency', '')}")
+    elif c.get("estimated_price"):
+        lines.append(f"💡 <b>Estimate:</b> ₹{c.get('estimated_price')}")
+    if c.get("admin_note"):
+        lines.append(f"\n📝 <i>{c['admin_note']}</i>")
+    if c.get("linked_order_id"):
+        lines.append(f"🔗 Linked order: <code>{c['linked_order_id']}</code>")
+    return "\n".join(lines)
+
+async def _send_welcome(bot_token: str, chat_id: int, bot_cfg: Optional[Dict[str, Any]] = None):
+    bot_cfg = bot_cfg or await _get_bot_cfg()
+    await _tg_send(bot_token, chat_id, bot_cfg.get("welcome_message") or DEFAULT_BOT_CFG["welcome_message"],
+                   _bot_main_keyboard(bot_cfg.get("username", ""), bot_cfg.get("commands")))
+
+async def _send_help(bot_token: str, chat_id: int):
+    text = (
+        "<b>// COMMAND CHEATSHEET</b>\n\n"
+        "<code>/track ORD-XXXXXXXX</code> — order status + timeline\n"
+        "<code>/track REC-XXXXXXXX</code> — recovery case status\n"
+        "<code>/orders</code> — list all your orders (login linked)\n"
+        "<code>/pay ORD-XXXXXXXX</code> — UPI / Crypto details\n"
+        "<code>/recover</code> — start an account recovery case\n"
+        "<code>/help</code> — this menu\n\n"
+        "Tip: you can also just send an <b>ORD-…</b> or <b>REC-…</b> ID directly."
+    )
+    await _tg_send(bot_token, chat_id, text)
+
+async def _send_recover(bot_token: str, chat_id: int):
+    text = (
+        "<b>🛡 ACCOUNT RECOVERY</b>\n\n"
+        "Use our secure web wizard for the full 3-step intake (proofs upload, secure quote, Telegram updates).\n\n"
+        "Tap the button below to open it."
+    )
+    await _tg_send(bot_token, chat_id, text, {"inline_keyboard": [[{"text": "🚀 Open Recovery Wizard", "url": "https://errorhacker.site/recovery"}]]})
+
+async def _handle_track(bot_token: str, chat_id: int, raw_id: str):
+    rid = (raw_id or "").strip().upper()
+    if not rid:
+        await _tg_send(bot_token, chat_id,
+                       "Send an ID like <code>/track ORD-XXXXXXXX</code> or <code>/track REC-XXXXXXXX</code>.")
+        return
+    if rid.startswith("REC-"):
+        text = await _fmt_case(rid)
+    else:
+        text = await _fmt_order(rid)
+    if not text:
+        await _tg_send(bot_token, chat_id, f"❌ No order or recovery case found with ID <code>{rid}</code>.")
+        return
+    kb = {"inline_keyboard": [[{"text": "🔗 Open Live Tracker", "url": f"https://errorhacker.site/track?id={rid}"}]]}
+    await _tg_send(bot_token, chat_id, text, kb)
+
+async def _handle_orders(bot_token: str, chat_id: int):
+    user = await db.users.find_one({"telegram_chat_id": chat_id})
+    if not user:
+        await _tg_send(bot_token, chat_id,
+                       "🔒 Your Telegram isn't linked to an ERRORHACKER account yet.\n\n"
+                       "Open <a href=\"https://errorhacker.site/me\">My Account</a> → tap <b>Connect Telegram</b> to link.")
+        return
+    rows = await db.orders.find({"user_id": user.get("user_id")}).sort("createdAt", -1).to_list(10)
+    if not rows:
+        await _tg_send(bot_token, chat_id, "You don't have any orders yet. Open the shop on errorhacker.site.")
+        return
+    lines = ["<b>// YOUR LATEST ORDERS</b>\n"]
+    buttons = []
+    for o in rows[:8]:
+        lines.append(f"{_status_emoji(o.get('status', ''))} <code>{o['id']}</code> · {(o.get('serviceName') or o.get('service') or '—')[:40]} · <b>{(o.get('status') or 'received').upper()}</b>")
+        buttons.append([{"text": f"📦 {o['id']}", "callback_data": f"track_{o['id']}"}])
+    await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": buttons})
+
+async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
+    cfg = await _ensure_config()
+    pay = (cfg.get("payments") or {})
+    lines = ["<b>💳 PAYMENT DETAILS</b>\n"]
+    order_text = None
+    if order_id:
+        order_text = await _fmt_order(order_id)
+        if order_text:
+            lines.append(order_text + "\n")
+    if pay.get("manual_enabled"):
+        if pay.get("upi_id"):
+            lines.append(f"<b>UPI:</b> <code>{pay['upi_id']}</code>")
+            if pay.get("upi_name"):
+                lines.append(f"   → {pay['upi_name']}")
+        if pay.get("bank_details"):
+            lines.append(f"\n<b>BANK</b>\n<code>{pay['bank_details']}</code>")
+    if pay.get("crypto_enabled") and pay.get("crypto_wallets"):
+        lines.append("\n<b>CRYPTO</b>")
+        for w in (pay.get("crypto_wallets") or [])[:6]:
+            net = f" · {w.get('network')}" if w.get("network") else ""
+            lines.append(f"• <b>{w.get('coin')}</b>{net}: <code>{w.get('address')}</code>")
+    if pay.get("instructions"):
+        lines.append(f"\n<i>{pay['instructions']}</i>")
+    kb = None
+    if order_id:
+        kb = {"inline_keyboard": [[{"text": "🔗 Submit Payment Proof", "url": f"https://errorhacker.site/track?id={order_id}"}]]}
+    await _tg_send(bot_token, chat_id, "\n".join(lines), kb)
+
+async def _handle_link(bot_token: str, chat_id: int, chat: Dict[str, Any], code: str):
+    code = (code or "").strip().upper()
+    if not code:
+        await _send_welcome(bot_token, chat_id)
+        return
+    rec = await db.telegram_link_codes.find_one({"code": code})
+    if not rec:
+        await _tg_send(bot_token, chat_id, "❌ This link is invalid or expired. Generate a fresh one from your account page.")
+        return
+    if rec.get("expires_at") and rec["expires_at"] < _now_iso():
+        await db.telegram_link_codes.delete_one({"code": code})
+        await _tg_send(bot_token, chat_id, "⌛ This link expired. Generate a fresh one from your account page.")
+        return
+    user_id = rec.get("user_id")
+    user = await db.users.find_one({"user_id": user_id})
+    if not user:
+        await _tg_send(bot_token, chat_id, "❌ Linked account not found.")
+        return
+    await db.users.update_one({"user_id": user_id}, {"$set": {
+        "telegram_chat_id": chat_id,
+        "telegram_username": chat.get("username", ""),
+        "telegram_first_name": chat.get("first_name", ""),
+        "telegram_linked_at": _now_iso(),
+    }})
+    await db.telegram_link_codes.delete_one({"code": code})
+    bot_cfg = await _get_bot_cfg()
+    await _tg_send(bot_token, chat_id,
+                   f"✅ <b>Connected!</b>\n\nThis Telegram chat is now linked to <code>{user.get('email')}</code>.\n"
+                   f"You'll get instant DMs whenever your order or recovery case status changes.",
+                   _bot_main_keyboard(bot_cfg.get("username", ""), bot_cfg.get("commands")))
+
+async def _handle_callback(bot_token: str, chat_id: int, data: str):
+    if data == "menu_track":
+        await _tg_send(bot_token, chat_id, "Send your ID like <code>/track ORD-XXXXXXXX</code> or just paste the ID.")
+    elif data == "menu_orders":
+        await _handle_orders(bot_token, chat_id)
+    elif data == "menu_pay":
+        await _handle_pay(bot_token, chat_id, "")
+    elif data == "menu_help":
+        await _send_help(bot_token, chat_id)
+    elif data.startswith("track_"):
+        await _handle_track(bot_token, chat_id, data[6:])
+    elif data.startswith("pay_"):
+        await _handle_pay(bot_token, chat_id, data[4:])
+
+async def _process_update(update: Dict[str, Any]):
+    """Async, fire-and-forget update handler — must never raise to caller."""
+    try:
+        bot_token = await _get_bot_token()
+        if not bot_token:
+            return
+        # callback_query (inline button tap)
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            await _tg_call(bot_token, "answerCallbackQuery", {"callback_query_id": cq["id"]})
+            chat_id = cq.get("message", {}).get("chat", {}).get("id")
+            if chat_id is not None:
+                await _handle_callback(bot_token, chat_id, cq.get("data") or "")
+            return
+        msg = update.get("message") or update.get("edited_message") or {}
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        text = (msg.get("text") or "").strip()
+        if chat_id is None or not text:
+            return
+        if text.startswith("/start"):
+            parts = text.split(maxsplit=1)
+            payload = parts[1].strip() if len(parts) > 1 else ""
+            if payload.lower().startswith("link_"):
+                await _handle_link(bot_token, chat_id, chat, payload[5:])
+            else:
+                await _send_welcome(bot_token, chat_id)
+            return
+        if text.startswith("/track"):
+            parts = text.split(maxsplit=1)
+            await _handle_track(bot_token, chat_id, parts[1] if len(parts) > 1 else "")
+            return
+        if text.startswith("/orders"):
+            await _handle_orders(bot_token, chat_id)
+            return
+        if text.startswith("/pay"):
+            parts = text.split(maxsplit=1)
+            await _handle_pay(bot_token, chat_id, parts[1].strip() if len(parts) > 1 else "")
+            return
+        if text.startswith("/help"):
+            await _send_help(bot_token, chat_id)
+            return
+        if text.startswith("/recover"):
+            await _send_recover(bot_token, chat_id)
+            return
+        # raw ID — treat as track
+        upper = text.upper().split()[0]
+        if upper.startswith("ORD-") or upper.startswith("REC-"):
+            await _handle_track(bot_token, chat_id, upper)
+            return
+        await _send_welcome(bot_token, chat_id)
+    except Exception as e:
+        log.warning("telegram bot process_update failed: %s", e)
+
+async def _notify_user_order(order: Dict[str, Any], event: str = "status_change"):
+    """DM the customer on their Telegram when their order/case status changes."""
+    try:
+        user_id = order.get("user_id")
+        if not user_id:
+            return
+        user = await db.users.find_one({"user_id": user_id})
+        if not user:
+            return
+        chat_id = user.get("telegram_chat_id")
+        if not chat_id:
+            return
+        bot_token = await _get_bot_token()
+        if not bot_token:
+            return
+        text = await _fmt_order(order["id"]) or ""
+        if not text:
+            return
+        kb = {"inline_keyboard": [[{"text": "🔗 Open Live Tracker", "url": f"https://errorhacker.site/track?id={order['id']}"}]]}
+        await _tg_send(bot_token, chat_id, f"🔔 <b>Status update</b>\n\n{text}", kb)
+    except Exception as e:
+        log.warning("notify_user_order failed: %s", e)
+
+
 async def _notify_recovery_case(case: Dict[str, Any]):
     try:
         cfg = await _ensure_config()
@@ -528,6 +856,8 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
                 except ValueError:
                     # `closed`/`rejected` or unknown status — leave as is
                     pass
+    # Fire-and-forget Telegram DM to the customer if they linked their account
+    asyncio.create_task(_notify_user_order(row, event="status_change"))
     return row
 
 @api.delete("/orders")
@@ -879,6 +1209,188 @@ async def telegram_test(body: TelegramTestIn, x_admin_token: Optional[str] = Hea
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("description") or "Telegram send failed")
     return {"ok": True, "result": res.get("result", {})}
+
+# ---- Telegram Bot (customer-facing) ---------------------------------------
+class TelegramBotEnableIn(BaseModel):
+    backend_url: str
+
+class TelegramBotSettingsIn(BaseModel):
+    welcome_message: Optional[str] = None
+    commands: Optional[Dict[str, bool]] = None
+
+class TelegramBroadcastIn(BaseModel):
+    message: str
+
+@api.post("/telegram/webhook/{secret}")
+async def telegram_webhook(secret: str, request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
+    """Public webhook called by Telegram. Path secret + optional header secret are both validated."""
+    cfg = await _get_bot_cfg()
+    expected = cfg.get("webhook_secret") or ""
+    if not expected or secret != expected:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+    # also enforce header if Telegram sent it
+    if x_telegram_bot_api_secret_token and x_telegram_bot_api_secret_token != expected:
+        raise HTTPException(status_code=403, detail="Invalid webhook header secret")
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": True}
+    # process async so we return 200 instantly (Telegram retries on slow responses)
+    asyncio.create_task(_process_update(update))
+    return {"ok": True}
+
+@api.get("/admin/telegram/bot")
+async def admin_bot_settings(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    cfg = await _get_bot_cfg()
+    # never leak the webhook secret value over the wire to the admin UI
+    safe = {**cfg, "webhook_secret_set": bool(cfg.get("webhook_secret"))}
+    safe.pop("webhook_secret", None)
+    linked_count = await db.users.count_documents({"telegram_chat_id": {"$exists": True, "$ne": None}})
+    safe["linked_users"] = linked_count
+    return safe
+
+@api.put("/admin/telegram/bot")
+async def admin_bot_settings_update(body: TelegramBotSettingsIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    upd: Dict[str, Any] = {}
+    if body.welcome_message is not None:
+        upd["welcome_message"] = body.welcome_message
+    if body.commands is not None:
+        upd["commands"] = body.commands
+    cfg = await _save_bot_cfg(upd)
+    cfg.pop("webhook_secret", None)
+    return {"ok": True, "telegram_bot": cfg}
+
+@api.post("/admin/telegram/bot/enable")
+async def admin_bot_enable(body: TelegramBotEnableIn, x_admin_token: Optional[str] = Header(None)):
+    """Register the webhook with Telegram so the bot starts receiving customer messages."""
+    await _check_admin(x_admin_token)
+    token = await _get_bot_token()
+    if not token:
+        raise HTTPException(status_code=400, detail="Set BOT TOKEN in 'Telegram Alerts' first")
+    base = (body.backend_url or "").rstrip("/")
+    if not base.startswith("https://"):
+        raise HTTPException(status_code=400, detail="backend_url must be HTTPS")
+    cfg = await _get_bot_cfg()
+    secret = cfg.get("webhook_secret") or uuid.uuid4().hex
+    webhook_url = f"{base}/api/telegram/webhook/{secret}"
+    # fetch bot username so we can build deep-links in the UI
+    me = await _tg_call(token, "getMe", {})
+    if not me.get("ok"):
+        raise HTTPException(status_code=400, detail=f"Telegram getMe failed: {me.get('description') or me.get('error')}")
+    bot_username = me.get("result", {}).get("username", "")
+    # register webhook
+    res = await _tg_call(token, "setWebhook", {
+        "url": webhook_url,
+        "secret_token": secret,
+        "allowed_updates": ["message", "edited_message", "callback_query"],
+        "drop_pending_updates": True,
+    })
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=f"setWebhook failed: {res.get('description') or res.get('error')}")
+    saved = await _save_bot_cfg({
+        "enabled": True,
+        "username": bot_username,
+        "webhook_secret": secret,
+        "webhook_url": webhook_url,
+    })
+    saved.pop("webhook_secret", None)
+    return {"ok": True, "telegram_bot": saved}
+
+@api.post("/admin/telegram/bot/disable")
+async def admin_bot_disable(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    token = await _get_bot_token()
+    if token:
+        await _tg_call(token, "deleteWebhook", {"drop_pending_updates": False})
+    cfg = await _save_bot_cfg({"enabled": False})
+    cfg.pop("webhook_secret", None)
+    return {"ok": True, "telegram_bot": cfg}
+
+@api.get("/admin/telegram/bot/users")
+async def admin_bot_linked_users(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.users.find(
+        {"telegram_chat_id": {"$exists": True, "$ne": None}},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "telegram_chat_id": 1, "telegram_username": 1, "telegram_first_name": 1, "telegram_linked_at": 1},
+    ).sort("telegram_linked_at", -1).to_list(500)
+    return rows
+
+@api.post("/admin/telegram/bot/broadcast")
+async def admin_bot_broadcast(body: TelegramBroadcastIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    if not (body.message or "").strip():
+        raise HTTPException(status_code=400, detail="Message is empty")
+    token = await _get_bot_token()
+    if not token:
+        raise HTTPException(status_code=400, detail="Bot token is not set")
+    cursor = db.users.find({"telegram_chat_id": {"$exists": True, "$ne": None}}, {"telegram_chat_id": 1})
+    sent, failed = 0, 0
+    async for u in cursor:
+        cid = u.get("telegram_chat_id")
+        if not cid:
+            continue
+        r = await _tg_send(token, cid, body.message)
+        if r.get("ok"):
+            sent += 1
+        else:
+            failed += 1
+        await asyncio.sleep(0.05)  # ~20 msg/s — well under Telegram's 30/s global limit
+    return {"ok": True, "sent": sent, "failed": failed}
+
+# ---- Account ↔ Telegram linking (customer-side) ---------------------------
+@api.post("/me/telegram/link-code")
+async def me_telegram_link_code(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    bot_cfg = await _get_bot_cfg()
+    if not bot_cfg.get("enabled") or not bot_cfg.get("username"):
+        raise HTTPException(status_code=503, detail="Telegram bot is not configured by the admin yet")
+    # one active code per user
+    await db.telegram_link_codes.delete_many({"user_id": user["user_id"]})
+    code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    await db.telegram_link_codes.insert_one({
+        "code": code,
+        "user_id": user["user_id"],
+        "email": user.get("email"),
+        "expires_at": expires,
+        "createdAt": _now_iso(),
+    })
+    deep_link = f"https://t.me/{bot_cfg['username']}?start=link_{code}"
+    return {"code": code, "deep_link": deep_link, "bot_username": bot_cfg["username"], "expires_at": expires}
+
+@api.get("/me/telegram/status")
+async def me_telegram_status(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    bot_cfg = await _get_bot_cfg()
+    fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "telegram_chat_id": 1, "telegram_username": 1, "telegram_first_name": 1, "telegram_linked_at": 1})
+    return {
+        "linked": bool((fresh or {}).get("telegram_chat_id")),
+        "telegram_username": (fresh or {}).get("telegram_username"),
+        "telegram_first_name": (fresh or {}).get("telegram_first_name"),
+        "telegram_linked_at": (fresh or {}).get("telegram_linked_at"),
+        "bot_enabled": bool(bot_cfg.get("enabled")),
+        "bot_username": bot_cfg.get("username", ""),
+    }
+
+@api.delete("/me/telegram/unlink")
+async def me_telegram_unlink(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {
+        "telegram_chat_id": "",
+        "telegram_username": "",
+        "telegram_first_name": "",
+        "telegram_linked_at": "",
+    }})
+    return {"ok": True}
+
 
 # ---- Auth helpers ----------------------------------------------------------
 def _hash_pw(pw: str) -> str:
