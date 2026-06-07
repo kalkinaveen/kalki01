@@ -5,6 +5,7 @@ import Navbar from './Navbar';
 import Footer from './Footer';
 import FloatingTelegram from './FloatingTelegram';
 import ScrollProgress from './ScrollProgress';
+import LiveOrderTicker from './LiveOrderTicker';
 
 const Layout = ({ children }) => {
   const { pathname } = useLocation();
@@ -13,6 +14,7 @@ const Layout = ({ children }) => {
     <div className="App eh-scanlines">
       <ScrollProgress />
       {!isFeed && <Marquee />}
+      {!isFeed && <LiveOrderTicker />}
       <Navbar />
       <main>{children}</main>
       {!isFeed && <Footer />}

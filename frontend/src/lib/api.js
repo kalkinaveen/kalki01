@@ -53,6 +53,22 @@ export const api = {
   tgBotDisable: () => req('/admin/telegram/bot/disable', { method: 'POST', admin: true }),
   tgBotUsers: () => req('/admin/telegram/bot/users', { admin: true }),
   tgBotBroadcast: (message) => req('/admin/telegram/bot/broadcast', { method: 'POST', body: { message }, admin: true }),
+  // wallet
+  walletGet: () => req('/me/wallet', { auth: true }),
+  walletTxns: () => req('/me/wallet/transactions', { auth: true }),
+  walletDeposit: (data) => req('/me/wallet/deposit', { method: 'POST', body: data, auth: true }),
+  adminWalletDeposits: (status) => req(`/admin/wallet/deposits${status ? `?status=${status}` : ''}`, { admin: true }),
+  adminWalletApprove: (id) => req(`/admin/wallet/deposits/${id}/approve`, { method: 'POST', admin: true }),
+  adminWalletReject: (id) => req(`/admin/wallet/deposits/${id}/reject`, { method: 'POST', admin: true }),
+  adminWalletAdjust: (uid, data) => req(`/admin/wallet/${uid}/adjust`, { method: 'POST', body: data, admin: true }),
+  adminWallets: () => req('/admin/wallets', { admin: true }),
+  // spin wheel
+  spinConfig: () => req('/spin/config'),
+  spinConfigUpdate: (data) => req('/admin/spin/config', { method: 'PUT', body: data, admin: true }),
+  spinStatus: () => req('/me/spin/status', { auth: true }),
+  spinSpin: () => req('/me/spin/spin', { method: 'POST', body: {}, auth: true }),
+  // live ticker
+  feedTicker: () => req('/feed-ticker'),
   // me ↔ telegram link
   meTelegramStatus: () => req('/me/telegram/status', { auth: true }),
   meTelegramLinkCode: () => req('/me/telegram/link-code', { method: 'POST', auth: true }),

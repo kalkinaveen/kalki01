@@ -25,6 +25,8 @@ import FontPreview from './pages/FontPreview';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MyAccount from './pages/MyAccount';
+import MyWallet from './pages/MyWallet';
+import SpinWheel from './pages/SpinWheel';
 import OrderDetail from './pages/OrderDetail';
 import ReferralsPage from './pages/ReferralsPage';
 import CartPage from './pages/CartPage';
@@ -65,6 +67,8 @@ function App() {
                 <Route path="/login" element={<SiteShell><Login /></SiteShell>} />
                 <Route path="/signup" element={<SiteShell><Signup /></SiteShell>} />
                 <Route path="/me" element={<SiteShell><MyAccount /></SiteShell>} />
+                <Route path="/me/wallet" element={<SiteShell><MyWallet /></SiteShell>} />
+                <Route path="/me/spin" element={<SiteShell><SpinWheel /></SiteShell>} />
                 <Route path="/me/orders/:id" element={<SiteShell><OrderDetail /></SiteShell>} />
                 <Route path="/me/referrals" element={<SiteShell><ReferralsPage /></SiteShell>} />
                 <Route path="/cart" element={<SiteShell><CartPage /></SiteShell>} />

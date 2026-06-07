@@ -158,6 +158,22 @@ class ApplyCouponIn(BaseModel):
     code: str
     amount: float
 
+# ---- Wallet models ----
+class WalletAdjustIn(BaseModel):
+    amount: float = Field(gt=0)
+    note: Optional[str] = ""
+    type: str = Field(default="credit", pattern="^(credit|debit)$")
+
+class WalletDepositRequestIn(BaseModel):
+    amount: float = Field(gt=0)
+    method: str = Field(default="manual", pattern="^(manual|crypto)$")
+    coin: Optional[str] = ""
+    tx_reference: Optional[str] = ""
+    proof_url: Optional[str] = ""
+
+class SpinWheelSpinIn(BaseModel):
+    pass
+
 # ---- Chat models ----
 class ChatIn(BaseModel):
     session_id: str
@@ -2314,6 +2330,282 @@ async def submit_payment_proof(body: PaymentProofIn):
     asyncio.create_task(_notify())
     updated = await db.orders.find_one({"id": body.order_id})
     return _clean(updated)
+
+# ---- Wallet --------------------------------------------------------------
+async def _wallet_get_or_create(user_id: str) -> Dict[str, Any]:
+    w = await db.wallets.find_one({"user_id": user_id})
+    if not w:
+        w = {
+            "user_id": user_id,
+            "balance": 0.0,
+            "currency": "INR",
+            "createdAt": _now_iso(),
+        }
+        await db.wallets.insert_one(w)
+    return _clean(w)
+
+async def _wallet_txn(user_id: str, type_: str, amount: float, note: str = "", ref: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Atomic wallet credit/debit + transaction log. `type_` in credit|debit|spin|cashback|refund."""
+    w = await _wallet_get_or_create(user_id)
+    sign = 1 if type_ in ("credit", "spin", "cashback", "refund") else -1
+    new_bal = round((w.get("balance") or 0) + sign * float(amount), 2)
+    if new_bal < 0:
+        raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+    await db.wallets.update_one({"user_id": user_id}, {"$set": {"balance": new_bal, "updated_at": _now_iso()}})
+    txn = {
+        "id": f"WTX-{uuid.uuid4().hex[:10].upper()}",
+        "user_id": user_id,
+        "type": type_,
+        "amount": float(amount),
+        "balance_after": new_bal,
+        "note": note,
+        "ref": ref or {},
+        "createdAt": _now_iso(),
+    }
+    await db.wallet_txns.insert_one(txn)
+    return {**txn, "_id": None, "balance": new_bal}
+
+@api.get("/me/wallet")
+async def me_wallet(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    w = await _wallet_get_or_create(user["user_id"])
+    return w
+
+@api.get("/me/wallet/transactions")
+async def me_wallet_txns(request: Request, limit: int = 50):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    rows = await db.wallet_txns.find({"user_id": user["user_id"]}).sort("createdAt", -1).to_list(min(limit, 200))
+    return [_clean(r) for r in rows]
+
+@api.post("/me/wallet/deposit")
+async def me_wallet_deposit_request(body: WalletDepositRequestIn, request: Request):
+    """Customer submits a deposit proof — admin must approve before crediting wallet.
+    This is the manual path. Razorpay/Stripe will auto-credit via webhook later."""
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    dep = {
+        "id": f"DEP-{uuid.uuid4().hex[:10].upper()}",
+        "user_id": user["user_id"],
+        "user_email": user.get("email"),
+        "amount": float(body.amount),
+        "currency": "INR",
+        "method": body.method,
+        "coin": body.coin or "",
+        "tx_reference": body.tx_reference or "",
+        "proof_url": body.proof_url or "",
+        "status": "pending",
+        "createdAt": _now_iso(),
+    }
+    await db.wallet_deposits.insert_one(dep)
+    dep.pop("_id", None)
+    # Notify admin on telegram
+    try:
+        cfg = await _ensure_config()
+        notif = (cfg.get("notifications") or {}).get("telegram") or {}
+        if notif.get("enabled"):
+            asyncio.create_task(_telegram_send(notif.get("bot_token", ""), notif.get("chat_id", ""),
+                f"<b>WALLET DEPOSIT // ERRORHACKER</b>\n<b>User:</b> {user.get('email')}\n<b>Amount:</b> ₹{body.amount}\n<b>Method:</b> {body.method} {body.coin or ''}\n<b>Ref:</b> {body.tx_reference}\n<b>Proof:</b> {body.proof_url or '—'}"))
+    except Exception:
+        pass
+    return dep
+
+@api.get("/admin/wallet/deposits")
+async def admin_wallet_deposits(x_admin_token: Optional[str] = Header(None), status: Optional[str] = None):
+    await _check_admin(x_admin_token)
+    q: Dict[str, Any] = {}
+    if status:
+        q["status"] = status
+    rows = await db.wallet_deposits.find(q).sort("createdAt", -1).to_list(500)
+    return [_clean(r) for r in rows]
+
+@api.post("/admin/wallet/deposits/{deposit_id}/approve")
+async def admin_wallet_deposit_approve(deposit_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    dep = await db.wallet_deposits.find_one({"id": deposit_id})
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    if dep.get("status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Already {dep.get('status')}")
+    await _wallet_txn(dep["user_id"], "credit", dep["amount"], note=f"Deposit approved · {dep.get('method')} {dep.get('tx_reference') or ''}",
+                      ref={"deposit_id": deposit_id})
+    await db.wallet_deposits.update_one({"id": deposit_id}, {"$set": {"status": "approved", "approved_at": _now_iso()}})
+    # DM user on Telegram if linked
+    user = await db.users.find_one({"user_id": dep["user_id"]})
+    chat_id = (user or {}).get("telegram_chat_id")
+    if chat_id:
+        token = await _get_bot_token()
+        if token:
+            asyncio.create_task(_tg_send(token, chat_id,
+                f"💰 <b>Wallet credited</b>\n+₹{dep['amount']} added to your ERRORHACKER wallet.\n\nTap below to view balance & spend.",
+                {"inline_keyboard": [[{"text": "🪙 Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]}))
+    return {"ok": True}
+
+@api.post("/admin/wallet/deposits/{deposit_id}/reject")
+async def admin_wallet_deposit_reject(deposit_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.wallet_deposits.update_one({"id": deposit_id, "status": "pending"}, {"$set": {"status": "rejected", "rejected_at": _now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Deposit not found or already processed")
+    return {"ok": True}
+
+@api.post("/admin/wallet/{user_id}/adjust")
+async def admin_wallet_adjust(user_id: str, body: WalletAdjustIn, x_admin_token: Optional[str] = Header(None)):
+    """Admin can manually credit or debit a user's wallet (bonuses, refunds, corrections)."""
+    await _check_admin(x_admin_token)
+    user = await db.users.find_one({"user_id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    txn = await _wallet_txn(user_id, body.type, body.amount, note=body.note or f"Admin {body.type}")
+    return txn
+
+@api.get("/admin/wallets")
+async def admin_wallets_list(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.wallets.find().sort("balance", -1).to_list(500)
+    out = []
+    for r in rows:
+        u = await db.users.find_one({"user_id": r["user_id"]}, {"_id": 0, "email": 1, "name": 1})
+        out.append({**_clean(r), "email": (u or {}).get("email"), "name": (u or {}).get("name")})
+    return out
+
+# ---- Spin Wheel ----------------------------------------------------------
+DEFAULT_SPIN_PRIZES: List[Dict[str, Any]] = [
+    {"id": "p1",  "label": "₹5",           "type": "credit",   "amount": 5,    "weight": 35, "color": "#00ff9d"},
+    {"id": "p2",  "label": "₹10",          "type": "credit",   "amount": 10,   "weight": 25, "color": "#4de0ff"},
+    {"id": "p3",  "label": "₹25",          "type": "credit",   "amount": 25,   "weight": 18, "color": "#ffd34d"},
+    {"id": "p4",  "label": "Try Again",    "type": "nothing",  "amount": 0,    "weight": 12, "color": "#3a3f44"},
+    {"id": "p5",  "label": "₹50",          "type": "credit",   "amount": 50,   "weight": 7,  "color": "#ff8a4d"},
+    {"id": "p6",  "label": "₹100",         "type": "credit",   "amount": 100,  "weight": 2,  "color": "#ff4d6d"},
+    {"id": "p7",  "label": "₹250",         "type": "credit",   "amount": 250,  "weight": 0.9, "color": "#c084fc"},
+    {"id": "p8",  "label": "JACKPOT ₹500", "type": "credit",   "amount": 500,  "weight": 0.1, "color": "#ffd700"},
+]
+
+async def _spin_config() -> Dict[str, Any]:
+    cfg = await _ensure_config()
+    sw = cfg.get("spin_wheel") or {}
+    if not sw.get("prizes"):
+        sw["prizes"] = DEFAULT_SPIN_PRIZES
+    if "enabled" not in sw:
+        sw["enabled"] = True
+    if "cooldown_hours" not in sw:
+        sw["cooldown_hours"] = 24
+    return sw
+
+@api.get("/spin/config")
+async def spin_config_public():
+    sw = await _spin_config()
+    return {"enabled": sw.get("enabled", True), "cooldown_hours": sw.get("cooldown_hours", 24),
+            "prizes": [{k: v for k, v in p.items() if k != "weight"} for p in sw.get("prizes", [])]}
+
+@api.put("/admin/spin/config")
+async def spin_config_update(body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    sw = await _spin_config()
+    if "enabled" in body:
+        sw["enabled"] = bool(body["enabled"])
+    if "cooldown_hours" in body:
+        sw["cooldown_hours"] = max(1, int(body["cooldown_hours"]))
+    if "prizes" in body and isinstance(body["prizes"], list):
+        sw["prizes"] = body["prizes"]
+    await db.site_config.update_one({"_id": "main"}, {"$set": {"spin_wheel": sw, "updated_at": _now_iso()}})
+    return {"ok": True, "spin_wheel": sw}
+
+@api.get("/me/spin/status")
+async def me_spin_status(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    sw = await _spin_config()
+    last = await db.spin_history.find_one({"user_id": user["user_id"]}, sort=[("spun_at", -1)])
+    can_spin = True
+    next_at = None
+    if last:
+        next_at_dt = datetime.fromisoformat(last["spun_at"].replace("Z", "+00:00")) + timedelta(hours=sw.get("cooldown_hours", 24))
+        if next_at_dt > datetime.now(timezone.utc):
+            can_spin = False
+            next_at = next_at_dt.isoformat()
+    return {"can_spin": can_spin and sw.get("enabled", True), "next_at": next_at, "enabled": sw.get("enabled", True), "cooldown_hours": sw.get("cooldown_hours", 24)}
+
+@api.post("/me/spin/spin")
+async def me_spin_spin(body: SpinWheelSpinIn, request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    sw = await _spin_config()
+    if not sw.get("enabled", True):
+        raise HTTPException(status_code=400, detail="Spin wheel is disabled")
+    # cooldown check
+    last = await db.spin_history.find_one({"user_id": user["user_id"]}, sort=[("spun_at", -1)])
+    if last:
+        next_at_dt = datetime.fromisoformat(last["spun_at"].replace("Z", "+00:00")) + timedelta(hours=sw.get("cooldown_hours", 24))
+        if next_at_dt > datetime.now(timezone.utc):
+            raise HTTPException(status_code=429, detail=f"Next spin available at {next_at_dt.isoformat()}")
+    # weighted pick
+    prizes = sw.get("prizes", DEFAULT_SPIN_PRIZES)
+    total = sum(float(p.get("weight", 1)) for p in prizes) or 1
+    pick = random.uniform(0, total)
+    cum = 0.0
+    won = prizes[-1]
+    for p in prizes:
+        cum += float(p.get("weight", 1))
+        if pick <= cum:
+            won = p
+            break
+    # award
+    txn = None
+    if won.get("type") == "credit" and won.get("amount", 0) > 0:
+        txn = await _wallet_txn(user["user_id"], "spin", float(won["amount"]), note=f"Spin win: {won.get('label')}", ref={"prize_id": won.get("id")})
+    await db.spin_history.insert_one({
+        "user_id": user["user_id"],
+        "prize_id": won.get("id"),
+        "label": won.get("label"),
+        "type": won.get("type"),
+        "amount": float(won.get("amount", 0)),
+        "spun_at": _now_iso(),
+    })
+    return {"prize": {k: v for k, v in won.items() if k != "weight"}, "wallet": txn}
+
+# ---- Live Order Ticker ---------------------------------------------------
+def _mask_name(name: str) -> str:
+    if not name:
+        return "Operator"
+    parts = (name or "").strip().split()
+    first = parts[0]
+    if len(first) <= 2:
+        return first.title()
+    return (first[0] + "•" * (len(first) - 2) + first[-1]).title()
+
+@api.get("/feed-ticker")
+async def feed_ticker():
+    """Public ticker — masked recent activity for social proof."""
+    out: List[Dict[str, Any]] = []
+    # recent orders
+    async for o in db.orders.find({}, {"_id": 0, "name": 1, "serviceName": 1, "service": 1, "createdAt": 1, "amount": 1}).sort("createdAt", -1).limit(15):
+        if not o.get("serviceName") and not o.get("service"):
+            continue
+        out.append({
+            "type": "order",
+            "name": _mask_name(o.get("name") or "Op"),
+            "label": (o.get("serviceName") or o.get("service") or "an order")[:50],
+            "createdAt": o.get("createdAt"),
+        })
+    # recent recovered cases (social proof gold)
+    async for c in db.recovery_cases.find({"status": "recovered"}, {"_id": 0, "name": 1, "service_name": 1, "platform": 1, "createdAt": 1}).sort("createdAt", -1).limit(8):
+        out.append({
+            "type": "recovery",
+            "name": _mask_name(c.get("name") or "Op"),
+            "label": f"recovered {c.get('platform') or c.get('service_name') or 'account'}",
+            "createdAt": c.get("createdAt"),
+        })
+    # sort all by createdAt desc
+    out.sort(key=lambda x: x.get("createdAt") or "", reverse=True)
+    return out[:20]
+
 
 # --------------------------------------------------------------------------
 app.include_router(api)

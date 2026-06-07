@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn, ShoppingCart } from 'lucide-react';
+import { Moon, Sun, Menu, X, Search, User, LogOut, LogIn, ShoppingCart, Wallet as WalletIcon, Sparkles } from 'lucide-react';
 import Logo from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import SearchModal from './SearchModal';
+import { api } from '../lib/api';
 
 const Navbar = () => {
   const { theme, toggle } = useTheme();
@@ -16,7 +17,12 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [bal, setBal] = useState(null);
   const nav = useNavigate();
+  useEffect(() => {
+    if (!user) { setBal(null); return; }
+    api.walletGet().then(w => setBal(w?.balance ?? 0)).catch(() => setBal(null));
+  }, [user]);
   useEffect(() => {
     const onKey = (e) => {
       if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
@@ -56,18 +62,26 @@ const Navbar = () => {
             {count > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] grid place-items-center text-[10px] eh-mono font-bold rounded-full px-1" style={{ background: 'var(--eh-green)', color: '#001a10' }}>{count}</span>}
           </Link>
           {user ? (
-            <div className="relative">
-              <button data-testid="nav-user-btn" onClick={() => setUserMenu(v => !v)} className="flex items-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-2.5 sm:py-2 justify-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
-                {user.picture ? <img src={user.picture} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full grid place-items-center text-[10px] eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(user.name||user.email)[0].toUpperCase()}</div>}
-                <span className="hidden md:inline eh-mono text-xs max-w-[110px] truncate">{user.name || user.email.split('@')[0]}</span>
-              </button>
-              {userMenu && (
-                <div onMouseLeave={() => setUserMenu(false)} className="absolute right-0 mt-2 w-44 eh-panel py-1 z-50" style={{ background: '#0d1115' }}>
-                  <NavLink to="/me" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><User size={12} /> my_account</NavLink>
-                  <button data-testid="nav-logout" onClick={async () => { setUserMenu(false); await logout(); nav('/'); }} className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><LogOut size={12} /> logout</button>
-                </div>
-              )}
-            </div>
+            <>
+              <Link to="/me/wallet" data-testid="nav-wallet-pill" className="hidden sm:inline-flex items-center gap-1.5 eh-mono text-xs px-2.5 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors" title="My Wallet">
+                <WalletIcon size={12} className="text-[var(--eh-green)]" />
+                <span className="eh-neon-soft font-bold">₹{Number(bal || 0).toLocaleString('en-IN')}</span>
+              </Link>
+              <div className="relative">
+                <button data-testid="nav-user-btn" onClick={() => setUserMenu(v => !v)} className="flex items-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-2.5 sm:py-2 justify-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
+                  {user.picture ? <img src={user.picture} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full grid place-items-center text-[10px] eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(user.name||user.email)[0].toUpperCase()}</div>}
+                  <span className="hidden md:inline eh-mono text-xs max-w-[110px] truncate">{user.name || user.email.split('@')[0]}</span>
+                </button>
+                {userMenu && (
+                  <div onMouseLeave={() => setUserMenu(false)} className="absolute right-0 mt-2 w-44 eh-panel py-1 z-50" style={{ background: '#0d1115' }}>
+                    <NavLink to="/me" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><User size={12} /> my_account</NavLink>
+                    <NavLink to="/me/wallet" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><WalletIcon size={12} /> wallet</NavLink>
+                    <NavLink to="/me/spin" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><Sparkles size={12} className="text-[#ffd34d]" /> daily_spin</NavLink>
+                    <button data-testid="nav-logout" onClick={async () => { setUserMenu(false); await logout(); nav('/'); }} className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><LogOut size={12} /> logout</button>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <Link to="/login" data-testid="nav-login" className="hidden sm:flex items-center gap-1.5 eh-mono text-xs px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
               <LogIn size={12} /> LOGIN

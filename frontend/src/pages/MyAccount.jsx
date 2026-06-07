@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LogOut, Copy, Package, Loader2, Gift } from 'lucide-react';
+import { LogOut, Copy, Package, Loader2, Gift, Wallet as WalletIcon, Sparkles, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -12,6 +12,8 @@ const MyAccount = () => {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [exchanging, setExchanging] = useState(false);
+  const [wallet, setWallet] = useState(null);
+  const [spinStatus, setSpinStatus] = useState(null);
 
   // Handle Google OAuth callback: #session_id=...
   useEffect(() => {
@@ -38,6 +40,8 @@ const MyAccount = () => {
     if (!user) return;
     setLoadingOrders(true);
     api.myOrders().then(setOrders).catch(() => {}).finally(() => setLoadingOrders(false));
+    api.walletGet().then(setWallet).catch(() => {});
+    api.spinStatus().then(setSpinStatus).catch(() => {});
   }, [user]);
 
   if (loading || exchanging) return (
@@ -62,16 +66,33 @@ const MyAccount = () => {
         <button onClick={async () => { await logout(); nav('/'); }} data-testid="logout-btn" className="eh-btn-ghost text-xs"><LogOut size={14} /> LOGOUT</button>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5 mb-10">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Link to="/me/wallet" data-testid="account-wallet-card" className="eh-panel p-5 hover:border-[var(--eh-green)] transition-colors group">
+          <div className="eh-mono text-xs tracking-widest opacity-60 mb-2 flex items-center gap-2"><WalletIcon size={12} className="text-[var(--eh-green)]" /> // WALLET</div>
+          <div className="eh-display text-2xl font-black eh-neon mb-1">₹{Number(wallet?.balance || 0).toLocaleString('en-IN')}</div>
+          <div className="eh-mono text-[10px] opacity-60 group-hover:opacity-100 flex items-center gap-1">TOP UP & SPEND <ArrowRight size={10} /></div>
+        </Link>
+        <Link to="/me/spin" data-testid="account-spin-card" className={`eh-panel p-5 hover:border-[#ffd34d] transition-colors group ${spinStatus?.can_spin ? 'bg-[rgba(255,211,77,.05)] border-[rgba(255,211,77,.3)]' : ''}`}>
+          <div className="eh-mono text-xs tracking-widest opacity-60 mb-2 flex items-center gap-2"><Sparkles size={12} className="text-[#ffd34d]" /> // DAILY SPIN</div>
+          <div className="eh-display text-lg font-black mb-1" style={{ color: spinStatus?.can_spin ? '#ffd34d' : undefined }}>{spinStatus?.can_spin ? 'SPIN NOW' : 'TOMORROW'}</div>
+          <div className="eh-mono text-[10px] opacity-60 leading-5">{spinStatus?.can_spin ? 'Up to ₹500 free credit' : 'Come back daily'}</div>
+        </Link>
         <div className="eh-panel p-5">
           <div className="eh-mono text-xs tracking-widest opacity-60 mb-2">// REFERRAL</div>
-          <div className="eh-display text-2xl font-black eh-neon mb-2">{user.referral_code || '—'}</div>
-          <p className="eh-mono text-xs opacity-70 mb-3 leading-6">Share your code. Earn rewards on every signup that uses it.</p>
-          <div className="flex gap-2">
-            <button onClick={copyRef} data-testid="copy-referral" className="eh-btn-ghost text-xs"><Copy size={12} /> COPY LINK</button>
-            <Link to="/me/referrals" className="eh-btn-primary text-xs"><Gift size={12} /> EARNINGS</Link>
+          <div className="eh-display text-lg font-black eh-neon mb-1 break-all">{user.referral_code || '—'}</div>
+          <div className="flex gap-1.5 mt-1">
+            <button onClick={copyRef} data-testid="copy-referral" className="eh-btn-ghost text-[10px]"><Copy size={10} /> COPY</button>
+            <Link to="/me/referrals" className="eh-btn-ghost text-[10px]"><Gift size={10} /> EARNINGS</Link>
           </div>
         </div>
+        <div className="eh-panel p-5">
+          <div className="eh-mono text-xs tracking-widest opacity-60 mb-2">// PROVIDER</div>
+          <div className="eh-display text-lg font-black eh-neon mb-1">{(user.provider || 'password').toUpperCase()}</div>
+          <p className="eh-mono text-[10px] opacity-70">Joined {new Date(user.created_at).toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <div className="mb-10">
         <TelegramAccountCard />
       </div>
 
