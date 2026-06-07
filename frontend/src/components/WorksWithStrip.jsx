@@ -49,36 +49,36 @@ const WorksWithStrip = () => {
   const reel = [...items, ...items, ...items];
 
   return (
-    <section className="py-10 sm:py-12 border-y border-[var(--eh-border)] relative overflow-hidden" data-testid="works-with-strip">
+    <section className="py-7 sm:py-8 border-y border-[var(--eh-border)] relative overflow-hidden" data-testid="works-with-strip">
       {/* radial glow backdrop — purely cosmetic, sits behind icons */}
       <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(60% 80% at 50% 50%, rgba(0,255,157,.06), transparent 70%)' }} />
       <div className="relative">
-        <div className="eh-mono text-[10px] tracking-[.45em] opacity-60 text-center mb-7 flex items-center justify-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--eh-green)] eh-pulse-dot" />
+        <div className="eh-mono text-[9px] sm:text-[10px] tracking-[.45em] opacity-60 text-center mb-5 flex items-center justify-center gap-2">
+          <span className="w-1 h-1 rounded-full bg-[var(--eh-green)] eh-pulse-dot" />
           // {data.title || 'WORKS WITH'}
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--eh-green)] eh-pulse-dot" />
+          <span className="w-1 h-1 rounded-full bg-[var(--eh-green)] eh-pulse-dot" />
         </div>
 
         {/* Edge fades for premium feel */}
-        <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-16 sm:w-24 z-10" style={{ background: 'linear-gradient(to right, var(--eh-bg, #050608), transparent)' }} />
-        <div className="pointer-events-none absolute top-0 bottom-0 right-0 w-16 sm:w-24 z-10" style={{ background: 'linear-gradient(to left, var(--eh-bg, #050608), transparent)' }} />
+        <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-12 sm:w-20 z-10" style={{ background: 'linear-gradient(to right, var(--eh-bg, #050608), transparent)' }} />
+        <div className="pointer-events-none absolute top-0 bottom-0 right-0 w-12 sm:w-20 z-10" style={{ background: 'linear-gradient(to left, var(--eh-bg, #050608), transparent)' }} />
 
         <div className="overflow-hidden whitespace-nowrap">
-          <div className="inline-flex gap-6 sm:gap-10" style={{ animation: `eh-scroll ${data.speed || 35}s linear infinite` }}>
+          <div className="inline-flex gap-3 sm:gap-5" style={{ animation: `eh-scroll ${data.speed || 35}s linear infinite` }}>
             {reel.map((it, i) => {
               const icon = resolveIcon(it.icon_url);
               const inner = (
-                <div className="ww-brand inline-flex items-center gap-3 px-4 py-2.5 rounded-full border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-all bg-[rgba(0,0,0,.4)] backdrop-blur-sm group" data-testid={`works-with-${it.id}-${i}`}>
-                  <div className="ww-icon relative w-9 h-9 sm:w-10 sm:h-10 rounded-full grid place-items-center bg-[#0d1115] border border-[var(--eh-border)] group-hover:border-[var(--eh-green)] transition-all">
+                <div className="ww-brand inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-all bg-[rgba(0,0,0,.4)] backdrop-blur-sm group" data-testid={`works-with-${it.id}-${i}`}>
+                  <div className="ww-icon relative w-6 h-6 sm:w-7 sm:h-7 rounded-full grid place-items-center bg-[#0d1115] border border-[var(--eh-border)] group-hover:border-[var(--eh-green)] transition-all shrink-0">
                     {icon ? (
-                      <img src={icon} alt={it.name} className="w-5 h-5 sm:w-6 sm:h-6 object-contain" loading="lazy" />
+                      <img src={icon} alt={it.name} className="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain" loading="lazy" />
                     ) : (
-                      <span className="text-[var(--eh-green)] opacity-90 group-hover:opacity-100"><FallbackIcon name={it.name} size={20} /></span>
+                      <span className="text-[var(--eh-green)] opacity-90 group-hover:opacity-100"><FallbackIcon name={it.name} size={13} /></span>
                     )}
                     {/* pulse ring */}
                     <span className="absolute inset-0 rounded-full pointer-events-none ww-pulse" />
                   </div>
-                  <span className="eh-mono text-xs sm:text-sm tracking-wider uppercase opacity-80 group-hover:opacity-100 group-hover:text-[var(--eh-green)] transition-colors">{it.name}</span>
+                  <span className="eh-mono text-[10px] sm:text-[11px] tracking-wider uppercase opacity-80 group-hover:opacity-100 group-hover:text-[var(--eh-green)] transition-colors">{it.name}</span>
                 </div>
               );
               return it.link ? (
