@@ -2606,6 +2606,44 @@ async def feed_ticker():
     out.sort(key=lambda x: x.get("createdAt") or "", reverse=True)
     return out[:20]
 
+# ---- Works With (admin-managed brand strip) ------------------------------
+@api.get("/works-with")
+async def works_with_get():
+    cfg = await _ensure_config()
+    ww = cfg.get("works_with") or {"enabled": True, "title": "WORKS WITH", "speed": 35, "items": []}
+    # only return active items, sorted
+    items = [i for i in (ww.get("items") or []) if i.get("active", True)]
+    items.sort(key=lambda x: x.get("sort", 0))
+    return {"enabled": ww.get("enabled", True), "title": ww.get("title", "WORKS WITH"), "speed": ww.get("speed", 35), "items": items}
+
+@api.put("/admin/works-with")
+async def works_with_update(body: Dict[str, Any] = Body(...), x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    cfg = await _ensure_config()
+    ww = cfg.get("works_with") or {}
+    if "enabled" in body:
+        ww["enabled"] = bool(body["enabled"])
+    if "title" in body:
+        ww["title"] = str(body["title"])[:60]
+    if "speed" in body:
+        ww["speed"] = max(10, min(120, int(body["speed"])))
+    if isinstance(body.get("items"), list):
+        cleaned = []
+        for it in body["items"]:
+            if not isinstance(it, dict) or not (it.get("name") or "").strip():
+                continue
+            cleaned.append({
+                "id": it.get("id") or f"ww_{uuid.uuid4().hex[:6]}",
+                "name": str(it["name"]).strip()[:40],
+                "icon_url": str(it.get("icon_url") or "").strip(),
+                "link": str(it.get("link") or "").strip(),
+                "active": bool(it.get("active", True)),
+                "sort": int(it.get("sort", 0)),
+            })
+        ww["items"] = cleaned
+    await db.site_config.update_one({"_id": "main"}, {"$set": {"works_with": ww, "updated_at": _now_iso()}})
+    return {"ok": True, "works_with": ww}
+
 
 # --------------------------------------------------------------------------
 app.include_router(api)

@@ -4,6 +4,7 @@ import Services from '../components/Services';
 import HowItWorks from '../components/HowItWorks';
 import LiveActivity from '../components/LiveActivity';
 import Partners from '../components/Partners';
+import WorksWithStrip from '../components/WorksWithStrip';
 import TestimonialsCarousel from '../components/TestimonialsCarousel';
 import FAQ from '../components/FAQ';
 import CountUp from '../components/CountUp';
@@ -155,6 +156,7 @@ const CTA = () => (
 const Home = () => (
   <>
     <Hero />
+    <WorksWithStrip />
     <Partners />
     <StatsRow />
     <Services limit={6} />

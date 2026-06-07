@@ -67,6 +67,17 @@ export const api = {
   spinConfigUpdate: (data) => req('/admin/spin/config', { method: 'PUT', body: data, admin: true }),
   spinStatus: () => req('/me/spin/status', { auth: true }),
   spinSpin: () => req('/me/spin/spin', { method: 'POST', body: {}, auth: true }),
+  // works with
+  worksWith: () => req('/works-with'),
+  worksWithUpdate: (data) => req('/admin/works-with', { method: 'PUT', body: data, admin: true }),
+  uploadImage: async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const adminToken = localStorage.getItem('eh_admin_token');
+    const r = await fetch(`${BACKEND_URL}/api/uploads`, { method: 'POST', body: fd, headers: { 'X-Admin-Token': adminToken || '' } });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || `Upload failed (${r.status})`); }
+    return r.json();
+  },
   // live ticker
   feedTicker: () => req('/feed-ticker'),
   // me ↔ telegram link

@@ -7,6 +7,19 @@ DEFAULT_CONFIG = {
             "chat_id": "",
         },
     },
+    "works_with": {
+        "enabled": True,
+        "title": "WORKS WITH",
+        "speed": 35,
+        "items": [
+            {"id": "ww_ig", "name": "Instagram", "icon_url": "", "link": "", "active": True, "sort": 1},
+            {"id": "ww_yt", "name": "YouTube",   "icon_url": "", "link": "", "active": True, "sort": 2},
+            {"id": "ww_tg", "name": "Telegram",  "icon_url": "", "link": "", "active": True, "sort": 3},
+            {"id": "ww_tt", "name": "TikTok",    "icon_url": "", "link": "", "active": True, "sort": 4},
+            {"id": "ww_tw", "name": "X",         "icon_url": "", "link": "", "active": True, "sort": 5},
+            {"id": "ww_fb", "name": "Facebook",  "icon_url": "", "link": "", "active": True, "sort": 6},
+        ],
+    },
     "analytics": {
         "enabled": False,
         "googleId": "",

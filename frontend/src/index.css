@@ -204,6 +204,14 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 @keyframes eh-blink { 50% { opacity: 0; } }
 .eh-caret { display:inline-block; width:.55ch; background: var(--eh-green); animation: eh-blink 1s steps(2,start) infinite; margin-left:2px; }
 
+/* Works With pulse */
+@keyframes eh-pulse-dot { 0%, 100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
+.eh-pulse-dot { animation: eh-pulse-dot 1.8s ease-in-out infinite; box-shadow: 0 0 8px var(--eh-green); }
+@keyframes ww-pulse { 0% { box-shadow: 0 0 0 0 rgba(0,255,157,.45); } 70% { box-shadow: 0 0 0 12px rgba(0,255,157,0); } 100% { box-shadow: 0 0 0 0 rgba(0,255,157,0); } }
+.ww-pulse { animation: ww-pulse 2.4s ease-out infinite; }
+.ww-brand:hover .ww-icon { box-shadow: 0 0 18px rgba(0,255,157,.5); transform: translateY(-2px); }
+.ww-brand .ww-icon { transition: all .25s ease; }
+
 /* Section heading kicker */
 .eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
 @media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }

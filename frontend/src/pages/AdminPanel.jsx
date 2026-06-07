@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import RecoveryManager from './admin/RecoveryManager';
 import TeamManager from './admin/TeamManager';
 import TelegramBotPanel from './admin/TelegramBotPanel';
+import WorksWithManager from './admin/WorksWithManager';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -22,6 +23,7 @@ const sections = [
   { to: 'tools',       label: 'Tools',        icon: Terminal,        group: 'content' },
   { to: 'how',         label: 'How It Works', icon: Cpu,             group: 'content' },
   { to: 'partners',    label: 'Partners',     icon: Award,           group: 'content' },
+  { to: 'worksWith',   label: 'Works With',   icon: Globe,           group: 'content' },
   { to: 'testimonials',label: 'Testimonials', icon: Quote,           group: 'content' },
   { to: 'activity',    label: 'Live Feed',    icon: Activity,        group: 'content' },
   { to: 'stats',       label: 'Stats',        icon: Star,            group: 'content' },
@@ -1585,6 +1587,7 @@ const AdminPanel = () => {
         {allowed('tools') && active==='tools'       && <ToolsEditor />}
         {allowed('how') && active==='how'         && <HowEditor />}
         {allowed('partners') && active==='partners'    && <PartnersEditor />}
+        {allowed('worksWith') && active==='worksWith'   && <WorksWithManager />}
         {allowed('testimonials') && active==='testimonials'&& <TestimonialsEditor />}
         {allowed('activity') && active==='activity'    && <ActivityEditor />}
         {allowed('stats') && active==='stats'       && <StatsEditor />}
