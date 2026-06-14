@@ -96,12 +96,12 @@ const TrustBar = ({ trust, stats }) => (
   </div>
 );
 
-const StepService = ({ services, value, onChange }) => (
+const StepService = ({ services, value, onChange, onNext }) => (
   <div className="space-y-2.5">
     <div className="eh-kicker mb-1">// SELECT THE ISSUE</div>
     <div className="grid sm:grid-cols-2 gap-3 sm:gap-3">
       {services.filter(s => s.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(s => (
-        <RecoveryServiceTile key={s.id} service={s} selected={value === s.id} onClick={() => onChange(s.id)} />
+        <RecoveryServiceTile key={s.id} service={s} selected={value === s.id} onClick={() => onChange(s.id)} onNext={onNext} />
       ))}
     </div>
   </div>
@@ -458,7 +458,7 @@ const RecoveryPage = () => {
         <div className="eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">
           <Stepper active={step} />
 
-          {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} />}
+          {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} onNext={next} />}
           {step === 'details' && <StepDetails platforms={cfg.platforms} value={data} onPatch={patch} onUploadProof={uploadProof} uploadBusy={uploadBusy} />}
           {step === 'contact' && <StepContact value={data} onPatch={patch} hero={cfg.hero} />}
 

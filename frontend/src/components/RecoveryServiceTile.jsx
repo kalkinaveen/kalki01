@@ -1,5 +1,5 @@
 import React from 'react';
-import { Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Mail, Hash, Music2, Ghost, Send, Lock, Shield, Gamepad2, Phone, ShieldCheck, BadgeCheck, KeyRound, Globe, AtSign, CheckCircle2 } from 'lucide-react';
+import { Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Mail, Hash, Music2, Ghost, Send, Lock, Shield, Gamepad2, Phone, ShieldCheck, BadgeCheck, KeyRound, Globe, AtSign, CheckCircle2, ArrowRight } from 'lucide-react';
 
 /**
  * Maps a service.issue_key (or platform key) → { Icon, color, ring }
@@ -32,15 +32,18 @@ const BRAND_MAP = {
 
 const resolveBrand = (key) => BRAND_MAP[(key || '').toLowerCase()] || { Icon: Globe, color: '#00ff9d' };
 
+const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
 /**
  * Premium service tile.
  * - Animated brand badge (pulsing halo + floating motion + 4 orbiting sparkles)
- * - Gradient sweep on hover (Telegram-Premium-style shine)
+ * - "FROM ₹X" price pill, always visible — no need to scroll
+ * - Inline arrow button when selected, so user can advance to the next step
+ *   without scrolling down to the global Next button
  * - PREMIUM badge auto-shown when price_min >= ₹5,000
- * - Selected state: green border + soft fill + check icon
- * - Keeps the strict black + neon-green theme; brand color used only as accent
+ * - Strict black + neon-green theme; brand color used only as accent
  */
-const RecoveryServiceTile = ({ service: s, selected, onClick }) => {
+const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
   const { Icon, color } = resolveBrand(s.issue_key);
   const isPremium = (s.price_min || 0) >= 5000;
   return (
@@ -54,7 +57,7 @@ const RecoveryServiceTile = ({ service: s, selected, onClick }) => {
       {/* hover gradient sweep — only fires on hover */}
       <span className="rt-shine pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-      {/* premium accent corner */}
+      {/* PREMIUM corner badge */}
       {isPremium && (
         <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full eh-mono text-[8px] font-bold tracking-widest bg-[#ffd34d] text-black z-10" data-testid={`recovery-premium-${s.issue_key}`}>
           <span className="rt-star">✦</span> PREMIUM
@@ -65,9 +68,7 @@ const RecoveryServiceTile = ({ service: s, selected, onClick }) => {
         <div className="flex items-start gap-3.5 mb-3">
           {/* Animated brand badge */}
           <div className="rt-badge relative shrink-0">
-            {/* soft pulsing halo behind icon */}
             <span className="rt-halo" />
-            {/* 4 orbiting sparkles, like premium emoji */}
             <span className="rt-spark rt-spark-1">✦</span>
             <span className="rt-spark rt-spark-2">·</span>
             <span className="rt-spark rt-spark-3">✦</span>
@@ -88,6 +89,31 @@ const RecoveryServiceTile = ({ service: s, selected, onClick }) => {
               <span style={{ color: 'var(--eh-green)' }}>{s.success_rate}% success</span>
             </div>
           </div>
+        </div>
+
+        {/* Price pill + inline next button row */}
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="inline-flex items-baseline gap-1.5 px-2.5 py-1 rounded-md border border-[var(--eh-border)] bg-[#0d1115]" data-testid={`recovery-price-${s.issue_key}`}>
+            <span className="eh-mono text-[9px] opacity-60 tracking-widest">FROM</span>
+            <span className="eh-display font-black text-base eh-neon">{formatINR(s.price_min)}</span>
+            {s.price_max && s.price_max !== s.price_min && (
+              <span className="eh-mono text-[10px] opacity-50">– {formatINR(s.price_max)}</span>
+            )}
+          </div>
+          {/* Inline NEXT arrow — only shows when this tile is selected.
+              User can advance without scrolling all the way down to the global Next button. */}
+          {selected && onNext && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onNext(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onNext(); } }}
+              data-testid={`recovery-tile-next-${s.issue_key}`}
+              className="rt-next inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md eh-mono text-[11px] font-bold tracking-widest text-black bg-[var(--eh-green)] hover:brightness-110 cursor-pointer"
+            >
+              NEXT <ArrowRight size={12} />
+            </span>
+          )}
         </div>
 
         <div className="space-y-1.5 pl-1">
