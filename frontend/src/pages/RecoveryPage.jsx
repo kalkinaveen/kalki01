@@ -4,6 +4,7 @@ import { ShieldCheck, Lock, Clock, BadgeCheck, ChevronRight, ChevronLeft, Loader
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
+import RecoveryServiceTile from '../components/RecoveryServiceTile';
 
 const STEPS = ['service', 'details', 'contact'];
 
@@ -99,28 +100,9 @@ const StepService = ({ services, value, onChange }) => (
   <div className="space-y-2.5">
     <div className="eh-kicker mb-1">// SELECT THE ISSUE</div>
     <div className="grid sm:grid-cols-2 gap-3 sm:gap-3">
-      {services.filter(s => s.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(s => {
-        const sel = value === s.id;
-        return (
-          <button key={s.id} type="button" onClick={() => onChange(s.id)} data-testid={`recovery-svc-${s.issue_key}`}
-            className={`text-left p-4 sm:p-4 rounded-md border transition-colors min-w-0 overflow-hidden ${sel ? 'border-[var(--eh-green)] bg-[rgba(0,255,157,.05)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>
-            <div className="flex items-start justify-between gap-2 mb-2.5 min-w-0">
-              <div className="font-bold text-base sm:text-base leading-snug break-words min-w-0 flex-1" style={{ fontFamily: 'Inter, sans-serif' }}>{s.name}</div>
-              {sel && <CheckCircle2 size={18} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
-            </div>
-            <div className="flex items-center gap-2 eh-mono text-[11px] sm:text-[11px] opacity-75 mb-2.5 flex-wrap">
-              <span>ETA {s.eta_min_days}–{s.eta_max_days}d</span>
-              <span className="opacity-50">·</span>
-              <span>{s.success_rate}% success</span>
-            </div>
-            <div className="space-y-1.5">
-              {(s.bullets || []).slice(0, 3).map((b, i) => (
-                <div key={i} className="eh-mono text-[12px] sm:text-[12px] opacity-80 flex gap-1.5 leading-[1.45] break-words"><span className="text-[var(--eh-green)] shrink-0">›</span> <span className="min-w-0">{b}</span></div>
-              ))}
-            </div>
-          </button>
-        );
-      })}
+      {services.filter(s => s.active !== false).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(s => (
+        <RecoveryServiceTile key={s.id} service={s} selected={value === s.id} onClick={() => onChange(s.id)} />
+      ))}
     </div>
   </div>
 );

@@ -212,6 +212,72 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .ww-brand:hover .ww-icon { box-shadow: 0 0 18px rgba(0,255,157,.5); transform: translateY(-2px); }
 .ww-brand .ww-icon { transition: all .25s ease; }
 
+/* ============================
+   Recovery Service Tile · Premium animated branding
+   ============================ */
+
+/* Floating motion for the brand icon */
+@keyframes rt-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+/* Halo pulses outward from behind the icon */
+@keyframes rt-halo {
+  0%   { transform: scale(.7); opacity: .55; }
+  70%  { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+/* Sparkle orbit — 4 sparkles spin around the badge at varying speeds */
+@keyframes rt-orbit-1 { from { transform: rotate(0deg) translateX(34px) rotate(0deg); } to { transform: rotate(360deg) translateX(34px) rotate(-360deg); } }
+@keyframes rt-orbit-2 { from { transform: rotate(90deg) translateX(30px) rotate(-90deg); } to { transform: rotate(450deg) translateX(30px) rotate(-450deg); } }
+@keyframes rt-orbit-3 { from { transform: rotate(180deg) translateX(32px) rotate(-180deg); } to { transform: rotate(540deg) translateX(32px) rotate(-540deg); } }
+@keyframes rt-orbit-4 { from { transform: rotate(270deg) translateX(36px) rotate(-270deg); } to { transform: rotate(630deg) translateX(36px) rotate(-630deg); } }
+/* Twinkle — sparkle fades in/out as it orbits */
+@keyframes rt-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+/* Star wobble on the PREMIUM badge */
+@keyframes rt-star { 0%, 100% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(15deg) scale(1.15); } }
+/* Shine sweep on hover (Telegram-Premium style) */
+@keyframes rt-shine { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
+
+.recovery-tile { position: relative; isolation: isolate; }
+.recovery-tile:hover { transform: translateY(-2px); }
+
+.rt-badge { width: 56px; height: 56px; position: relative; }
+@media (max-width: 640px) { .rt-badge { width: 48px; height: 48px; } }
+
+.rt-icon-img { animation: rt-float 3.4s ease-in-out infinite; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--brand-color) 55%, transparent)); }
+.recovery-tile:hover .rt-icon-img { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--brand-color) 85%, transparent)); }
+.rt-icon { transition: all .3s ease; }
+.recovery-tile:hover .rt-icon { box-shadow: 0 0 0 1px var(--brand-color), 0 0 22px color-mix(in srgb, var(--brand-color) 40%, transparent); }
+
+.rt-halo {
+  position: absolute; inset: -8px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--brand-color) 55%, transparent) 0%, transparent 70%);
+  animation: rt-halo 2.4s ease-out infinite;
+}
+
+.rt-spark {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  display: inline-block; color: var(--brand-color);
+  font-size: 9px; line-height: 1; pointer-events: none;
+  text-shadow: 0 0 6px currentColor, 0 0 10px currentColor;
+}
+.rt-spark-1 { animation: rt-orbit-1 6.2s linear infinite, rt-twinkle 2.4s ease-in-out infinite; }
+.rt-spark-2 { animation: rt-orbit-2 7.4s linear infinite reverse, rt-twinkle 2.8s ease-in-out infinite .4s; font-size: 12px; opacity: .8; }
+.rt-spark-3 { animation: rt-orbit-3 5.8s linear infinite, rt-twinkle 2.1s ease-in-out infinite .8s; }
+.rt-spark-4 { animation: rt-orbit-4 8.2s linear infinite reverse, rt-twinkle 2.6s ease-in-out infinite 1.2s; font-size: 12px; opacity: .8; }
+
+.rt-shine {
+  position: absolute; inset: 0; overflow: hidden; border-radius: inherit;
+}
+.rt-shine::before {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 60%;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.07) 50%, transparent 70%);
+  animation: rt-shine 1.6s ease-in-out;
+}
+
+.rt-star { display: inline-block; animation: rt-star 1.8s ease-in-out infinite; }
+
 /* Section heading kicker */
 .eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
 @media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }
