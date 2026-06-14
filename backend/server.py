@@ -272,6 +272,34 @@ async def _ensure_config():
             updates["nav"] = new_nav
     except Exception:
         pass
+    # Recovery: merge in any new platforms / services from defaults (keyed by 'key' / 'id')
+    # so existing deployments pick up newly-added recovery options without losing customisations.
+    try:
+        default_rec = DEFAULT_CONFIG.get("recovery", {})
+        cur_rec = doc.get("recovery") or {}
+        cur_platforms = cur_rec.get("platforms") or []
+        cur_services = cur_rec.get("services") or []
+        new_rec = dict(cur_rec)
+        plat_changed = False
+        seen_keys = {p.get("key") for p in cur_platforms if p.get("key")}
+        for p in default_rec.get("platforms", []):
+            if p.get("key") and p["key"] not in seen_keys:
+                cur_platforms.append(p)
+                plat_changed = True
+        svc_changed = False
+        seen_ids = {s.get("id") for s in cur_services if s.get("id")}
+        for s in default_rec.get("services", []):
+            if s.get("id") and s["id"] not in seen_ids:
+                cur_services.append(s)
+                svc_changed = True
+        if plat_changed:
+            new_rec["platforms"] = cur_platforms
+        if svc_changed:
+            new_rec["services"] = cur_services
+        if plat_changed or svc_changed:
+            updates["recovery"] = new_rec
+    except Exception:
+        pass
     if updates:
         updates["updated_at"] = datetime.utcnow().isoformat()
         await db.site_config.update_one({"_id": "main"}, {"$set": updates})
