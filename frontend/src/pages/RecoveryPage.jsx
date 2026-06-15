@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import RecoveryServiceTile from '../components/RecoveryServiceTile';
 import RecoveryWizardHeader from '../components/RecoveryWizardHeader';
+import PublicReviewForm from '../components/PublicReviewForm';
 
 const STEPS = ['service', 'details', 'contact'];
 
