@@ -1,5 +1,5 @@
 import React from 'react';
-import { Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Mail, Hash, Music2, Ghost, Send, Lock, Shield, Gamepad2, Phone, ShieldCheck, BadgeCheck, KeyRound, Globe, AtSign, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Mail, Hash, Music2, Ghost, Send, Lock, Shield, Gamepad2, Phone, ShieldCheck, BadgeCheck, KeyRound, Globe, AtSign, CheckCircle2, ArrowRight, Flame, Zap, Sparkles, Crown } from 'lucide-react';
 
 /**
  * Maps a service.issue_key (or platform key) → { Icon, color, ring }
@@ -35,17 +35,48 @@ const resolveBrand = (key) => BRAND_MAP[(key || '').toLowerCase()] || { Icon: Gl
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 /**
+ * Renders the animated TAG badge on the tile.
+ * Each tag has its own colour + icon + bespoke micro-animation so users
+ * instantly read the intent (PREMIUM vs HOT vs LIMITED etc).
+ */
+const TAG_THEMES = {
+  PREMIUM:    { Icon: Crown,    bg: '#ffd34d', fg: '#000', anim: 'tag-premium',    label: 'PREMIUM' },
+  HOT:        { Icon: Flame,    bg: '#ff6b3a', fg: '#fff', anim: 'tag-hot',        label: 'HOT' },
+  NEW:        { Icon: Sparkles, bg: '#00ff9d', fg: '#000', anim: 'tag-new',        label: 'NEW' },
+  BESTSELLER: { Icon: Sparkles, bg: '#c084fc', fg: '#fff', anim: 'tag-bestseller', label: 'BESTSELLER' },
+  LIMITED:    { Icon: Zap,      bg: '#4de0ff', fg: '#000', anim: 'tag-limited',    label: 'LIMITED' },
+  FAST:       { Icon: Zap,      bg: '#facc15', fg: '#000', anim: 'tag-fast',       label: 'FAST' },
+  SECURE:     { Icon: Shield,   bg: '#22d3ee', fg: '#000', anim: 'tag-secure',     label: 'SECURE' },
+};
+
+const TagBadge = ({ tag }) => {
+  const t = TAG_THEMES[String(tag || '').toUpperCase()];
+  if (!t) return null;
+  const { Icon, bg, fg, anim, label } = t;
+  return (
+    <span
+      className={`tag-badge ${anim} absolute top-2.5 right-2.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full eh-mono text-[9px] font-bold tracking-widest z-10`}
+      style={{ background: bg, color: fg, '--tag-bg': bg }}
+      data-testid={`recovery-tag-${label.toLowerCase()}`}
+    >
+      <Icon size={9} strokeWidth={2.6} className="tag-badge-icon" />
+      <span>{label}</span>
+    </span>
+  );
+};
+
+/**
  * Premium service tile.
  * - Animated brand badge (pulsing halo + floating motion + 4 orbiting sparkles)
- * - "FROM ₹X" price pill, always visible — no need to scroll
- * - Inline arrow button when selected, so user can advance to the next step
- *   without scrolling down to the global Next button
- * - PREMIUM badge auto-shown when price_min >= ₹5,000
+ * - "FROM ₹X" price pill always visible
+ * - Inline NEXT arrow when selected — no scrolling to find a global Next button
+ * - Animated TAG badge driven by service.tag (admin-controlled from webpanel)
+ *   Falls back to auto-PREMIUM if price_min >= ₹5,000 and no explicit tag is set
  * - Strict black + neon-green theme; brand color used only as accent
  */
 const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
   const { Icon, color } = resolveBrand(s.issue_key);
-  const isPremium = (s.price_min || 0) >= 5000;
+  const effectiveTag = s.tag || ((s.price_min || 0) >= 5000 ? 'PREMIUM' : '');
   return (
     <button
       type="button"
@@ -57,12 +88,8 @@ const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
       {/* hover gradient sweep — only fires on hover */}
       <span className="rt-shine pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-      {/* PREMIUM corner badge */}
-      {isPremium && (
-        <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full eh-mono text-[8px] font-bold tracking-widest bg-[#ffd34d] text-black z-10" data-testid={`recovery-premium-${s.issue_key}`}>
-          <span className="rt-star">✦</span> PREMIUM
-        </span>
-      )}
+      {/* Animated TAG badge (admin-controlled) */}
+      <TagBadge tag={effectiveTag} />
 
       <div className="relative p-4 sm:p-5">
         <div className="flex items-start gap-3.5 mb-3">
@@ -78,9 +105,9 @@ const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
             </div>
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pr-20">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="font-bold text-base leading-snug break-words flex-1 min-w-0" style={{ fontFamily: 'Inter, sans-serif' }}>{s.name}</div>
+              <div className="font-bold text-base leading-snug break-words flex-1 min-w-0" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.name}</div>
               {selected && <CheckCircle2 size={18} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
             </div>
             <div className="flex items-center gap-2 eh-mono text-[11px] opacity-75 mt-1 flex-wrap">
@@ -95,13 +122,12 @@ const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="inline-flex items-baseline gap-1.5 px-2.5 py-1 rounded-md border border-[var(--eh-border)] bg-[#0d1115]" data-testid={`recovery-price-${s.issue_key}`}>
             <span className="eh-mono text-[9px] opacity-60 tracking-widest">FROM</span>
-            <span className="eh-display font-black text-base eh-neon">{formatINR(s.price_min)}</span>
+            <span className="font-black text-base eh-neon" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{formatINR(s.price_min)}</span>
             {s.price_max && s.price_max !== s.price_min && (
               <span className="eh-mono text-[10px] opacity-50">– {formatINR(s.price_max)}</span>
             )}
           </div>
-          {/* Inline NEXT arrow — only shows when this tile is selected.
-              User can advance without scrolling all the way down to the global Next button. */}
+          {/* Inline NEXT arrow — only shows when this tile is selected. */}
           {selected && onNext && (
             <span
               role="button"

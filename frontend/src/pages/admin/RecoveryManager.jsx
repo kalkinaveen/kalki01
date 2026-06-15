@@ -306,6 +306,19 @@ const ServicesTab = ({ cfg, setCfg }) => {
               <div><div className="eh-mono text-[10px] opacity-60 mb-1">ETA MAX DAYS</div><input className="eh-input" type="number" value={s.eta_max_days} onChange={e => update(idx, { eta_max_days: Number(e.target.value) })} /></div>
               <div><div className="eh-mono text-[10px] opacity-60 mb-1">SUCCESS %</div><input className="eh-input" type="number" min={0} max={100} value={s.success_rate} onChange={e => update(idx, { success_rate: Number(e.target.value) })} /></div>
               <div><div className="eh-mono text-[10px] opacity-60 mb-1">SORT</div><input className="eh-input" type="number" value={s.sort || 0} onChange={e => update(idx, { sort: Number(e.target.value) })} /></div>
+              <div>
+                <div className="eh-mono text-[10px] opacity-60 mb-1">TAG BADGE (animated label on tile)</div>
+                <select className="eh-input" value={s.tag || ''} onChange={e => update(idx, { tag: e.target.value })} data-testid={`svc-tag-${idx}`}>
+                  <option value="">— No badge —</option>
+                  <option value="PREMIUM">✦ PREMIUM (gold sparkle)</option>
+                  <option value="HOT">🔥 HOT (orange flame)</option>
+                  <option value="NEW">● NEW (green pulse)</option>
+                  <option value="BESTSELLER">★ BESTSELLER (purple sparkles)</option>
+                  <option value="LIMITED">⚡ LIMITED (cyan flash)</option>
+                  <option value="FAST">⚡ FAST (lightning)</option>
+                  <option value="SECURE">🛡 SECURE (shield glow)</option>
+                </select>
+              </div>
               <div className="sm:col-span-2"><div className="eh-mono text-[10px] opacity-60 mb-1">BULLETS (one per line)</div><textarea rows={3} className="eh-textarea" value={(s.bullets || []).join('\n')} onChange={e => update(idx, { bullets: e.target.value.split('\n').filter(Boolean) })} /></div>
             </div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--eh-border)]">

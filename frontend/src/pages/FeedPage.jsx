@@ -464,7 +464,7 @@ const CommentsSheet = ({ post, onClose, onMutate }) => {
 };
 
 // Vertical TikTok/Instagram-Reels-style feed — supports mixed posts + reels
-const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
+const ReelsFeed = ({ items, onMutate, initialId, onExit, brandLogo }) => {
   const { user } = useAuth();
   const nav = useNavigate();
   const containerRef = useRef(null);
@@ -656,6 +656,13 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit }) => {
                   <span className="text-[11px] font-bold">{fmt(it.views_count)}</span>
                 </div>
               </div>
+              {/* Top-left brand watermark — only on reels (videos) */}
+              {isVid && brandLogo && (
+                <div className="absolute top-4 left-3 z-10 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/45 backdrop-blur-sm border border-white/15" data-testid={`reel-watermark-${it.id}`}>
+                  <img src={brandLogo} alt="ERRORHACKER" className="w-5 h-5 rounded-full object-cover" />
+                  <span className="text-white text-[10px] font-bold tracking-wider drop-shadow">errorhacker</span>
+                </div>
+              )}
               {/* Bottom caption */}
               <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 pb-6 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
                 <div className="flex items-center gap-2 mb-1.5">
@@ -830,7 +837,7 @@ const FeedPage = () => {
       </div>
       {openPostObj && <PostModal post={openPostObj} onClose={closePost} onMutate={updatePost} />}
       {commentsPost && <CommentsSheet post={commentsPost} onClose={() => setCommentsPost(null)} onMutate={updatePost} />}
-      {openReelId && combined.length > 0 && <ReelsFeed items={combined} onMutate={updateItem} initialId={openReelId} onExit={exitReels} />}
+      {openReelId && combined.length > 0 && <ReelsFeed items={combined} onMutate={updateItem} initialId={openReelId} onExit={exitReels} brandLogo={config?.site?.logoUrl} />}
     </section>
   );
 };

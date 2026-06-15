@@ -423,11 +423,16 @@ DEFAULT_BOT_CFG: Dict[str, Any] = {
     "webhook_secret": "",
     "webhook_url": "",
     "welcome_message": (
-        "<b>// ERRORHACKER LIVE OPS</b>\n\n"
-        "Track orders, get payment details and start recovery cases right here.\n\n"
-        "Tap a button below or use:\n"
-        "<code>/track ORD-XXX</code> · <code>/track REC-XXX</code>\n"
-        "<code>/orders</code> · <code>/pay ORD-XXX</code> · <code>/help</code>"
+        "👋 <b>Hey! Welcome to ERRORHACKER.</b>\n\n"
+        "I'm here to help — no sign-up needed. Just send me your case ID and I'll show you everything instantly.\n\n"
+        "🆔 <b>Have a Case ID?</b>\n"
+        "Just paste it (like <code>REC-XXXXXXXX</code> or <code>ORD-XXXXXXXX</code>) and I'll fetch your status right away — no login, no fuss.\n\n"
+        "💬 <b>Quick commands:</b>\n"
+        "• <code>/track YOUR_ID</code> — see live status\n"
+        "• <code>/pay YOUR_ID</code> — get payment details\n"
+        "• <code>/recover</code> — start a new case\n"
+        "• <code>/help</code> — menu\n\n"
+        "Tap below for menu — or just paste your ID 👇"
     ),
     "commands": {"track": True, "orders": True, "pay": True, "recover": True, "help": True},
 }
@@ -451,13 +456,13 @@ def _bot_main_keyboard(bot_username: str = "", enabled: Optional[Dict[str, bool]
     enabled = enabled or {"track": True, "orders": True, "pay": True, "recover": True, "help": True}
     rows = []
     if enabled.get("track"):
-        rows.append([{"text": "📦 Track Order / Case", "callback_data": "menu_track"}])
-    if enabled.get("orders"):
-        rows.append([{"text": "🗂 My Orders", "callback_data": "menu_orders"}])
+        rows.append([{"text": "📦 Track My Case / Order", "callback_data": "menu_track"}])
     if enabled.get("pay"):
         rows.append([{"text": "💳 Payment Info", "callback_data": "menu_pay"}])
     if enabled.get("recover"):
-        rows.append([{"text": "🛡 Recover Account", "url": "https://errorhacker.site/recovery"}])
+        rows.append([{"text": "🛡 Start a New Recovery", "url": "https://errorhacker.site/recovery"}])
+    if enabled.get("orders"):
+        rows.append([{"text": "🔔 Get Live Alerts (optional)", "callback_data": "menu_orders"}])
     if enabled.get("help"):
         rows.append([{"text": "ℹ Help", "callback_data": "menu_help"}])
     return {"inline_keyboard": rows}
@@ -518,14 +523,16 @@ async def _send_welcome(bot_token: str, chat_id: int, bot_cfg: Optional[Dict[str
 
 async def _send_help(bot_token: str, chat_id: int):
     text = (
-        "<b>// COMMAND CHEATSHEET</b>\n\n"
-        "<code>/track ORD-XXXXXXXX</code> — order status + timeline\n"
-        "<code>/track REC-XXXXXXXX</code> — recovery case status\n"
-        "<code>/orders</code> — list all your orders (login linked)\n"
-        "<code>/pay ORD-XXXXXXXX</code> — UPI / Crypto details\n"
-        "<code>/recover</code> — start an account recovery case\n"
-        "<code>/help</code> — this menu\n\n"
-        "Tip: you can also just send an <b>ORD-…</b> or <b>REC-…</b> ID directly."
+        "💬 <b>How can I help?</b>\n\n"
+        "<b>📦 Track your case</b>\n"
+        "Just paste your ID — e.g. <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code>.\n"
+        "Or type: <code>/track YOUR_ID</code>\n\n"
+        "<b>💳 Payment info</b>\n"
+        "<code>/pay YOUR_ID</code> — UPI / crypto details\n\n"
+        "<b>🛡 Start a recovery</b>\n"
+        "<code>/recover</code> — opens our secure web wizard\n\n"
+        "<b>🔔 Want auto-DMs when status changes?</b>\n"
+        "That's totally optional. If you'd like instant alerts the moment something happens, just visit your <a href=\"https://errorhacker.site/me\">/me</a> page and tap <i>Connect Telegram</i>. Otherwise you can keep chatting here anytime — no login needed."
     )
     await _tg_send(bot_token, chat_id, text)
 
@@ -557,8 +564,9 @@ async def _handle_orders(bot_token: str, chat_id: int):
     user = await db.users.find_one({"telegram_chat_id": chat_id})
     if not user:
         await _tg_send(bot_token, chat_id,
-                       "🔒 Your Telegram isn't linked to an ERRORHACKER account yet.\n\n"
-                       "Open <a href=\"https://errorhacker.site/me\">My Account</a> → tap <b>Connect Telegram</b> to link.")
+                       "🔓 <b>No login needed to track an order!</b>\n\n"
+                       "Just paste your <b>ORD-XXXXXXXX</b> ID (or <b>REC-XXXXXXXX</b> for recovery) right here and I'll show you the status instantly.\n\n"
+                       "<i>If you'd like a list of <b>all</b> your orders or auto-DMs when status changes, that's optional — visit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → Connect Telegram. Takes 5 seconds, no password.</i>")
         return
     rows = await db.orders.find({"user_id": user.get("user_id")}).sort("createdAt", -1).to_list(10)
     if not rows:
@@ -632,7 +640,8 @@ async def _handle_link(bot_token: str, chat_id: int, chat: Dict[str, Any], code:
 
 async def _handle_callback(bot_token: str, chat_id: int, data: str):
     if data == "menu_track":
-        await _tg_send(bot_token, chat_id, "Send your ID like <code>/track ORD-XXXXXXXX</code> or just paste the ID.")
+        await _tg_send(bot_token, chat_id,
+                       "🆔 <b>Just paste your ID</b>\n\nLike <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code> — I'll fetch your live status instantly. No login needed.")
     elif data == "menu_orders":
         await _handle_orders(bot_token, chat_id)
     elif data == "menu_pay":

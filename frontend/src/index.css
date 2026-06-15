@@ -384,6 +384,50 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
   to   { transform: translateY(200%); }
 }
 
+/* ============================
+   Service Tag Badges · per-tag unique animation
+   ============================ */
+.tag-badge { position: absolute; backdrop-filter: blur(4px); }
+.tag-badge .tag-badge-icon { display: inline-block; }
+
+/* PREMIUM — gold sparkle wobble + glow breathing */
+@keyframes tag-premium-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,211,77,0); } 50% { box-shadow: 0 0 0 5px rgba(255,211,77,.20); } }
+@keyframes tag-premium-spin { 0%, 100% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(20deg) scale(1.18); } }
+.tag-premium { animation: tag-premium-glow 2.2s ease-in-out infinite; }
+.tag-premium .tag-badge-icon { animation: tag-premium-spin 1.8s ease-in-out infinite; }
+
+/* HOT — flame flicker + horizontal heat shimmer */
+@keyframes tag-hot-flicker { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,58,0), 0 0 8px rgba(255,107,58,.6); } 50% { box-shadow: 0 0 0 4px rgba(255,107,58,.20), 0 0 14px rgba(255,107,58,.95); } }
+@keyframes tag-hot-icon { 0%, 100% { transform: translateY(0) scale(1); opacity: 1; } 25% { transform: translateY(-1px) scale(1.12); opacity: .9; } 75% { transform: translateY(.5px) scale(.95); opacity: 1; } }
+.tag-hot { animation: tag-hot-flicker 1.4s ease-in-out infinite; }
+.tag-hot .tag-badge-icon { animation: tag-hot-icon 1s ease-in-out infinite; }
+
+/* NEW — fast neon green pulse */
+@keyframes tag-new-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0,255,157,0); transform: scale(1); } 50% { box-shadow: 0 0 0 6px rgba(0,255,157,.0), 0 0 0 4px rgba(0,255,157,.30); transform: scale(1.06); } }
+@keyframes tag-new-icon { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(180deg); } }
+.tag-new { animation: tag-new-pulse 1.5s ease-in-out infinite; }
+.tag-new .tag-badge-icon { animation: tag-new-icon 2.8s ease-in-out infinite; }
+
+/* BESTSELLER — purple sparkle drift */
+@keyframes tag-bestseller-glow { 0%, 100% { filter: drop-shadow(0 0 4px rgba(192,132,252,.6)); } 50% { filter: drop-shadow(0 0 12px rgba(192,132,252,1)); } }
+@keyframes tag-bestseller-icon { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: .8; } }
+.tag-bestseller { animation: tag-bestseller-glow 2s ease-in-out infinite; }
+.tag-bestseller .tag-badge-icon { animation: tag-bestseller-icon 1.4s ease-in-out infinite; }
+
+/* LIMITED — quick scarcity flash */
+@keyframes tag-limited-flash { 0%, 100% { background: var(--tag-bg); } 50% { background: #fff; } }
+@keyframes tag-limited-zap { 0%, 100% { transform: translateX(0) rotate(0); } 25% { transform: translateX(-1px) rotate(-8deg); } 50% { transform: translateX(1px) rotate(8deg); } 75% { transform: translateX(-1px) rotate(-4deg); } }
+.tag-limited { animation: tag-limited-flash 1.6s steps(2, end) infinite; }
+.tag-limited .tag-badge-icon { animation: tag-limited-zap .6s ease-in-out infinite; }
+
+/* FAST — slide-shimmer */
+@keyframes tag-fast-slide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+.tag-fast .tag-badge-icon { animation: tag-fast-slide .8s ease-in-out infinite; }
+
+/* SECURE — quiet confident pulse */
+@keyframes tag-secure-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); } 50% { box-shadow: 0 0 0 4px rgba(34,211,238,.22); } }
+.tag-secure { animation: tag-secure-pulse 2.4s ease-in-out infinite; }
+
 /* Section heading kicker */
 .eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
 @media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }

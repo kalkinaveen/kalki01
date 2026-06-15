@@ -80,6 +80,9 @@ const TelegramAccountCard = () => {
     toast.success('Code copied');
   };
 
+  const botHandle = status.bot_username ? `@${status.bot_username}` : '@errorhackerbot';
+  const botUrl = status.bot_username ? `https://t.me/${status.bot_username}` : 'https://t.me/errorhackerbot';
+
   return (
     <div className="eh-panel p-5" data-testid="telegram-account-card">
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -118,13 +121,40 @@ const TelegramAccountCard = () => {
         </>
       ) : (
         <>
-          <div className="eh-display text-base font-bold mb-1">Connect for live order DMs</div>
-          <p className="eh-mono text-xs opacity-70 leading-6 mb-3">
-            Get instant Telegram messages when your order is verified, your recovery case advances, or your payment is approved.
-          </p>
-          <button onClick={generate} disabled={busy} data-testid="telegram-connect-btn" className="eh-btn-primary text-xs inline-flex items-center gap-1.5">
-            {busy ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />} {busy ? 'GENERATING…' : 'CONNECT TELEGRAM'}
-          </button>
+          <div className="eh-display text-base font-bold mb-1">Two easy ways to use our bot</div>
+          <p className="eh-mono text-xs opacity-75 leading-6 mb-4">No password, no scary stuff. Pick whichever feels comfortable.</p>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            {/* Option 1 — fastest, zero commitment */}
+            <a href={botUrl} target="_blank" rel="noreferrer" data-testid="telegram-open-bot-direct" className="block p-3 rounded-lg border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors group">
+              <div className="flex items-center gap-2 mb-1.5">
+                <TgIcon size={14} className="text-[var(--eh-green)]" />
+                <div className="eh-mono text-[10px] tracking-widest text-[var(--eh-green)]">// OPTION 1 · INSTANT</div>
+              </div>
+              <div className="font-bold text-sm mb-1">Just chat with the bot</div>
+              <p className="eh-mono text-[10px] opacity-70 leading-5 mb-2">Paste your <span className="eh-neon-soft">REC-XXX</span> or <span className="eh-neon-soft">ORD-XXX</span> ID — that's it. Zero login.</p>
+              <span className="inline-flex items-center gap-1 eh-mono text-[10px] font-bold text-[var(--eh-green)] group-hover:underline">
+                OPEN {botHandle} <ExternalLink size={10} />
+              </span>
+            </a>
+
+            {/* Option 2 — link for live alerts */}
+            <div className="p-3 rounded-lg border border-[var(--eh-border)]">
+              <div className="flex items-center gap-2 mb-1.5">
+                <BadgeCheck size={14} className="opacity-70" />
+                <div className="eh-mono text-[10px] tracking-widest opacity-70">// OPTION 2 · LIVE ALERTS</div>
+              </div>
+              <div className="font-bold text-sm mb-1">Auto-DM when status changes</div>
+              <p className="eh-mono text-[10px] opacity-70 leading-5 mb-2">Optional — link your account and get instant DMs the moment something happens. Takes 5 seconds, no password.</p>
+              <button onClick={generate} disabled={busy} data-testid="telegram-connect-btn" className="eh-btn-ghost text-[10px] inline-flex items-center gap-1.5">
+                {busy ? <Loader2 size={10} className="animate-spin" /> : <ExternalLink size={10} />} {busy ? 'GENERATING…' : 'CONNECT FOR ALERTS'}
+              </button>
+            </div>
+          </div>
+
+          <div className="eh-mono text-[10px] opacity-50 mt-3 leading-5">
+            // We never see your Telegram password. Connection is one-tap and you can disconnect anytime.
+          </div>
         </>
       )}
     </div>
