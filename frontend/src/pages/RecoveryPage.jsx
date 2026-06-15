@@ -257,14 +257,21 @@ const ReviewMedia = ({ items = [] }) => {
   return (
     <div className={`grid gap-1.5 mb-3 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
       {items.slice(0, 4).map((m, i) => (
-        <a key={i} href={m.url} target="_blank" rel="noreferrer" className="block aspect-square rounded overflow-hidden border border-[var(--eh-border)] bg-black/40 relative group">
+        <a key={i} href={m.url} target="_blank" rel="noreferrer" className="block aspect-square rounded overflow-hidden border border-[var(--eh-border)] bg-black/40 relative group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
           {m.kind === 'video' ? (
-            <video src={m.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+            <video src={m.url} muted playsInline preload="metadata" controlsList="nodownload" disablePictureInPicture className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
           ) : (
-            <img src={m.url} alt="" className="w-full h-full object-cover" />
+            <img src={m.url} alt="" className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
           )}
+          {/* anti-copy diagonal watermark overlay */}
+          <div className="eh-watermark-overlay" aria-hidden="true">
+            <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+            <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+            <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+            <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+          </div>
           {m.kind === 'video' && (
-            <div className="absolute inset-0 grid place-items-center bg-black/30 group-hover:bg-black/10 transition-colors">
+            <div className="absolute inset-0 grid place-items-center bg-black/30 group-hover:bg-black/10 transition-colors pointer-events-none">
               <div className="w-9 h-9 rounded-full bg-black/60 grid place-items-center"><div className="w-0 h-0 ml-0.5" style={{ borderLeft: '8px solid var(--eh-green)', borderTop: '6px solid transparent', borderBottom: '6px solid transparent' }} /></div>
             </div>
           )}

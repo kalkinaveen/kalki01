@@ -656,16 +656,10 @@ const ReelsFeed = ({ items, onMutate, initialId, onExit, brandLogo }) => {
                   <span className="text-[11px] font-bold">{fmt(it.views_count)}</span>
                 </div>
               </div>
-              {/* Top-left brand watermark — only on reels (videos) */}
-              {isVid && brandLogo && (
-                <div className="absolute top-4 left-3 z-10 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/45 backdrop-blur-sm border border-white/15" data-testid={`reel-watermark-${it.id}`}>
-                  <img src={brandLogo} alt="ERRORHACKER" className="w-5 h-5 rounded-full object-cover" />
-                  <span className="text-white text-[10px] font-bold tracking-wider drop-shadow">errorhacker</span>
-                </div>
-              )}
-              {/* Bottom caption */}
+              {/* Bottom caption — includes brand watermark logo + name */}
               <div className="absolute bottom-0 left-0 right-0 p-3 pr-20 pb-6 bg-gradient-to-t from-black/85 to-transparent text-white z-10">
                 <div className="flex items-center gap-2 mb-1.5">
+                  {brandLogo && <img src={brandLogo} alt="ERRORHACKER" className="w-5 h-5 rounded-full object-cover ring-1 ring-white/30 shrink-0" />}
                   <span className="font-bold text-sm">errorhacker</span>
                   <BadgeCheck size={14} className="text-[#4de0ff]" />
                   {it._kind === 'reel' && <span className="eh-mono text-[9px] px-1.5 py-0.5 rounded bg-white/15 tracking-widest">REEL</span>}

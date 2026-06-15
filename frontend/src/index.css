@@ -428,6 +428,35 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 @keyframes tag-secure-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); } 50% { box-shadow: 0 0 0 4px rgba(34,211,238,.22); } }
 .tag-secure { animation: tag-secure-pulse 2.4s ease-in-out infinite; }
 
+/* ============================
+   Anti-Copy Watermark
+   Applied to user-submitted review media + case proofs displayed publicly.
+   - Diagonal repeating brand text overlay (visible but doesn't obscure)
+   - Disables right-click + drag + native download options
+   ============================ */
+.eh-protected-media { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.eh-watermark-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+  overflow: hidden;
+  transform: rotate(-22deg);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: rgba(255, 255, 255, .42);
+  text-shadow: 0 0 6px rgba(0, 0, 0, .55);
+  font-size: 11px;
+  line-height: 1.8;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  mix-blend-mode: difference;
+}
+.eh-watermark-overlay span { white-space: nowrap; opacity: .9; }
+.eh-watermark-overlay span:nth-child(odd)  { color: rgba(0, 255, 157, .35); }
+
+@media (min-width: 640px) {
+  .eh-watermark-overlay { font-size: 13px; line-height: 1.9; }
+}
+
 /* Section heading kicker */
 .eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
 @media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }
