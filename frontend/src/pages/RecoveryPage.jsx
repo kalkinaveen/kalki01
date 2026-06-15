@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, Lock, Clock, BadgeCheck, ChevronRight, ChevronLeft, Loader2, CheckCircle2, AlertTriangle, Send as TgIcon, Phone, Upload, X, Star, ArrowRight, HeartHandshake, MessageCircle, Headphones, Zap } from 'lucide-react';
+import { ShieldCheck, Lock, Clock, BadgeCheck, ChevronRight, ChevronLeft, Loader2, CheckCircle2, AlertTriangle, Send as TgIcon, Phone, Upload, X, Star, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import RecoveryServiceTile from '../components/RecoveryServiceTile';
+import RecoveryWizardHeader from '../components/RecoveryWizardHeader';
 
 const STEPS = ['service', 'details', 'contact'];
 
@@ -403,56 +404,7 @@ const RecoveryPage = () => {
 
   return (
     <section className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
-      {/* Empathetic friendly hero — humanises the brand for users in distress */}
-      <div className="eh-panel eh-brackets relative overflow-hidden p-6 sm:p-8 mb-6 bg-[rgba(0,255,157,.04)] border border-[rgba(0,255,157,.25)]">
-        <span className="br-bl" /><span className="br-br" />
-        <div className="pointer-events-none absolute inset-0 opacity-50" style={{ background: 'radial-gradient(60% 80% at 20% 20%, rgba(0,255,157,.10), transparent 70%)' }} />
-        <div className="relative grid sm:grid-cols-[1fr_auto] gap-4 sm:gap-6 items-center">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <HeartHandshake size={18} className="text-[var(--eh-green)] shrink-0" />
-              <div className="eh-mono text-[10px] sm:text-[11px] tracking-[.35em] text-[var(--eh-green)]">// YOU&apos;RE IN THE RIGHT PLACE</div>
-            </div>
-            <h1 className="eh-display font-black leading-[1.05] mb-2.5" style={{ fontSize: 'clamp(1.6rem, 4.5vw, 2.6rem)' }} data-testid="recovery-h1">
-              We hear you. <span className="eh-neon">Let&apos;s get your account back.</span>
-            </h1>
-            <p className="text-sm sm:text-base opacity-85 max-w-2xl leading-7">
-              {cfg.hero?.subtitle || "Hacked, disabled, locked out, or chasing a dormant username — our team reviews every case within 24 hours and gives you an exact quote before any payment."}
-            </p>
-            <div className="flex items-center gap-2 mt-4 flex-wrap eh-mono text-[11px] opacity-85">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[rgba(0,255,157,.3)] bg-[rgba(0,255,157,.08)]">
-                <span className="relative inline-flex w-2 h-2"><span className="absolute inset-0 rounded-full bg-[var(--eh-green)] eh-pulse-dot" /></span>
-                <span>Team online · replies under 1h</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--eh-border)]"><Zap size={11} className="text-[#ffd34d]" /> No upfront payment</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--eh-border)]"><Lock size={11} /> End-to-end private</span>
-            </div>
-          </div>
-          {/* Quick contact CTAs for users in panic — don't make them fill the wizard */}
-          <div className="flex sm:flex-col gap-2 shrink-0">
-            {cfg.hero?.telegram_url && (
-              <a href={cfg.hero.telegram_url} target="_blank" rel="noreferrer" className="eh-btn-primary text-xs inline-flex items-center justify-center gap-1.5 sm:w-44" data-testid="recovery-quick-telegram"><TgIcon size={12} /> CHAT NOW</a>
-            )}
-            <a href="#case-form" className="eh-btn-ghost text-xs inline-flex items-center justify-center gap-1.5 sm:w-44"><ArrowRight size={12} /> START CASE</a>
-          </div>
-        </div>
-      </div>
-
-      <TrustBar trust={cfg.trust} stats={stats} />
-
-      {/* "We've Got You" reassurance bar — answers common emotional fears */}
-      <div className="grid sm:grid-cols-3 gap-3 mb-7">
-        {[
-          { I: Headphones,   t: 'Free assessment',        d: "Tell us what happened. We'll tell you honestly if we can help — at no cost." },
-          { I: ShieldCheck,  t: 'No-fix, no-fee',         d: "You pay only when we've recovered your account. Not a rupee before." },
-          { I: MessageCircle,t: 'Real humans, 24/7',      d: 'No bots. A real ops engineer reviews your case and walks you through every step.' },
-        ].map(({ I, t, d }, i) => (
-          <div key={i} className="eh-panel p-4 border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
-            <div className="flex items-center gap-2 mb-1.5"><I size={16} className="text-[var(--eh-green)] shrink-0" /><div className="font-bold text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>{t}</div></div>
-            <div className="eh-mono text-[11px] opacity-70 leading-[1.55]">{d}</div>
-          </div>
-        ))}
-      </div>
+      <RecoveryWizardHeader step={step} teamOnline />
 
       <div id="case-form" className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-6">
         <div className="eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">

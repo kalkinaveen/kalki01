@@ -278,6 +278,44 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 
 .rt-star { display: inline-block; animation: rt-star 1.8s ease-in-out infinite; }
 
+/* ============================
+   Recovery Wizard Header · premium animated shield
+   ============================ */
+@keyframes rwh-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes rwh-ring-pulse {
+  0%   { transform: scale(.6); opacity: .65; }
+  80%  { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes rwh-orbit-1 { from { transform: rotate(0deg)   translateX(42px) rotate(0deg); }   to { transform: rotate(360deg) translateX(42px) rotate(-360deg); } }
+@keyframes rwh-orbit-2 { from { transform: rotate(120deg) translateX(38px) rotate(-120deg); } to { transform: rotate(480deg) translateX(38px) rotate(-480deg); } }
+@keyframes rwh-orbit-3 { from { transform: rotate(240deg) translateX(44px) rotate(-240deg); } to { transform: rotate(600deg) translateX(44px) rotate(-600deg); } }
+@keyframes rwh-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes rwh-sparkle-icon { 0%, 100% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(15deg) scale(1.18); } }
+
+.rwh-logo { width: 64px; height: 64px; }
+@media (max-width: 640px) { .rwh-logo { width: 56px; height: 56px; } }
+.rwh-shield { animation: rwh-float 3.2s ease-in-out infinite; filter: drop-shadow(0 0 10px rgba(0,255,157,.55)); }
+
+.rwh-ring {
+  position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+  border: 1px solid rgba(0,255,157,.55);
+}
+.rwh-ring-1 { animation: rwh-ring-pulse 2.6s ease-out infinite; }
+.rwh-ring-2 { animation: rwh-ring-pulse 2.6s ease-out 1.3s infinite; }
+
+.rwh-spark {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  display: inline-block; color: var(--eh-green);
+  font-size: 10px; line-height: 1; pointer-events: none;
+  text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+}
+.rwh-spark-1 { animation: rwh-orbit-1 7.4s linear infinite, rwh-twinkle 2.4s ease-in-out infinite; }
+.rwh-spark-2 { animation: rwh-orbit-2 9.1s linear infinite reverse, rwh-twinkle 2.8s ease-in-out infinite .4s; font-size: 13px; opacity: .8; }
+.rwh-spark-3 { animation: rwh-orbit-3 6.4s linear infinite, rwh-twinkle 2.2s ease-in-out infinite .8s; }
+
+.rwh-sparkle-icon { display: inline-block; animation: rwh-sparkle-icon 2s ease-in-out infinite; }
+
 /* Section heading kicker */
 .eh-kicker { display:inline-flex; gap:.5rem; align-items:center; color: var(--eh-green); letter-spacing:.18em; font-family:'Share Tech Mono', monospace; font-size: .75rem; flex-wrap: wrap; max-width: 100%; }
 @media (min-width: 640px) { .eh-kicker { letter-spacing:.3em; font-size: .8rem; } }
