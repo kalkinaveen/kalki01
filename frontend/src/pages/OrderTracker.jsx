@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PaymentBox from '../components/PaymentBox';
 import RecoveryReviewForm from '../components/RecoveryReviewForm';
 import TelegramAccountCard from '../components/TelegramAccountCard';
+import TraceStageIcon from '../components/TraceStageIcon';
 
 const CURRENCY_SYM = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
 
@@ -113,21 +114,19 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
       </div>
 
       {!terminal ? (
-        <div className="relative">
+        <div className="relative" data-testid="recovery-trace-timeline">
           {RECOVERY_STAGES.map((s, i) => {
-            const I = s.icon;
-            const active = i <= stageIdx;
-            const current = i === stageIdx;
+            const state = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'pending';
+            const connectorClass = i < stageIdx ? 'done' : i === stageIdx ? 'live' : '';
             return (
-              <div key={s.key} className="flex gap-4 pb-6 relative">
-                {i < RECOVERY_STAGES.length - 1 && <div className="absolute left-[19px] top-10 bottom-0 w-px" style={{ background: active ? 'var(--eh-green)' : 'var(--eh-border)' }} />}
-                <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 relative" style={{ background: active ? 'rgba(0,255,157,.12)' : 'transparent', border: `1px solid ${active ? 'var(--eh-green)' : 'var(--eh-border)'}`, boxShadow: current ? '0 0 12px rgba(0,255,157,.4)' : 'none' }}>
-                  {active ? <I size={16} color="var(--eh-green)" /> : <Circle size={14} className="opacity-40" />}
-                </div>
+              <div key={s.key} className="flex gap-4 pb-7 relative">
+                {i < RECOVERY_STAGES.length - 1 && <div className={`trace-connector ${connectorClass}`} />}
+                <TraceStageIcon stageKey={s.key} icon={s.icon} state={state} />
                 <div className="flex-1 pt-1 min-w-0">
-                  <div className={`font-semibold ${active ? '' : 'opacity-60'}`} style={{ fontFamily: 'Inter,sans-serif' }}>{s.label}</div>
-                  <div className="text-sm opacity-70 leading-6">{s.desc}</div>
-                  {current && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> live</div>}
+                  <div className={`font-semibold ${state !== 'pending' ? '' : 'opacity-55'}`} style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.label}</div>
+                  <div className={`text-sm leading-6 ${state === 'pending' ? 'opacity-55' : 'opacity-80'}`}>{s.desc}</div>
+                  {state === 'current' && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)]"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> LIVE</div>}
+                  {state === 'done' && <div className="mt-2 eh-mono text-[10px] tracking-widest text-[var(--eh-green)] opacity-80">✓ COMPLETED</div>}
                 </div>
               </div>
             );
@@ -186,19 +185,19 @@ const OrderView = ({ order, setOrder }) => {
         <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">SIZE</div><div className="break-words">{order.size}</div></div>
         <div className="eh-panel p-3 min-w-0 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">TARGET</div><div className="truncate" title={order.target}>{order.target}</div></div>
       </div>
-      <div className="relative">
+      <div className="relative" data-testid="order-trace-timeline">
         {ORDER_STAGES.map((s, i) => {
-          const I = s.icon; const active = i <= idx; const current = i === idx;
+          const state = i < idx ? 'done' : i === idx ? 'current' : 'pending';
+          const connectorClass = i < idx ? 'done' : i === idx ? 'live' : '';
           return (
-            <div key={s.key} className="flex gap-4 pb-6 relative">
-              {i < ORDER_STAGES.length - 1 && <div className="absolute left-[19px] top-10 bottom-0 w-px" style={{ background: active ? 'var(--eh-green)' : 'var(--eh-border)' }} />}
-              <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 relative" style={{ background: active ? 'rgba(0,255,157,.12)' : 'transparent', border: `1px solid ${active ? 'var(--eh-green)' : 'var(--eh-border)'}`, boxShadow: current ? '0 0 12px rgba(0,255,157,.4)' : 'none' }}>
-                {active ? <I size={16} color="var(--eh-green)" /> : <Circle size={14} className="opacity-40" />}
-              </div>
+            <div key={s.key} className="flex gap-4 pb-7 relative">
+              {i < ORDER_STAGES.length - 1 && <div className={`trace-connector ${connectorClass}`} />}
+              <TraceStageIcon stageKey={s.key} icon={s.icon} state={state} />
               <div className="flex-1 pt-1 min-w-0">
-                <div className={`font-semibold ${active ? '' : 'opacity-60'}`} style={{ fontFamily: 'Inter,sans-serif' }}>{s.label}</div>
-                <div className="text-sm opacity-70 leading-6">{s.desc}</div>
-                {current && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> in progress</div>}
+                <div className={`font-semibold ${state !== 'pending' ? '' : 'opacity-55'}`} style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.label}</div>
+                <div className={`text-sm leading-6 ${state === 'pending' ? 'opacity-55' : 'opacity-80'}`}>{s.desc}</div>
+                {state === 'current' && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)]"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> LIVE</div>}
+                {state === 'done' && <div className="mt-2 eh-mono text-[10px] tracking-widest text-[var(--eh-green)] opacity-80">✓ COMPLETED</div>}
               </div>
             </div>
           );
