@@ -1127,6 +1127,39 @@ async def recovery_can_review(case_id: str):
         "email": case.get("email") or "",
     }
 
+@api.post("/recovery/reviews/public")
+async def recovery_submit_public_review(body: RecoveryReviewIn, request: Request):
+    """Fully public — anyone (no auth, no case) can submit a review.
+    All submissions are forced approved=false and must be admin-approved before going public.
+    Soft-flagged with `source=public` so admin can filter them in the panel."""
+    if not body.name.strip() or not body.quote.strip():
+        raise HTTPException(status_code=400, detail="Name and review text are required")
+    if len(body.quote.strip()) < 20:
+        raise HTTPException(status_code=400, detail="Please write at least 20 characters")
+    data = body.dict()
+    data["approved"] = False
+    # ignore any case_id from public form — must come from an authentic flow
+    data["case_id"] = ""
+    rev = {
+        "id": f"REV-{uuid.uuid4().hex[:8]}",
+        **data,
+        "createdAt": _now_iso(),
+        "source": "public",
+        "submitter_ip": request.client.host if request.client else "",
+    }
+    await db.recovery_reviews.insert_one(rev)
+    rev.pop("_id", None)
+    # Telegram alert so admin knows a new review is waiting
+    try:
+        cfg = await _ensure_config()
+        notif = (cfg.get("notifications") or {}).get("telegram") or {}
+        if notif.get("enabled"):
+            asyncio.create_task(_telegram_send(notif.get("bot_token", ""), notif.get("chat_id", ""),
+                f"<b>NEW PUBLIC REVIEW // ERRORHACKER</b>\n<b>From:</b> {body.name}\n<b>Rating:</b> {'⭐' * body.rating}\n<b>Service:</b> {body.service_key or 'general'}\n\n<i>{body.quote[:200]}</i>\n\nApprove in webpanel → Recovery → Reviews."))
+    except Exception:
+        pass
+    return rev
+
 @api.post("/recovery/reviews/submit")
 async def recovery_submit_review(body: RecoveryReviewIn):
     """Public endpoint — customers submit a review after their case is recovered/closed.

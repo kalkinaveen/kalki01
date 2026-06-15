@@ -284,41 +284,52 @@ const ReviewMedia = ({ items = [] }) => {
 const ReviewsSection = ({ reviews, services }) => {
   const [filter, setFilter] = useState('all');
   const filtered = filter === 'all' ? reviews : reviews.filter(r => r.service_key === filter);
-  if (!reviews.length) return null;
   return (
-    <section className="mt-14">
-      <div className="eh-kicker mb-3">// HIGHLIGHTED REVIEWS</div>
-      <h2 className="eh-display text-2xl sm:text-3xl font-black mb-5">From People Who Chose Recovery</h2>
-      <div className="flex gap-2 overflow-x-auto eh-no-scrollbar pb-3 mb-4">
-        <button onClick={() => setFilter('all')} className={`shrink-0 px-3 py-1.5 rounded text-[11px] eh-mono tracking-widest uppercase border ${filter === 'all' ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>ALL</button>
-        {services.filter(s => s.active !== false).map(s => (
-          <button key={s.id} onClick={() => setFilter(s.issue_key)} className={`shrink-0 px-3 py-1.5 rounded text-[11px] eh-mono tracking-widest uppercase border ${filter === s.issue_key ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>{s.name}</button>
-        ))}
-      </div>
-      {filtered.length === 0 ? (
-        <div className="eh-mono text-xs opacity-60 text-center py-10">No reviews for this category yet.</div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(r => (
-            <div key={r.id} className="eh-panel p-5" data-testid={`recovery-review-${r.id}`}>
-              <div className="flex gap-0.5 mb-3 text-[var(--eh-green)]">{Array.from({ length: r.rating || 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" />)}</div>
-              <ReviewMedia items={r.media_urls} />
-              <div className="text-sm leading-6 mb-4 opacity-90">"{r.quote}"</div>
-              <div className="flex items-center gap-3 pt-3 border-t border-[var(--eh-border)]">
-                {r.avatar_url ? (
-                  <img src={r.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
-                ) : (
-                  <div className="w-9 h-9 rounded-full grid place-items-center text-xs eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(r.name || 'A')[0].toUpperCase()}</div>
-                )}
-                <div>
-                  <div className="font-bold text-sm flex items-center gap-1.5">{r.name}{r.source === 'customer' && <BadgeCheck size={13} className="text-[var(--eh-green)]" title="Verified customer review" />}</div>
-                  {r.handle && <div className="eh-mono text-[10px] opacity-60">{r.handle}</div>}
+    <section className="mt-14" data-testid="recovery-reviews-section">
+      <div className="eh-kicker mb-3">// REVIEWS</div>
+      <h2 className="font-black text-2xl sm:text-3xl mb-5" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>What people are saying</h2>
+      {reviews.length > 0 && (
+        <>
+          <div className="flex gap-2 overflow-x-auto eh-no-scrollbar pb-3 mb-4">
+            <button onClick={() => setFilter('all')} className={`shrink-0 px-3 py-1.5 rounded text-[11px] eh-mono tracking-widest uppercase border ${filter === 'all' ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>ALL</button>
+            {services.filter(s => s.active !== false).map(s => (
+              <button key={s.id} onClick={() => setFilter(s.issue_key)} className={`shrink-0 px-3 py-1.5 rounded text-[11px] eh-mono tracking-widest uppercase border ${filter === s.issue_key ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>{s.name}</button>
+            ))}
+          </div>
+          {filtered.length === 0 ? (
+            <div className="eh-mono text-xs opacity-60 text-center py-10">No reviews for this category yet — be the first to share!</div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map(r => (
+                <div key={r.id} className="eh-panel p-5" data-testid={`recovery-review-${r.id}`}>
+                  <div className="flex gap-0.5 mb-3 text-[var(--eh-green)]">{Array.from({ length: r.rating || 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" />)}</div>
+                  <ReviewMedia items={r.media_urls} />
+                  <div className="text-sm leading-6 mb-4 opacity-90">"{r.quote}"</div>
+                  <div className="flex items-center gap-3 pt-3 border-t border-[var(--eh-border)]">
+                    {r.avatar_url ? (
+                      <img src={r.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full grid place-items-center text-xs eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(r.name || 'A')[0].toUpperCase()}</div>
+                    )}
+                    <div>
+                      <div className="font-bold text-sm flex items-center gap-1.5">{r.name}{r.source === 'customer' && <BadgeCheck size={13} className="text-[var(--eh-green)]" title="Verified customer review" />}</div>
+                      {r.handle && <div className="eh-mono text-[10px] opacity-60">{r.handle}</div>}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          )}
+        </>
+      )}
+      {reviews.length === 0 && (
+        <div className="eh-panel p-8 text-center" data-testid="recovery-no-reviews">
+          <Star size={28} className="mx-auto mb-2 text-[var(--eh-green)]" />
+          <div className="font-bold text-base mb-1" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>No reviews yet — be the first!</div>
+          <div className="eh-mono text-[11px] opacity-70">Share your experience to help others choose with confidence.</div>
         </div>
       )}
+      <PublicReviewForm services={services} />
     </section>
   );
 };

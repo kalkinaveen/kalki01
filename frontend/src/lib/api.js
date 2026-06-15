@@ -178,6 +178,7 @@ export const api = {
   },
   recoveryCanReview: (caseId) => req(`/recovery/cases/${caseId}/can-review`),
   recoverySubmitReview: (data) => req('/recovery/reviews/submit', { method: 'POST', body: data }),
+  recoverySubmitPublicReview: (data) => req('/recovery/reviews/public', { method: 'POST', body: data }),
   recoveryUploadReviewMedia: async (file) => {
     const fd = new FormData();
     fd.append('file', file);
