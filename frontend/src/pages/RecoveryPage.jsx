@@ -109,16 +109,76 @@ const StepService = ({ services, value, onChange, onNext }) => (
   </div>
 );
 
-const StepDetails = ({ platforms, value, onPatch, onUploadProof, uploadBusy }) => (
+// Maps each service's issue_key → list of platform keys that make sense for it.
+// 'ALL' means show every platform (used for cross-platform services).
+const SERVICE_PLATFORM_MAP = {
+  // Single-platform services
+  gmail:        ['gmail'],
+  whatsapp:     ['whatsapp'],
+  telegram:     ['telegram'],
+  discord:      ['discord'],
+  tiktok:       ['tiktok'],
+  twitter:      ['twitter'],
+  snapchat:     ['snapchat'],
+  linkedin:     ['linkedin'],
+  // Multi-platform clusters
+  gaming:       ['steam', 'psn', 'xbox', 'other'],
+  // Universal services
+  disabled:     'ALL',
+  hacked:       'ALL',
+  '2fa':        'ALL',
+  simswap:      'ALL',
+  privacy:      'ALL',
+  password:     'ALL',
+  username:     ['instagram', 'twitter', 'tiktok', 'youtube', 'snapchat', 'telegram', 'discord', 'gmail', 'other'],
+  verification: ['instagram', 'twitter', 'tiktok', 'youtube', 'facebook', 'linkedin'],
+};
+
+// Per-service placeholders so the form *talks* like a specialist for that case.
+const SERVICE_HINTS = {
+  gmail:    { url: 'yourname@gmail.com', story: "My Gmail was disabled on May 14 — I still have my recovery phone and the original sign-up date." },
+  whatsapp: { url: '+91 9876543210', story: "My WhatsApp number got banned after a group I joined was flagged. I never violated terms." },
+  telegram: { url: '@yourhandle or +91 9876543210', story: "My Telegram says 'this account is restricted' since last week. I have my SIM and cloud password." },
+  discord:  { url: 'username#0000 or yourhandle', story: "My Discord was terminated. I own a server with 5K members — please help recover." },
+  tiktok:   { url: '@yourhandle', story: "My TikTok account was permanently banned. 18K followers, 0 violations, IDs ready." },
+  twitter:  { url: '@yourhandle', story: "My X account was suspended. I have email access and 2FA backup codes." },
+  snapchat: { url: '@yourhandle', story: "My Snapchat is locked permanently. I have streaks to save and ID ready." },
+  linkedin: { url: 'linkedin.com/in/yourname', story: "My LinkedIn was restricted unfairly. I have a premium subscription and want connections preserved." },
+  gaming:   { url: 'Steam ID, PSN ID, or Riot username', story: "My account was banned for cheating but I never installed any cheat. ~₹X spent on skins/games." },
+  simswap:  { url: '+91 9876543210', story: "My SIM was hijacked on May 14. All linked accounts (bank, social) are at risk. Carrier is X." },
+  privacy:  { url: 'yourname.com or yourname@email.com', story: "My personal info / leaked photos / old criminal records are showing on Google — I want them removed." },
+  username: { url: '@desiredhandle  or  the dormant handle URL', story: "Username @target_handle on Instagram is dormant for 5 years. I want to claim it legitimately." },
+  verification: { url: '@yourhandle  or  profile URL', story: "I want a blue tick on Instagram. I have notable press mentions, business KYC, and matching ID." },
+  password: { url: '@yourhandle or email', story: "Lost password to my account. No recovery email/phone access — last logged in March 2024." },
+  disabled: { url: 'instagram.com/yourhandle  or  @yourhandle', story: "My Instagram was disabled on May 14 after a flag for impersonation. I have my ID card and original email." },
+  hacked:   { url: 'instagram.com/yourhandle', story: "My Instagram was hacked on May 14 — attacker changed email & phone. I have my login proofs ready." },
+  '2fa':    { url: '@yourhandle or email', story: "I lost access to my 2FA device. Backup codes also lost. Have ID + linked phone history." },
+};
+
+const StepDetails = ({ platforms, value, onPatch, onUploadProof, uploadBusy, serviceKey }) => {
+  const map = SERVICE_PLATFORM_MAP[serviceKey];
+  const visiblePlatforms = !serviceKey || map === 'ALL' || !map
+    ? platforms
+    : platforms.filter(p => map.includes(p.key));
+  const hints = SERVICE_HINTS[serviceKey] || SERVICE_HINTS.disabled;
+  const lockedPlatform = visiblePlatforms.length === 1 ? visiblePlatforms[0] : null;
+  return (
   <div className="space-y-4">
     <div className="eh-kicker mb-1">// CASE INFORMATION</div>
     <div className="grid sm:grid-cols-2 gap-3">
       <div>
-        <div className="eh-mono text-xs opacity-70 mb-1.5">PLATFORM</div>
-        <select className="eh-input" data-testid="recovery-platform" value={value.platform || ''} onChange={e => onPatch({ platform: e.target.value })}>
-          <option value="">Select platform…</option>
-          {platforms.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </select>
+        <div className="eh-mono text-xs opacity-70 mb-1.5 flex items-center gap-1.5">PLATFORM {lockedPlatform && <span className="text-[var(--eh-green)] text-[10px]">· auto-set</span>}</div>
+        {lockedPlatform ? (
+          <div className="eh-input flex items-center justify-between" data-testid="recovery-platform-locked">
+            <span>{lockedPlatform.label}</span>
+            <span className="eh-mono text-[10px] opacity-50">LOCKED</span>
+          </div>
+        ) : (
+          <select className="eh-input" data-testid="recovery-platform" value={value.platform || ''} onChange={e => onPatch({ platform: e.target.value })}>
+            <option value="">Select platform…</option>
+            {visiblePlatforms.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+        )}
       </div>
       <div>
         <div className="eh-mono text-xs opacity-70 mb-1.5">URGENCY</div>
@@ -130,7 +190,7 @@ const StepDetails = ({ platforms, value, onPatch, onUploadProof, uploadBusy }) =
       </div>
       <div className="sm:col-span-2">
         <div className="eh-mono text-xs opacity-70 mb-1.5">ACCOUNT URL / HANDLE</div>
-        <input className="eh-input" data-testid="recovery-account" placeholder="instagram.com/yourhandle  or  @yourhandle" value={value.account_url || ''} onChange={e => onPatch({ account_url: e.target.value })} />
+        <input className="eh-input" data-testid="recovery-account" placeholder={hints.url} value={value.account_url || ''} onChange={e => onPatch({ account_url: e.target.value })} />
       </div>
       <div className="sm:col-span-2">
         <div className="eh-mono text-xs opacity-70 mb-1.5">FOLLOWER COUNT</div>
@@ -141,7 +201,7 @@ const StepDetails = ({ platforms, value, onPatch, onUploadProof, uploadBusy }) =
       </div>
       <div className="sm:col-span-2">
         <div className="eh-mono text-xs opacity-70 mb-1.5">WHAT HAPPENED? (be specific — when, how, last login)</div>
-        <textarea rows={5} className="eh-textarea" data-testid="recovery-desc" value={value.description || ''} onChange={e => onPatch({ description: e.target.value })} placeholder="My Instagram was disabled on May 14 after a flag for impersonation. I have my ID card and original email…" />
+        <textarea rows={5} className="eh-textarea" data-testid="recovery-desc" value={value.description || ''} onChange={e => onPatch({ description: e.target.value })} placeholder={hints.story} />
       </div>
       <div className="sm:col-span-2">
         <div className="eh-mono text-xs opacity-70 mb-1.5">PROOF / SCREENSHOTS (optional, up to 5)</div>
@@ -168,7 +228,8 @@ const StepDetails = ({ platforms, value, onPatch, onUploadProof, uploadBusy }) =
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const StepContact = ({ value, onPatch, hero }) => (
   <div className="space-y-4">
@@ -363,6 +424,22 @@ const RecoveryPage = () => {
 
   const service = useMemo(() => cfg.services.find(s => s.id === data.service_id), [cfg.services, data.service_id]);
 
+  // When the chosen service changes, auto-reconcile the picked platform.
+  // - If the service only supports one platform → lock & set it automatically.
+  // - If the user already picked one that is no longer valid → clear it so they re-pick.
+  useEffect(() => {
+    if (!service) return;
+    const map = SERVICE_PLATFORM_MAP[service.issue_key];
+    if (!map || map === 'ALL') return;
+    const valid = cfg.platforms.filter(p => map.includes(p.key));
+    if (valid.length === 1) {
+      setData(d => (d.platform === valid[0].key ? d : { ...d, platform: valid[0].key }));
+    } else if (data.platform && !map.includes(data.platform)) {
+      setData(d => ({ ...d, platform: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service?.issue_key, cfg.platforms]);
+
   const estimatedPrice = useMemo(() => {
     if (!service) return 0;
     const mult = URGENCY_MULTIPLIER[data.urgency] || 1;
@@ -430,7 +507,7 @@ const RecoveryPage = () => {
           <Stepper active={step} />
 
           {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} onNext={next} />}
-          {step === 'details' && <StepDetails platforms={cfg.platforms} value={data} onPatch={patch} onUploadProof={uploadProof} uploadBusy={uploadBusy} />}
+          {step === 'details' && <StepDetails platforms={cfg.platforms} value={data} onPatch={patch} onUploadProof={uploadProof} uploadBusy={uploadBusy} serviceKey={service?.issue_key} />}
           {step === 'contact' && <StepContact value={data} onPatch={patch} hero={cfg.hero} />}
 
           <div className="flex items-center justify-between gap-3 mt-7 pt-5 border-t border-[var(--eh-border)]">
