@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Star, BadgeCheck, Quote, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, BadgeCheck, Quote, MessageCircle, Image as ImageIcon, Play } from 'lucide-react';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#00ff9d 0%,#00d4ff 100%)',
@@ -101,6 +101,39 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
                           <div className="eh-mono text-[9px] opacity-50 mt-1.5 text-right">{fmtRelative(r.createdAt)} · seen ✓✓</div>
                         </div>
                       </div>
+                      {/* Proof media — image / video thumbnails sent in the chat */}
+                      {!!(r.media_urls || []).length && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[85%] flex flex-col gap-1.5">
+                            <div className="eh-mono text-[9px] opacity-60 px-1">📎 sent {r.media_urls.length} attachment{r.media_urls.length > 1 ? 's' : ''}</div>
+                            <div className={`grid gap-1 ${r.media_urls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                              {r.media_urls.slice(0, 4).map((m, mi) => (
+                                <a key={mi} href={m.url} target="_blank" rel="noreferrer" className="relative block rounded-lg overflow-hidden border border-[rgba(0,255,157,.25)] aspect-square bg-black/40 group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
+                                  {m.kind === 'video' ? (
+                                    <video src={m.url} muted playsInline preload="metadata" controlsList="nodownload" disablePictureInPicture className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
+                                  ) : (
+                                    <img src={m.url} alt="" className="w-full h-full object-cover pointer-events-none select-none" draggable={false} loading="lazy" />
+                                  )}
+                                  {/* anti-copy diagonal watermark */}
+                                  <div className="eh-watermark-overlay" aria-hidden="true">
+                                    <span>ERRORHACKER · ERRORHACKER.SITE · </span>
+                                    <span>ERRORHACKER · ERRORHACKER.SITE · </span>
+                                    <span>ERRORHACKER · ERRORHACKER.SITE · </span>
+                                  </div>
+                                  {m.kind === 'video' && (
+                                    <div className="absolute inset-0 grid place-items-center bg-black/30 group-hover:bg-black/10 transition-colors pointer-events-none">
+                                      <div className="w-9 h-9 rounded-full bg-black/65 grid place-items-center"><Play size={14} className="text-[var(--eh-green)] ml-0.5" fill="currentColor" /></div>
+                                    </div>
+                                  )}
+                                  <div className="absolute top-1 left-1 px-1 py-0.5 rounded text-[8px] eh-mono font-bold bg-black/70 text-[var(--eh-green)] tracking-widest pointer-events-none flex items-center gap-0.5">
+                                    {m.kind === 'video' ? '▶ VID' : <><ImageIcon size={8} /> IMG</>}
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex justify-end">
                         <div className="max-w-[80%] px-3.5 py-2 rounded-2xl rounded-tr-md text-[12px] leading-relaxed text-black font-medium" style={{ background: 'linear-gradient(135deg,#00ff9d 0%,#00d4ff 100%)', fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
                           Glad we could help! 🎉 — <b>ERRORHACKER team</b>
