@@ -53,24 +53,38 @@ const PriceCard = ({ service, urgency, currency = 'INR' }) => {
 };
 
 const Stepper = ({ active }) => {
-  const labels = ['Pick Service', 'Case Details', 'Contact Info'];
+  const labels = ['Service', 'Details', 'Contact'];
+  const fullLabels = ['Pick Service', 'Case Details', 'Contact Info'];
+  const idx = STEPS.indexOf(active);
   return (
-    <div className="flex items-center gap-1 sm:gap-2 mb-6 -mx-1 px-1 overflow-x-auto eh-no-scrollbar">
-      {labels.map((l, i) => {
-        const idx = STEPS.indexOf(active);
-        const isActive = i === idx;
-        const isDone = i < idx;
-        return (
-          <React.Fragment key={l}>
-            <div className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded eh-mono text-[10px] sm:text-[11px] tracking-widest uppercase shrink-0 whitespace-nowrap ${isActive ? 'bg-[rgba(0,255,157,.12)] text-[var(--eh-green)] border border-[var(--eh-green)]' : isDone ? 'opacity-90' : 'opacity-50'}`}>
-              <span className={`w-5 h-5 grid place-items-center rounded-full text-[10px] font-bold shrink-0 ${isActive || isDone ? 'bg-[var(--eh-green)] text-[#001a10]' : 'border border-[var(--eh-border)]'}`}>{isDone ? '✓' : i + 1}</span>
-              <span>{l}</span>
-            </div>
-            {i < labels.length - 1 && <ChevronRight size={12} className="opacity-40 shrink-0" />}
-          </React.Fragment>
-        );
-      })}
-    </div>
+    <>
+      {/* Compact mobile progress bar — visible only < sm */}
+      <div className="sm:hidden mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="eh-mono text-[10px] tracking-widest text-[var(--eh-green)]">STEP {idx + 1} of {labels.length}</div>
+          <div className="eh-mono text-[10px] opacity-60">{fullLabels[idx]}</div>
+        </div>
+        <div className="h-1.5 rounded-full bg-[var(--eh-border)] overflow-hidden">
+          <div className="h-full bg-[var(--eh-green)] transition-all duration-500" style={{ width: `${((idx + 1) / labels.length) * 100}%`, boxShadow: '0 0 8px rgba(0,255,157,.6)' }} />
+        </div>
+      </div>
+      {/* Desktop pill stepper */}
+      <div className="hidden sm:flex items-center gap-2 mb-6 -mx-1 px-1 overflow-x-auto eh-no-scrollbar">
+        {fullLabels.map((l, i) => {
+          const isActive = i === idx;
+          const isDone = i < idx;
+          return (
+            <React.Fragment key={l}>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded eh-mono text-[11px] tracking-widest uppercase shrink-0 whitespace-nowrap ${isActive ? 'bg-[rgba(0,255,157,.12)] text-[var(--eh-green)] border border-[var(--eh-green)]' : isDone ? 'opacity-90' : 'opacity-50'}`}>
+                <span className={`w-5 h-5 grid place-items-center rounded-full text-[10px] font-bold shrink-0 ${isActive || isDone ? 'bg-[var(--eh-green)] text-[#001a10]' : 'border border-[var(--eh-border)]'}`}>{isDone ? '✓' : i + 1}</span>
+                <span>{l}</span>
+              </div>
+              {i < fullLabels.length - 1 && <ChevronRight size={12} className="opacity-40 shrink-0" />}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </>
   );
 };
 
@@ -463,25 +477,25 @@ const RecoveryPage = () => {
   }
 
   return (
-    <section className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
+    <section className="max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-12">
       <RecoveryWizardHeader step={step} teamOnline />
 
-      <div id="case-form" className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-6">
-        <div className="eh-panel p-4 sm:p-7 min-w-0 overflow-hidden">
+      <div id="case-form" className="grid lg:grid-cols-[1fr_320px] gap-3 sm:gap-6">
+        <div className="eh-panel p-3 sm:p-7 min-w-0 overflow-hidden">
           <Stepper active={step} />
 
           {step === 'service' && <StepService services={cfg.services} value={data.service_id} onChange={(id) => patch({ service_id: id })} onNext={next} />}
           {step === 'details' && <StepDetails platforms={cfg.platforms} value={data} onPatch={patch} onUploadProof={uploadProof} uploadBusy={uploadBusy} serviceKey={service?.issue_key} />}
           {step === 'contact' && <StepContact value={data} onPatch={patch} hero={cfg.hero} />}
 
-          <div className="flex items-center justify-between gap-3 mt-7 pt-5 border-t border-[var(--eh-border)]">
+          <div className="flex items-center justify-between gap-2 mt-6 pt-4 sm:pt-5 border-t border-[var(--eh-border)]">
             {STEPS.indexOf(step) > 0 ? (
-              <button onClick={back} className="eh-mono text-xs px-4 py-2.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5" data-testid="recovery-back-btn"><ChevronLeft size={14} /> BACK</button>
+              <button onClick={back} className="eh-mono text-xs px-3 sm:px-4 py-2.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5" data-testid="recovery-back-btn"><ChevronLeft size={14} /> BACK</button>
             ) : <span />}
             {step !== 'contact' ? (
-              <button onClick={next} className="eh-btn-primary text-xs flex items-center gap-1.5" data-testid="recovery-next-btn">NEXT <ChevronRight size={14} /></button>
+              <button onClick={next} className="eh-btn-primary text-xs flex items-center gap-1.5 px-4 sm:px-5 py-2.5" data-testid="recovery-next-btn">NEXT <ChevronRight size={14} /></button>
             ) : (
-              <button onClick={submit} disabled={submitting} className="eh-btn-primary text-xs flex items-center gap-1.5 disabled:opacity-60" data-testid="recovery-submit-btn">
+              <button onClick={submit} disabled={submitting} className="eh-btn-primary text-xs flex items-center gap-1.5 disabled:opacity-60 px-4 sm:px-5 py-2.5" data-testid="recovery-submit-btn">
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send2 />} {submitting ? 'SUBMITTING…' : 'SUBMIT CASE'}
               </button>
             )}
@@ -489,7 +503,7 @@ const RecoveryPage = () => {
         </div>
         <div className="min-w-0">
           <PriceCard service={service} urgency={data.urgency} currency={data.currency} />
-          <div className="eh-panel p-4 mt-3">
+          <div className="eh-panel p-3 sm:p-4 mt-3 hidden sm:block">
             <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-2">// PRIVACY</div>
             <div className="eh-mono text-[11px] opacity-80 leading-5">All information is kept strictly confidential and used only for your case review. We never share data with third parties.</div>
           </div>

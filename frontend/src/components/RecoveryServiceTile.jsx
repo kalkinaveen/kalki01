@@ -91,8 +91,8 @@ const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
       {/* Animated TAG badge (admin-controlled) */}
       <TagBadge tag={effectiveTag} />
 
-      <div className="relative p-4 sm:p-5">
-        <div className="flex items-start gap-3.5 mb-3">
+      <div className="relative p-3.5 sm:p-5">
+        <div className="flex items-start gap-3 sm:gap-3.5 mb-3">
           {/* Animated brand badge */}
           <div className="rt-badge relative shrink-0">
             <span className="rt-halo" />
@@ -100,17 +100,17 @@ const RecoveryServiceTile = ({ service: s, selected, onClick, onNext }) => {
             <span className="rt-spark rt-spark-2">·</span>
             <span className="rt-spark rt-spark-3">✦</span>
             <span className="rt-spark rt-spark-4">·</span>
-            <div className="rt-icon relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl grid place-items-center bg-[#0d1115] border border-[var(--eh-border)] group-hover:border-[var(--brand-color)] transition-all">
-              <Icon size={22} style={{ color }} className="rt-icon-img" strokeWidth={1.8} />
+            <div className="rt-icon relative w-11 h-11 sm:w-14 sm:h-14 rounded-xl grid place-items-center bg-[#0d1115] border border-[var(--eh-border)] group-hover:border-[var(--brand-color)] transition-all">
+              <Icon size={20} style={{ color }} className="rt-icon-img sm:!w-[22px] sm:!h-[22px]" strokeWidth={1.8} />
             </div>
           </div>
 
-          <div className="min-w-0 flex-1 pr-20">
+          <div className="min-w-0 flex-1 pr-16 sm:pr-20">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="font-bold text-base leading-snug break-words flex-1 min-w-0" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.name}</div>
-              {selected && <CheckCircle2 size={18} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
+              <div className="font-bold text-[15px] sm:text-base leading-snug break-words flex-1 min-w-0" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.name}</div>
+              {selected && <CheckCircle2 size={16} className="text-[var(--eh-green)] shrink-0 mt-0.5" />}
             </div>
-            <div className="flex items-center gap-2 eh-mono text-[11px] opacity-75 mt-1 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 eh-mono text-[10px] sm:text-[11px] opacity-75 mt-1 flex-wrap">
               <span>ETA {s.eta_min_days}–{s.eta_max_days}d</span>
               <span className="opacity-50">·</span>
               <span style={{ color: 'var(--eh-green)' }}>{s.success_rate}% success</span>

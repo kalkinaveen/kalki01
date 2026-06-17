@@ -30,7 +30,7 @@ const STEP_COPY = {
 const RecoveryWizardHeader = ({ step = 'service', teamOnline = true }) => {
   const c = STEP_COPY[step] || STEP_COPY.service;
   return (
-    <div className="recovery-wizard-header relative overflow-hidden rounded-xl border border-[rgba(0,255,157,.25)] bg-[rgba(0,255,157,.035)] p-5 sm:p-6 mb-5">
+    <div className="recovery-wizard-header relative overflow-hidden rounded-xl border border-[rgba(0,255,157,.25)] bg-[rgba(0,255,157,.035)] p-4 sm:p-6 mb-4 sm:mb-5">
       {/* subtle radial backdrop */}
       <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: 'radial-gradient(60% 80% at 80% 20%, rgba(0,255,157,.10), transparent 70%)' }} />
 
