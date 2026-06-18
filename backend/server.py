@@ -1226,17 +1226,23 @@ async def recovery_review_upload_media(file: UploadFile = File(...)):
     if len(raw) > limit:
         raise HTTPException(status_code=413, detail=f"File too large (max {limit // (1024*1024)}MB)")
     if is_image:
+        # Burn watermark into the actual pixels — bulletproof anti-copy.
+        # Even if someone hits /api/uploads/{id} directly, the bytes already
+        # contain the ERRORHACKER diagonal text overlay. Removing it requires
+        # manual photo editing per-image, which kills any practical theft.
+        from watermark import watermark_image
+        marked, new_ct = watermark_image(raw, ct)
         uid = uuid.uuid4().hex
         await db.uploads.insert_one({
             "_id": uid,
-            "content_type": ct,
+            "content_type": new_ct,
             "filename": file.filename or uid,
-            "size": len(raw),
-            "data": base64.b64encode(raw).decode("ascii"),
+            "size": len(marked),
+            "data": base64.b64encode(marked).decode("ascii"),
             "createdAt": datetime.utcnow().isoformat(),
             "kind": "recovery_review_media",
         })
-        return {"url": f"/api/uploads/{uid}", "kind": "image", "content_type": ct, "size": len(raw)}
+        return {"url": f"/api/uploads/{uid}", "kind": "image", "content_type": new_ct, "size": len(marked)}
     grid_id = await fs_bucket.upload_from_stream(
         file.filename or f"review-{uuid.uuid4().hex}.mp4",
         io.BytesIO(raw),
