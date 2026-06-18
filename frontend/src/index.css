@@ -471,6 +471,23 @@ html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-float:hover { transform: scale(1.06); }
 .eh-float::after { content:''; position:absolute; top:6px; right:6px; width:12px; height:12px; background: var(--eh-green); border-radius:50%; box-shadow: 0 0 10px var(--eh-green); }
 
+/* Floating Mail Support — sits above the Telegram button */
+.eh-float-mail { position: fixed; right: 20px; bottom: 96px; z-index: 40; width: 58px; height: 58px; border-radius: 50%; background: #0a0d10; color: var(--eh-green); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,255,157,.35), 0 0 0 4px rgba(0,255,157,.10); transition: transform .25s ease; cursor: pointer; border: 1.5px solid rgba(0,255,157,.45); text-decoration: none; }
+.eh-float-mail:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 12px 30px rgba(0,255,157,.55), 0 0 0 5px rgba(0,255,157,.18); }
+.eh-float-mail .ehm-svg { position: relative; z-index: 2; filter: drop-shadow(0 0 6px rgba(0,255,157,.55)); }
+.eh-float-mail .ehm-ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; border: 1.5px solid var(--eh-green); animation: ehm-radar 2.6s ease-out infinite; }
+.eh-float-mail .ehm-ring-2 { animation-delay: 1.3s; }
+@keyframes ehm-radar { 0% { transform: scale(.6); opacity: .8; } 80% { transform: scale(1.7); opacity: 0; } 100% { opacity: 0; } }
+.eh-float-mail .ehm-orbit { position: absolute; inset: 0; pointer-events: none; animation: ehm-spin 5.5s linear infinite; }
+.eh-float-mail .ehm-dot { position: absolute; top: -3px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--eh-green); box-shadow: 0 0 8px var(--eh-green), 0 0 14px var(--eh-green); }
+@keyframes ehm-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.eh-float-mail .ehm-flap { transform-origin: 50% 20px; transition: transform .35s ease; }
+.eh-float-mail:hover .ehm-flap { transform: rotateX(180deg) translateY(-2px); }
+.eh-float-mail .ehm-ping { animation: ehm-ping 1.6s ease-in-out infinite; }
+@keyframes ehm-ping { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px var(--eh-green)); } 50% { opacity: .65; filter: drop-shadow(0 0 12px var(--eh-green)); } }
+@media (max-width: 640px) { .eh-float-mail { width: 52px; height: 52px; bottom: 88px; right: 16px; } .eh-float-mail .ehm-svg { width: 24px; height: 24px; } }
+
+
 /* Glitch */
 @keyframes eh-glitch { 0%,100%{ transform: translate(0,0);} 20%{transform: translate(-1px,1px);} 40%{transform: translate(1px,-1px);} 60%{transform: translate(-1px,0);} 80%{transform: translate(1px,1px);} }
 .eh-glitch:hover { animation: eh-glitch .35s linear; }

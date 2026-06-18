@@ -4,6 +4,7 @@ import Marquee from './Marquee';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import FloatingTelegram from './FloatingTelegram';
+import FloatingMail from './FloatingMail';
 import ScrollProgress from './ScrollProgress';
 
 const Layout = ({ children }) => {
@@ -17,6 +18,7 @@ const Layout = ({ children }) => {
       <main>{children}</main>
       {!isFeed && <Footer />}
       <FloatingTelegram />
+      <FloatingMail />
     </div>
   );
 };
