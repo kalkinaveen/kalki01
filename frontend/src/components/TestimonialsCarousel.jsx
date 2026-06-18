@@ -55,6 +55,7 @@ const Avatar = ({ url, name, size = 44 }) => {
 const TestimonialsCarousel = ({ reviews = [] }) => {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // { url, kind }
 
   const reels = reviews.filter(r => r.approved !== false);
   const total = reels.length;
@@ -65,6 +66,15 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
     const t = setInterval(() => setIdx(v => v + 1), 7000);
     return () => clearInterval(t);
   }, [paused, total]);
+
+  // ESC to close lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const h = (e) => { if (e.key === 'Escape') setLightbox(null); };
+    window.addEventListener('keydown', h);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
+  }, [lightbox]);
 
   if (!total) return null;
   const go = (dir) => setIdx(v => v + dir);
@@ -201,6 +211,27 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
           {reels.map((_, i) => (
             <button key={i} onClick={() => setIdx(i)} aria-label={`Go to slide ${i + 1}`} className={`h-1 sm:h-1.5 rounded-full transition-all duration-300 ${i === safeIdx ? 'w-6 sm:w-8 bg-[var(--eh-green)]' : 'w-1.5 sm:w-2 bg-[var(--eh-border)] hover:bg-white/30'}`} />
           ))}
+        </div>
+      )}
+
+      {/* Watermarked lightbox — keeps the anti-copy overlay visible at full size */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[9999] bg-black/95 grid place-items-center p-4 sm:p-8" onClick={() => setLightbox(null)} data-testid="testimonial-lightbox">
+          <button onClick={() => setLightbox(null)} aria-label="Close" className="absolute top-4 right-4 w-10 h-10 grid place-items-center rounded-full border border-[var(--eh-border)] bg-black/60 text-white hover:border-[var(--eh-green)] hover:text-[var(--eh-green)] z-10">✕</button>
+          <div className="relative max-w-[92vw] max-h-[88vh] eh-protected-media" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+            {lightbox.kind === 'video' ? (
+              <video src={lightbox.url} autoPlay controls controlsList="nodownload noplaybackrate" disablePictureInPicture playsInline className="max-w-[92vw] max-h-[88vh] rounded-lg pointer-events-auto select-none" draggable={false} />
+            ) : (
+              <img src={lightbox.url} alt="" className="max-w-[92vw] max-h-[88vh] rounded-lg pointer-events-none select-none" draggable={false} />
+            )}
+            <div className="eh-watermark-overlay" aria-hidden="true">
+              <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+              <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+              <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+              <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+              <span>ERRORHACKER · ERRORHACKER.SITE · VERIFIED · </span>
+            </div>
+          </div>
         </div>
       )}
     </section>
