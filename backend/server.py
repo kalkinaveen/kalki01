@@ -27,6 +27,13 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
 
 from defaults import DEFAULT_CONFIG
+from email_service import (
+    notify_case_received,
+    notify_case_status,
+    notify_quote_sent,
+    notify_order_status,
+    notify_wallet_credited,
+)
 
 # --------------------------------------------------------------------------
 ROOT_DIR = Path(__file__).parent
@@ -911,6 +918,13 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
                     pass
     # Fire-and-forget Telegram DM to the customer if they linked their account
     asyncio.create_task(_notify_user_order(row, event="status_change"))
+    # Email customer about order status change
+    asyncio.create_task(notify_order_status(
+        row.get("email") or row.get("userEmail", ""),
+        row.get("name", ""),
+        order_id, body.status,
+        row.get("serviceName") or row.get("service", "")
+    ))
     return row
 
 @api.delete("/orders")
@@ -959,6 +973,8 @@ async def recovery_create_case(body: RecoveryCaseIn, request: Request):
     await db.recovery_cases.insert_one(case)
     case.pop("_id", None)
     asyncio.create_task(_notify_recovery_case(case))
+    # Send "case received" email to customer
+    asyncio.create_task(notify_case_received(case.get("email", ""), case.get("name", ""), case["id"], case.get("service_name") or case.get("issue") or "recovery"))
     return case
 
 @api.get("/recovery/cases")
@@ -988,6 +1004,8 @@ async def recovery_update_case(case_id: str, body: RecoveryCaseStatusIn, x_admin
         raise HTTPException(status_code=404, detail="Case not found")
     row = await db.recovery_cases.find_one({"id": case_id})
     row.pop("_id", None)
+    # Email customer about status change
+    asyncio.create_task(notify_case_status(row.get("email", ""), row.get("name", ""), case_id, body.status, body.admin_note or ""))
     return row
 
 @api.delete("/recovery/cases/{case_id}")
@@ -1060,6 +1078,12 @@ async def recovery_send_payment(case_id: str, body: RecoveryPaymentIn, x_admin_t
     case2 = await db.recovery_cases.find_one({"id": case_id})
     case2.pop("_id", None)
     asyncio.create_task(_notify_recovery_case({**case2, "_event": "payment_sent"}))
+
+    # Email customer their quote with payment link
+    asyncio.create_task(notify_quote_sent(
+        case2.get("email", ""), case2.get("name", ""), case_id,
+        body.amount, body.currency, body.note or ""
+    ))
 
     return {"ok": True, "order": order, "case": case2}
 
@@ -2513,6 +2537,12 @@ async def admin_wallet_deposit_approve(deposit_id: str, x_admin_token: Optional[
             asyncio.create_task(_tg_send(token, chat_id,
                 f"💰 <b>Wallet credited</b>\n+₹{dep['amount']} added to your ERRORHACKER wallet.\n\nTap below to view balance & spend.",
                 {"inline_keyboard": [[{"text": "🪙 Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]}))
+    # Email the user that wallet was credited
+    if user and user.get("email"):
+        wallet = await db.wallets.find_one({"user_id": dep["user_id"]})
+        asyncio.create_task(notify_wallet_credited(
+            user["email"], user.get("name", ""), dep["amount"], (wallet or {}).get("balance", 0)
+        ))
     return {"ok": True}
 
 @api.post("/admin/wallet/deposits/{deposit_id}/reject")
