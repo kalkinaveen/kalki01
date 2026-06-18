@@ -25,7 +25,10 @@ const PublicReviewForm = ({ services = [] }) => {
     setUploading(true);
     try {
       const r = await api.recoveryUploadReviewMedia(file);
-      setDraft(d => ({ ...d, media_urls: [...d.media_urls, { url: r.absoluteUrl, kind: r.kind, content_type: r.content_type }] }));
+      // Store the RELATIVE path only — the browser resolves it against the
+      // current host (errorhacker.site on production, preview URL in dev),
+      // so review proof links never leak the dev preview domain.
+      setDraft(d => ({ ...d, media_urls: [...d.media_urls, { url: r.url, kind: r.kind, content_type: r.content_type }] }));
     } catch (e) { toast.error('Upload failed', { description: e.message }); }
     finally { setUploading(false); }
   };

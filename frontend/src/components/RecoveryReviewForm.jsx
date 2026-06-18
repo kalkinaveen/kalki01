@@ -36,7 +36,8 @@ const RecoveryReviewForm = ({ caseId, onSubmitted }) => {
     setUploading(true);
     try {
       const r = await api.recoveryUploadReviewMedia(file);
-      setDraft(d => ({ ...d, media_urls: [...d.media_urls, { url: r.absoluteUrl, kind: r.kind, content_type: r.content_type }] }));
+      // Store relative path so links always resolve to the current host (errorhacker.site)
+      setDraft(d => ({ ...d, media_urls: [...d.media_urls, { url: r.url, kind: r.kind, content_type: r.content_type }] }));
     } catch (e) { toast.error('Upload failed', { description: e.message }); }
     finally { setUploading(false); }
   };

@@ -24,6 +24,18 @@ const fmtRelative = (iso) => {
   return `${Math.floor(d / 365)}y ago`;
 };
 
+// Strip any embedded preview/backend host so the link resolves against the
+// current site origin (errorhacker.site in production). Handles legacy reviews
+// already saved with a full preview URL in the database.
+const cleanUrl = (u) => {
+  if (!u) return u;
+  try {
+    const m = String(u).match(/(\/api\/(?:uploads|feed\/media)\/[^\s"'?#]+)/);
+    if (m) return m[1];
+  } catch (e) { /* ignore */ }
+  return u;
+};
+
 const Avatar = ({ url, name, size = 44 }) => {
   if (url) return <img src={url} alt={name || ''} className="rounded-full object-cover ring-2 ring-[rgba(0,255,157,.35)]" style={{ width: size, height: size }} />;
   const initial = (name || 'A').trim()[0].toUpperCase();
@@ -111,12 +123,14 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
                           <div className="max-w-[88%] sm:max-w-[85%] flex flex-col gap-1.5">
                             <div className="eh-mono text-[8px] sm:text-[9px] opacity-60 px-1">📎 {r.media_urls.length} attachment{r.media_urls.length > 1 ? 's' : ''}</div>
                             <div className={`grid gap-1 ${r.media_urls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                              {r.media_urls.slice(0, 4).map((m, mi) => (
-                                <a key={mi} href={m.url} target="_blank" rel="noreferrer" className="relative block rounded-md overflow-hidden border border-[rgba(0,255,157,.25)] aspect-square bg-black/40 group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
+                              {r.media_urls.slice(0, 4).map((m, mi) => {
+                                const safe = cleanUrl(m.url);
+                                return (
+                                <a key={mi} href={safe} target="_blank" rel="noreferrer" className="relative block rounded-md overflow-hidden border border-[rgba(0,255,157,.25)] aspect-square bg-black/40 group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
                                   {m.kind === 'video' ? (
-                                    <video src={m.url} muted playsInline preload="metadata" controlsList="nodownload" disablePictureInPicture className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
+                                    <video src={safe} muted playsInline preload="metadata" controlsList="nodownload" disablePictureInPicture className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
                                   ) : (
-                                    <img src={m.url} alt="" className="w-full h-full object-cover pointer-events-none select-none" draggable={false} loading="lazy" />
+                                    <img src={safe} alt="" className="w-full h-full object-cover pointer-events-none select-none" draggable={false} loading="lazy" />
                                   )}
                                   <div className="eh-watermark-overlay" aria-hidden="true">
                                     <span>ERRORHACKER · </span>
@@ -128,7 +142,8 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
                                     </div>
                                   )}
                                 </a>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
