@@ -136,7 +136,7 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
                               {r.media_urls.slice(0, 4).map((m, mi) => {
                                 const safe = cleanUrl(m.url);
                                 return (
-                                <a key={mi} href={safe} target="_blank" rel="noreferrer" className="relative block rounded-md overflow-hidden border border-[rgba(0,255,157,.25)] aspect-square bg-black/40 group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
+                                <div key={mi} className="relative block rounded-md overflow-hidden border border-[rgba(0,255,157,.25)] aspect-square bg-black/40 group eh-protected-media" onContextMenu={(e) => e.preventDefault()}>
                                   {m.kind === 'video' ? (
                                     <video src={safe} muted playsInline preload="metadata" controlsList="nodownload" disablePictureInPicture className="w-full h-full object-cover pointer-events-none select-none" draggable={false} />
                                   ) : (
@@ -151,7 +151,7 @@ const TestimonialsCarousel = ({ reviews = [] }) => {
                                       <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-black/65 grid place-items-center"><Play size={12} className="text-[var(--eh-green)] ml-0.5" fill="currentColor" /></div>
                                     </div>
                                   )}
-                                </a>
+                                </div>
                                 );
                               })}
                             </div>
