@@ -285,7 +285,7 @@ const OrderTracker = () => {
 
   return (
     <div className="pt-10 pb-20">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6">
+      <div className="max-w-3xl mx-auto px-3 sm:px-6">
         <div className="text-center mb-10">
           <div className="eh-kicker justify-center mb-3">// TRACE_OPERATION</div>
           <h1 className="eh-display font-black" style={{ fontSize: 'clamp(1.6rem, 5.5vw, 3.5rem)' }}>OPERATION <span className="eh-neon">TRACKER</span></h1>

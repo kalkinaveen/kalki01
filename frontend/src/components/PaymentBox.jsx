@@ -139,16 +139,18 @@ const PaymentBox = ({ order, onUpdated }) => {
 
       <div className="space-y-2 mt-4 border-t border-[var(--eh-border)] pt-4">
         <div className="eh-mono text-xs tracking-widest opacity-70">SUBMIT PROOF</div>
-        <input value={txRef} onChange={e => setTxRef(e.target.value)} data-testid="pay-tx-ref" placeholder="> Transaction reference / UTR / TXID" className="eh-input text-sm" />
-        <div className="flex gap-2 items-stretch">
-          <input value={proof} onChange={e => setProof(e.target.value)} data-testid="pay-proof-url" placeholder="> screenshot URL (or upload →)" className="flex-1 eh-input text-sm" />
-          <label className="eh-btn-ghost text-xs cursor-pointer whitespace-nowrap px-3">
-            {uploading ? <><Loader2 className="animate-spin" size={12} /> UP</> : <><Upload size={12} /> UPLOAD</>}
-            <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
-          </label>
-        </div>
-        {proof && <img src={proof} alt="proof" className="max-h-32 rounded border border-[var(--eh-border)]" onError={e => e.target.style.display='none'} />}
-        <button onClick={submit} disabled={submitting} data-testid="pay-submit" className="eh-btn-primary text-xs w-full justify-center mt-2">{submitting ? 'SUBMITTING...' : 'I HAVE PAID — SUBMIT'}</button>
+        <input value={txRef} onChange={e => setTxRef(e.target.value)} data-testid="pay-tx-ref" placeholder="> Transaction reference / UTR / TXID" className="eh-input text-sm w-full" />
+        {/* Upload-first dropzone — replaces the confusing URL input. Image is uploaded
+            via /api/uploads, returning a URL that admin sees in the webpanel. */}
+        <label className={`block w-full cursor-pointer rounded border border-dashed border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors p-3 text-center ${uploading ? 'opacity-60 pointer-events-none' : ''}`} data-testid="pay-upload-dropzone">
+          <div className="flex items-center justify-center gap-2 eh-mono text-xs">
+            {uploading ? <><Loader2 className="animate-spin" size={14} /> UPLOADING…</> : <><Upload size={14} /> {proof ? 'REPLACE SCREENSHOT' : 'UPLOAD PAYMENT SCREENSHOT'}</>}
+          </div>
+          <div className="eh-mono text-[10px] opacity-50 mt-1">PNG / JPG · max 5MB</div>
+          <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+        </label>
+        {proof && <div className="relative"><img src={proof} alt="proof" className="max-h-40 w-full object-contain rounded border border-[var(--eh-green)]" onError={e => e.target.style.display = 'none'} /><span className="absolute top-1 right-1 eh-mono text-[9px] px-1.5 py-0.5 rounded bg-[var(--eh-green)] text-black font-bold">✓ UPLOADED</span></div>}
+        <button onClick={submit} disabled={submitting || !proof || !txRef} data-testid="pay-submit" className="eh-btn-primary text-xs w-full justify-center mt-2 disabled:opacity-50">{submitting ? 'SUBMITTING...' : 'I HAVE PAID — SUBMIT'}</button>
       </div>
     </div>
   );
