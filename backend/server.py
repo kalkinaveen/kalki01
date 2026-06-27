@@ -610,9 +610,12 @@ async def _fmt_case(case_id: str) -> Optional[str]:
     return "\n".join(lines)
 
 async def _send_welcome(bot_token: str, chat_id: int, bot_cfg: Optional[Dict[str, Any]] = None):
+    """Single unified welcome card: header text + full 12-tile module grid (no second 'tap a button' bubble)."""
     bot_cfg = bot_cfg or await _get_bot_cfg()
-    await _tg_send(bot_token, chat_id, bot_cfg.get("welcome_message") or DEFAULT_BOT_CFG["welcome_message"],
-                   _bot_main_keyboard(bot_cfg.get("username", ""), bot_cfg.get("commands")))
+    text = bot_cfg.get("welcome_message") or DEFAULT_BOT_CFG["welcome_message"]
+    if "▸ MODULES" not in text:
+        text = text + "\n\n<b>▸ MODULES</b>   tap any tile below"
+    await _tg_send(bot_token, chat_id, text, _main_menu_kb())
 
 async def _send_help(bot_token: str, chat_id: int):
     text = (
@@ -1475,8 +1478,8 @@ async def _process_update(update: Dict[str, Any]):
             if payload.lower().startswith("link_"):
                 await _handle_link(bot_token, chat_id, chat, payload[5:])
             else:
+                # Single unified welcome card (text + full 12-tile module grid).
                 await _send_welcome(bot_token, chat_id)
-                await _send_main_menu(bot_token, chat_id, "▌ <b>Initialise</b> — tap a module below")
             return
         if text.startswith("/menu"):
             await _send_main_menu(bot_token, chat_id)
