@@ -19,6 +19,11 @@ import ToolsPage from './pages/ToolsPage';
 import ToolDiagnose from './pages/ToolDiagnose';
 import ToolAppeal from './pages/ToolAppeal';
 import ToolSecurityScore from './pages/ToolSecurityScore';
+import BreachChecker from './pages/BreachChecker';
+import RecoveryOdds from './pages/RecoveryOdds';
+import PhishingDetector from './pages/PhishingDetector';
+import AccountWorth from './pages/AccountWorth';
+import SelfieCoach from './pages/SelfieCoach';
 import InfoPage from './pages/InfoPage';
 import OrderTracker from './pages/OrderTracker';
 import FAQPage from './pages/FAQPage';
@@ -90,6 +95,11 @@ function App() {
                 <Route path="/tools/diagnose" element={<SiteShell><ToolDiagnose /></SiteShell>} />
                 <Route path="/tools/appeal" element={<SiteShell><ToolAppeal /></SiteShell>} />
                 <Route path="/tools/security-score" element={<SiteShell><ToolSecurityScore /></SiteShell>} />
+                <Route path="/tools/breach" element={<SiteShell><BreachChecker /></SiteShell>} />
+                <Route path="/tools/odds" element={<SiteShell><RecoveryOdds /></SiteShell>} />
+                <Route path="/tools/phishing" element={<SiteShell><PhishingDetector /></SiteShell>} />
+                <Route path="/tools/account-worth" element={<SiteShell><AccountWorth /></SiteShell>} />
+                <Route path="/tools/selfie-coach" element={<SiteShell><SelfieCoach /></SiteShell>} />
                 <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
                 <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
                 <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />

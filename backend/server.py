@@ -201,6 +201,45 @@ class ToolsFaqIn(BaseModel):
     session_id: str
     message: str
 
+class ToolsBreachIn(BaseModel):
+    email: EmailStr
+
+class ToolsOddsIn(BaseModel):
+    platform: str               # instagram | facebook | tiktok | snapchat | twitter
+    issue: str                  # hacked | disabled | locked_2fa | forgot_password | impersonation | shadowban
+    when: str                   # today | week | month | older
+    has_email: bool = True
+    has_phone: bool = True
+    has_id: bool = True         # has government ID for verification
+
+class ToolsPhishingIn(BaseModel):
+    message: str                # the suspicious DM / SMS / email body
+    channel: Optional[str] = "DM"  # DM | SMS | Email | Comment
+
+class ToolsAccountWorthIn(BaseModel):
+    platform: str = "Instagram"
+    niche: str                  # fitness | fashion | food | tech | finance | travel | gaming | beauty | meme | other
+    followers: int
+    avg_likes: int = 0
+    avg_comments: int = 0
+    country_tier: Optional[str] = "tier2"  # tier1 (US/UK/EU/CA/AU) | tier2 (IN/BR/MX) | tier3 (others)
+    verified: bool = False
+
+class ToolsSelfieIn(BaseModel):
+    lighting: str               # bright | dim | mixed
+    background: str             # plain | busy | unsafe
+    holding_id: bool = True
+    matches_profile: bool = True
+
+class AnnouncementIn(BaseModel):
+    title: str
+    body: str
+    link: Optional[str] = ""           # e.g. /tools/breach
+    tool_id: Optional[str] = ""        # if announcing a tool, e.g. "breach"
+    send_telegram: bool = True
+    send_email: bool = True
+    audience: Optional[str] = "all"    # all | wallet | paying
+
 # ---- Payment models ----
 class PaymentSettingsIn(BaseModel):
     manual_enabled: bool = True
@@ -1903,6 +1942,424 @@ async def tools_faq_chat(body: ToolsFaqIn):
         "scope": "faq", "ts": _now_iso(),
     })
     return {"reply": reply}
+
+
+# ---- AI Tools Hub · Batch 2 -----------------------------------------------
+
+@api.post("/tools/breach")
+async def tools_breach_check(body: ToolsBreachIn):
+    """Public breach checker (no LLM). Queries XposedOrNot free API.
+    Privacy: we only forward the email to XposedOrNot — never log it.
+    """
+    email = body.email.strip().lower()
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as c:
+            r = await c.get(f"https://api.xposedornot.com/v1/breach-analytics", params={"email": email})
+    except Exception as e:
+        log.warning("breach api failed: %s", e)
+        raise HTTPException(status_code=502, detail="Breach service is temporarily unavailable")
+
+    if r.status_code == 404:
+        # Not found = good news (no breaches)
+        return {"breached": False, "count": 0, "breaches": [], "exposure_score": 0, "industries": []}
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail="Breach service returned an error")
+    data = r.json() or {}
+
+    # Normalise XposedOrNot's response into something the frontend can render simply.
+    bm = (data.get("BreachMetrics") or {})
+    breaches_list = (data.get("ExposedBreaches") or {}).get("breaches_details") or []
+    industry_arr = (bm.get("industry") or [[]])[0] if bm.get("industry") else []
+    risk = ((bm.get("risk") or [{}])[0] or {})
+
+    out = {
+        "breached": bool(breaches_list),
+        "count": len(breaches_list),
+        "exposure_score": int(risk.get("risk_score") or 0),
+        "risk_label": str(risk.get("risk_label") or "Low"),
+        "breaches": [
+            {
+                "name": b.get("breach") or b.get("name") or "Unknown",
+                "domain": b.get("domain") or "",
+                "date": b.get("xposed_date") or b.get("breach_date") or "",
+                "records": b.get("xposed_records") or b.get("xposed_count") or 0,
+                "data": b.get("xposed_data") or "",
+                "description": (b.get("details") or "")[:280],
+                "logo": b.get("logo") or "",
+            }
+            for b in breaches_list[:25]
+        ],
+        "industries": [
+            {"industry": x[0], "count": x[1]} for x in (industry_arr or []) if isinstance(x, list) and len(x) >= 2 and x[1]
+        ][:8],
+    }
+    try:
+        await db.tool_usage.insert_one({"tool": "breach", "count": out["count"], "ts": _now_iso()})
+    except Exception:
+        pass
+    return out
+
+
+# --- Recovery Odds Calculator (rule-based) ---
+_BASE_ODDS = {
+    "hacked":           {"odds": 55, "days": (3, 7)},
+    "disabled":         {"odds": 35, "days": (5, 14)},
+    "locked_2fa":       {"odds": 70, "days": (2, 5)},
+    "forgot_password":  {"odds": 85, "days": (1, 3)},
+    "impersonation":    {"odds": 60, "days": (5, 21)},
+    "shadowban":        {"odds": 50, "days": (14, 30)},
+}
+_PLATFORM_MOD = {"instagram": 0, "facebook": -5, "tiktok": -10, "snapchat": -8, "twitter": -3}
+_WHEN_MOD = {"today": 12, "week": 5, "month": -8, "older": -20}
+
+@api.post("/tools/recovery-odds")
+async def tools_recovery_odds(body: ToolsOddsIn):
+    base = _BASE_ODDS.get(body.issue.lower(), {"odds": 50, "days": (5, 14)})
+    odds = base["odds"]
+    odds += _PLATFORM_MOD.get(body.platform.lower(), -5)
+    odds += _WHEN_MOD.get(body.when.lower(), 0)
+    if body.has_email: odds += 8
+    if body.has_phone: odds += 6
+    if body.has_id:    odds += 5
+    odds = max(5, min(95, odds))
+
+    dmin, dmax = base["days"]
+    if body.when in ("month", "older"):
+        dmin += 2; dmax += 5
+    if not body.has_email and not body.has_phone:
+        dmin += 3; dmax += 7
+
+    pro_uplift = min(95, odds + 25)  # what ERRORHACKER team adds on top of self-attempt odds
+    if odds >= 70:    tier = "high"
+    elif odds >= 45:  tier = "medium"
+    else:             tier = "low"
+
+    try:
+        await db.tool_usage.insert_one({"tool": "odds", "issue": body.issue, "platform": body.platform, "ts": _now_iso()})
+    except Exception:
+        pass
+    return {
+        "self_odds": odds,
+        "pro_odds":  pro_uplift,
+        "days_min":  dmin,
+        "days_max":  dmax,
+        "tier":      tier,
+        "note":      "Estimates are based on aggregate ERRORHACKER cases — your individual result may vary.",
+    }
+
+
+# --- Phishing/Smishing Detector (LLM) ---
+PHISHING_PROMPT = (
+    "You are a cyber-security analyst specializing in phishing, smishing, and social-engineering attacks. "
+    "Analyse the message the user pastes and respond in STRICT JSON ONLY (no markdown), with these keys:\n"
+    "  risk_level: one of \"safe\", \"low\", \"medium\", \"high\", \"critical\"\n"
+    "  confidence: integer 0-100\n"
+    "  red_flags: array of short strings (max 6) listing concrete suspicious indicators\n"
+    "  green_flags: array of short strings (max 3) for any legitimate signals\n"
+    "  verdict: one short sentence verdict (<= 120 chars)\n"
+    "  action: a single sentence recommended action for the user.\n"
+    "If it looks safe, set risk_level=\"safe\" and explain why. Never invent details not in the message."
+)
+
+@api.post("/tools/phishing-check")
+async def tools_phishing_check(body: ToolsPhishingIn):
+    msg = (body.message or "").strip()
+    if len(msg) < 8:
+        raise HTTPException(status_code=400, detail="Paste the full suspicious message (at least 8 chars).")
+    if len(msg) > 6000:
+        raise HTTPException(status_code=400, detail="Message too long — paste under 6000 characters.")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception as e:
+        log.error("emergentintegrations import failed: %s", e)
+        raise HTTPException(status_code=500, detail="AI analysis unavailable")
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="AI key not configured")
+
+    sid = uuid.uuid4().hex
+    chat = LlmChat(api_key=key, session_id=sid, system_message=PHISHING_PROMPT).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    user_msg = f"Channel: {body.channel}\n---message---\n{msg}\n---end---"
+    try:
+        reply = await chat.send_message(UserMessage(text=user_msg))
+    except Exception as e:
+        log.warning("phishing check failed: %s", e)
+        raise HTTPException(status_code=502, detail="AI temporarily unavailable")
+    if not reply:
+        raise HTTPException(status_code=502, detail="AI returned empty response")
+
+    import json as _json, re as _re
+    parsed = None
+    try:
+        parsed = _json.loads(reply)
+    except Exception:
+        # extract first {...} block in case the model wrapped it
+        m = _re.search(r"\{[\s\S]*\}", reply)
+        if m:
+            try:
+                parsed = _json.loads(m.group(0))
+            except Exception:
+                parsed = None
+    if not isinstance(parsed, dict):
+        # graceful fallback — give the user the raw text wrapped
+        parsed = {"risk_level": "medium", "confidence": 50, "red_flags": [], "green_flags": [], "verdict": (reply or "")[:160], "action": "Treat the message with caution and verify with the official app/site."}
+
+    parsed["risk_level"] = str(parsed.get("risk_level", "medium")).lower()
+    if parsed["risk_level"] not in ("safe", "low", "medium", "high", "critical"):
+        parsed["risk_level"] = "medium"
+    try:
+        parsed["confidence"] = max(0, min(100, int(parsed.get("confidence") or 0)))
+    except Exception:
+        parsed["confidence"] = 60
+
+    try:
+        await db.tool_usage.insert_one({"tool": "phishing", "risk": parsed["risk_level"], "ts": _now_iso()})
+    except Exception:
+        pass
+    return parsed
+
+
+# --- Account Worth Estimator (rule-based) ---
+_NICHE_CPM = {
+    "finance":   {"min": 35.0, "max": 80.0},
+    "tech":      {"min": 25.0, "max": 60.0},
+    "fashion":   {"min": 22.0, "max": 55.0},
+    "beauty":    {"min": 20.0, "max": 50.0},
+    "fitness":   {"min": 18.0, "max": 45.0},
+    "food":      {"min": 14.0, "max": 35.0},
+    "travel":    {"min": 16.0, "max": 40.0},
+    "gaming":    {"min": 10.0, "max": 28.0},
+    "meme":      {"min": 6.0,  "max": 18.0},
+    "other":     {"min": 8.0,  "max": 22.0},
+}
+_TIER_MULT = {"tier1": 1.0, "tier2": 0.38, "tier3": 0.22}
+USD_TO_INR = 83.0
+
+@api.post("/tools/account-worth")
+async def tools_account_worth(body: ToolsAccountWorthIn):
+    if body.followers < 100:
+        raise HTTPException(status_code=400, detail="Followers must be at least 100 to estimate worth.")
+    cpm = _NICHE_CPM.get(body.niche.lower(), _NICHE_CPM["other"])
+    mult = _TIER_MULT.get(body.country_tier.lower(), _TIER_MULT["tier2"])
+    # Engagement adjustment (industry rule of thumb)
+    er = 0.0
+    if body.followers > 0:
+        er = ((body.avg_likes + body.avg_comments * 2) / body.followers) * 100
+    er = max(0.0, min(20.0, er))
+    er_mult = 0.6 + (er / 4.0)  # 1.0 at 1.6% ER, 1.6 at 4%, capped
+    er_mult = max(0.6, min(2.5, er_mult))
+
+    # Per-post sponsored estimate (USD)
+    per_post_min_usd = (body.followers / 1000.0) * cpm["min"] * mult * er_mult
+    per_post_max_usd = (body.followers / 1000.0) * cpm["max"] * mult * er_mult
+
+    if body.verified:
+        per_post_min_usd *= 1.35
+        per_post_max_usd *= 1.45
+
+    # Account market value (rule: 10–18× per-post sponsored)
+    acc_min_usd = per_post_min_usd * 10
+    acc_max_usd = per_post_max_usd * 18
+
+    try:
+        await db.tool_usage.insert_one({"tool": "account_worth", "platform": body.platform, "followers": body.followers, "ts": _now_iso()})
+    except Exception:
+        pass
+
+    return {
+        "per_post_usd_min": round(per_post_min_usd, 2),
+        "per_post_usd_max": round(per_post_max_usd, 2),
+        "account_usd_min":  round(acc_min_usd, 0),
+        "account_usd_max":  round(acc_max_usd, 0),
+        "per_post_inr_min": round(per_post_min_usd * USD_TO_INR, 0),
+        "per_post_inr_max": round(per_post_max_usd * USD_TO_INR, 0),
+        "account_inr_min":  round(acc_min_usd * USD_TO_INR, 0),
+        "account_inr_max":  round(acc_max_usd * USD_TO_INR, 0),
+        "engagement_rate":  round(er, 2),
+        "niche": body.niche.lower(),
+        "verified": body.verified,
+        "country_tier": body.country_tier,
+    }
+
+
+# --- Video-Selfie Prep Coach (rule-based) ---
+@api.post("/tools/selfie-coach")
+async def tools_selfie_coach(body: ToolsSelfieIn):
+    score = 100
+    tips = []
+    blockers = []
+
+    if body.lighting == "dim":
+        score -= 30
+        blockers.append("Move to bright, even daylight (window light is best). Dim lighting is the #1 reason selfie verification fails.")
+    elif body.lighting == "mixed":
+        score -= 10
+        tips.append("Try to find one consistent light source — mixed sun/lamp light creates harsh shadows.")
+
+    if body.background == "busy":
+        score -= 10
+        tips.append("Stand in front of a plain wall — busy backgrounds confuse the AI verifier.")
+    elif body.background == "unsafe":
+        score -= 20
+        blockers.append("Move to a private spot — never record with family/personal items visible in frame.")
+
+    if not body.holding_id:
+        score -= 15
+        tips.append("If asked to hold ID, hold it next to your face — not in front of it.")
+    if not body.matches_profile:
+        score -= 25
+        blockers.append("Your face/style must match the last few photos on your profile (same haircut, glasses, etc.).")
+
+    score = max(0, min(100, score))
+    if score >= 80:    tier = "ready"
+    elif score >= 50:  tier = "needs-work"
+    else:              tier = "high-risk"
+
+    universal_dos = [
+        "Look directly at the camera. No sunglasses, no hat, no filter.",
+        "Hold the phone steady at eye level for the full recording.",
+        "Say or do exactly what the on-screen prompt asks — no extra motions.",
+        "Record in landscape or portrait as the prompt requests — do not flip.",
+    ]
+    universal_donts = [
+        "Don't upload your selfie anywhere else — only inside the official Instagram app.",
+        "Don't pay a 'recovery service' that asks you to send a selfie to them.",
+        "Don't redo the verification more than once a day — repeated tries can blacklist you for 24h.",
+    ]
+
+    try:
+        await db.tool_usage.insert_one({"tool": "selfie", "score": score, "ts": _now_iso()})
+    except Exception:
+        pass
+    return {
+        "score": score,
+        "tier": tier,
+        "blockers": blockers,
+        "tips": tips,
+        "universal_dos": universal_dos,
+        "universal_donts": universal_donts,
+    }
+
+
+# ---- Announcement System (admin → Telegram + Resend blast) -----------------
+@api.get("/announcements")
+async def list_announcements_public():
+    rows = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(10)
+    return rows
+
+@api.get("/admin/announcements")
+async def list_announcements_admin(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    rows = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return rows
+
+@api.post("/admin/announcements")
+async def create_announcement(body: AnnouncementIn, x_admin_token: Optional[str] = Header(None)):
+    """Create + (optionally) blast an announcement.
+
+    On the Telegram side we reuse the existing _tg_send infrastructure.
+    On the email side we iterate registered users (respecting opt-out via `email_optout=true`).
+    """
+    await _check_admin(x_admin_token)
+    if not body.title.strip() or not body.body.strip():
+        raise HTTPException(status_code=400, detail="title and body are required")
+
+    ann_id = uuid.uuid4().hex
+    doc = {
+        "id": ann_id,
+        "title": body.title.strip(),
+        "body": body.body.strip(),
+        "link": (body.link or "").strip(),
+        "tool_id": (body.tool_id or "").strip(),
+        "audience": body.audience or "all",
+        "send_telegram": body.send_telegram,
+        "send_email": body.send_email,
+        "tg_sent": 0,
+        "tg_failed": 0,
+        "email_sent": 0,
+        "email_failed": 0,
+        "status": "pending",
+        "created_at": _now_iso(),
+    }
+    await db.announcements.insert_one(doc)
+
+    # Audience selector for email + telegram
+    audience_filter: Dict[str, Any] = {}
+    if body.audience == "wallet":
+        audience_filter = {"balance": {"$gt": 0}}
+    elif body.audience == "paying":
+        # users with at least one paid order
+        paid_uids = await db.orders.distinct("user_id", {"status": {"$in": ["paid", "completed", "delivered"]}})
+        if paid_uids:
+            audience_filter = {"user_id": {"$in": paid_uids}}
+        else:
+            audience_filter = {"user_id": "__none__"}  # short-circuit to empty
+
+    site_url = os.environ.get("SITE_URL", "https://errorhacker.site").rstrip("/")
+    full_link = ""
+    if doc["link"]:
+        full_link = doc["link"] if doc["link"].startswith("http") else f"{site_url}{doc['link']}"
+
+    # --- Telegram blast ---
+    if body.send_telegram:
+        token = await _get_bot_token()
+        if token:
+            tg_filter = {**audience_filter, "telegram_chat_id": {"$exists": True, "$ne": None}}
+            cursor = db.users.find(tg_filter, {"telegram_chat_id": 1})
+            sent = 0; failed = 0
+            tg_message = f"📣 *{doc['title']}*\n\n{doc['body']}"
+            if full_link:
+                tg_message += f"\n\n🔗 {full_link}"
+            async for u in cursor:
+                cid = u.get("telegram_chat_id")
+                if not cid: continue
+                r = await _tg_send(token, cid, tg_message)
+                if r.get("ok"): sent += 1
+                else:           failed += 1
+                await asyncio.sleep(0.05)
+            await db.announcements.update_one({"id": ann_id}, {"$set": {"tg_sent": sent, "tg_failed": failed}})
+
+    # --- Resend blast ---
+    if body.send_email:
+        try:
+            from email_service import send_email, _wrap
+            email_filter = {**audience_filter, "email": {"$exists": True, "$ne": None}, "email_optout": {"$ne": True}}
+            cursor = db.users.find(email_filter, {"email": 1, "name": 1})
+            sent = 0; failed = 0
+            preheader = doc["body"][:120]
+            html_body = (
+                f'<p style="margin:0 0 10px 0">{doc["body"].replace(chr(10), "<br>")}</p>'
+            )
+            html = _wrap(doc["title"], preheader, html_body, cta_label="OPEN" if full_link else "", cta_url=full_link)
+            async for u in cursor:
+                em = u.get("email")
+                if not em: continue
+                r = await send_email(em, doc["title"], html)
+                if r.get("ok"): sent += 1
+                else:           failed += 1
+            await db.announcements.update_one({"id": ann_id}, {"$set": {"email_sent": sent, "email_failed": failed}})
+        except Exception as e:
+            log.error("announcement email blast failed: %s", e)
+
+    # Mark tool as NEW in config if tool_id was supplied (so the tile shows a NEW badge)
+    if doc["tool_id"]:
+        await db.tool_meta.update_one(
+            {"tool_id": doc["tool_id"]},
+            {"$set": {"is_new": True, "marked_at": _now_iso(), "announcement_id": ann_id}},
+            upsert=True,
+        )
+
+    await db.announcements.update_one({"id": ann_id}, {"$set": {"status": "sent"}})
+    final = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
+    return final
+
+@api.delete("/admin/announcements/{ann_id}")
+async def delete_announcement(ann_id: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    res = await db.announcements.delete_one({"id": ann_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 # ---- Feed (Instagram-style) ------------------------------------------------

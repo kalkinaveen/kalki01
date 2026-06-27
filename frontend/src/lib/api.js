@@ -108,6 +108,16 @@ export const api = {
   // ai tools
   toolsAppeal: (data) => req('/tools/appeal', { method: 'POST', body: data }),
   toolsFaq: (session_id, message) => req('/tools/faq', { method: 'POST', body: { session_id, message } }),
+  toolsBreach: (email) => req('/tools/breach', { method: 'POST', body: { email } }),
+  toolsOdds: (data) => req('/tools/recovery-odds', { method: 'POST', body: data }),
+  toolsPhishing: (data) => req('/tools/phishing-check', { method: 'POST', body: data }),
+  toolsAccountWorth: (data) => req('/tools/account-worth', { method: 'POST', body: data }),
+  toolsSelfieCoach: (data) => req('/tools/selfie-coach', { method: 'POST', body: data }),
+  // announcements
+  publicAnnouncements: () => req('/announcements'),
+  adminListAnnouncements: () => req('/admin/announcements', { admin: true }),
+  adminCreateAnnouncement: (data) => req('/admin/announcements', { method: 'POST', body: data, admin: true }),
+  adminDeleteAnnouncement: (id) => req(`/admin/announcements/${id}`, { method: 'DELETE', admin: true }),
   // payments
   getPaymentSettings: () => req('/payments/settings'),
   putPaymentSettings: (data) => req('/payments/settings', { method: 'PUT', body: data, admin: true }),

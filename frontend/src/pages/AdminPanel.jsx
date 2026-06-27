@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -10,6 +10,7 @@ import RecoveryManager from './admin/RecoveryManager';
 import TeamManager from './admin/TeamManager';
 import TelegramBotPanel from './admin/TelegramBotPanel';
 import WorksWithManager from './admin/WorksWithManager';
+import AnnouncementsManager from './admin/AnnouncementsManager';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -36,6 +37,7 @@ const sections = [
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
+  { to: 'announcements', label: 'Broadcast',    icon: Megaphone,       group: 'main' },
   { to: 'team',        label: 'Team',         icon: UserCog,         group: 'main', ownerOnly: true },
   { to: 'settings',    label: 'Settings',     icon: Settings,        group: 'main' },
 ];
@@ -1600,6 +1602,7 @@ const AdminPanel = () => {
         {allowed('payments') && active==='payments'    && <PaymentSettingsTab />}
         {allowed('coupons') && active==='coupons'     && <CouponsTab />}
         {allowed('notifications') && active==='notifications'&& <NotificationsTab />}
+        {allowed('announcements') && active==='announcements'&& <AnnouncementsManager />}
         {allowed('team') && active==='team'        && <TeamManager />}
         {allowed('settings') && active==='settings'    && <SettingsTab />}
       </main>
