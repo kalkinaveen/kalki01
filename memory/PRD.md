@@ -11,6 +11,16 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Wallet Deposit Telegram Approval Flow + Receipt UI/Emails (Iter-7)** 🎯
+  - Admin webpanel → Notifications tab now includes 3 new sections under the Telegram Bot:
+    1. **Admin Chats** — managed list of TG chat IDs that receive the inline `✅ Approve & Credit / ❌ Decline` buttons whenever a customer submits a wallet deposit. "Ping All" test action verifies setup.
+    2. **Bot Payment Info** — fully customizable `/pay` block sent by the bot (heading, intro, UPI ID + name, multiple crypto wallets, HTML instructions w/ `{amount}` `{order_id}` placeholders, per-button labels + URLs for Paid/Quote/Support). "Preview in TG" button sends a live preview to the first admin chat.
+    3. **Wallet Deposits Manager** — pending/approved/rejected table with one-click Approve (credits wallet via shared `_wallet_txn`) and Reject (with optional reason → user is DMed via bot).
+  - Telegram bot inline `dep_approve_{id}` / `dep_decline_{id}` callbacks call the same shared `_approve_deposit_internal` / `_reject_deposit_internal` so web-approval and TG-approval are 100% consistent.
+  - On approval the user gets BOTH the existing wallet-credited email AND a new printable **receipt email** with all txn details + a deep link to the on-site Receipt page.
+  - New `/receipt/:txn_id` printable page (`<Receipt />`) — brand header, big amount hero, full transaction details, PRINT / SAVE PDF button, auth-required (proxy 404 for cross-user IDs).
+  - `MyWallet` transaction rows are now clickable Link cards → open the receipt.
+  - 18/18 pytest suite at `/app/backend/tests/test_wallet_deposit_receipt.py`.
 - **AI Tools Rate-Limit + Wallet Auto-Recharge** ⚡
   - Daily free quota per IP (anonymous) / per user_id (logged-in): breach 5/day · phishing 3/day · appeal 2/day · faq 15/day. Rule-based tools (odds, account-worth, selfie, security-score, diagnose) stay UNMETERED.
   - When the free quota is exhausted, logged-in users with sufficient wallet balance get **auto-debited** at the per-tool cost (₹10 / ₹15 / ₹49 / ₹3) — no manual top-up needed, no separate purchase flow.
@@ -58,6 +68,9 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - **Resend transactional emails** (case received, status changes, quote sent, order updates, wallet deposit approved) — domain `errorhacker.site` verified, sender `team@errorhacker.site`
 
 ## Backlog
+- Race-condition guard on `_approve_deposit_internal` (use atomic `findOneAndUpdate({id,status:'pending'},{$set:{status:'approved'}})` so two parallel approves can't double-credit).
+- Move `reject` reason from query param to JSON body for consistency.
+- Mobile audit pass on Wallet, Transactions, Receipt, Tools Hub, Order Tracker.
 - 5 more roadmapped tools: Banned-Hashtag Checker, Bio/Caption Policy Checker, DMCA Takedown Generator, Cease-and-Desist Generator, Impersonator Hunter (interactive flow)
 - Stripe payment gateway (alongside Razorpay)
 - Multi-currency UI auto-switch (backend supports it)
