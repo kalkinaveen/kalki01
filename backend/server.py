@@ -2432,8 +2432,15 @@ def _client_ip(request: Request) -> str:
         return real.strip()
     return request.client.host if request.client else "0.0.0.0"
 
+from pymongo import ReturnDocument
+
 async def _tools_consume_quota(request: Request, tool_id: str) -> Dict[str, Any]:
     """Atomically check + decrement the daily quota for `tool_id`.
+
+    Race-safe pattern: increment first (atomic upsert), then evaluate; if over the limit
+    AND no wallet to cover, roll the increment back. The wallet debit itself is also
+    guarded by `find_one_and_update({balance: {$gte: cost}})` so two concurrent calls
+    can never overdraw the balance.
 
     Returns a dict describing what happened:
       {"source": "free" | "wallet" | "admin",
@@ -2461,67 +2468,73 @@ async def _tools_consume_quota(request: Request, tool_id: str) -> Dict[str, Any]
     else:
         ident = {"ip": _client_ip(request), "tool": tool_id, "date": today}
 
-    rec = await db.tools_usage.find_one(ident) or {}
-    used = int(rec.get("count") or 0)
+    # --- (1) ATOMIC: increment first, then evaluate ---
+    after = await db.tools_usage.find_one_and_update(
+        ident,
+        {"$inc": {"count": 1},
+         "$setOnInsert": {"created_at": _now_iso()},
+         "$set": {"updated_at": _now_iso()}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    post_count = int((after or {}).get("count") or 1)
 
-    # --- (1) within free tier ---
-    if used < conf["daily_free"]:
-        await db.tools_usage.update_one(
-            ident,
-            {"$inc": {"count": 1, "free_count": 1},
-             "$setOnInsert": {"created_at": _now_iso()}, "$set": {"updated_at": _now_iso()}},
-            upsert=True,
-        )
+    # --- (2) within free tier ---
+    if post_count <= conf["daily_free"]:
+        await db.tools_usage.update_one(ident, {"$inc": {"free_count": 1}})
         return {
-            "source": "free", "used": used + 1,
+            "source": "free", "used": post_count,
             "free_limit": conf["daily_free"],
-            "remaining_free": conf["daily_free"] - used - 1,
+            "remaining_free": conf["daily_free"] - post_count,
             "cost": 0,
         }
 
-    # --- (2) free quota exhausted — try wallet ---
+    # --- (3) over free tier — must use wallet (or roll back the increment) ---
     cost = conf["wallet_cost"]
     if not user:
+        # roll back to keep `used` accurate when the call wasn't actually allowed
+        await db.tools_usage.update_one(ident, {"$inc": {"count": -1}})
         raise HTTPException(status_code=429, detail={
             "limit_reached": True,
             "tool": tool_id,
             "free_limit": conf["daily_free"],
-            "used": used,
+            "used": conf["daily_free"],
             "wallet_cost": cost,
             "auth_required": True,
             "message": f"Free limit ({conf['daily_free']}/day) reached. Sign in and top up your wallet to keep using {tool_id}.",
         })
-    balance = float(user.get("balance") or 0)
-    if balance < cost:
+
+    # Atomic wallet debit — only succeeds if user.balance >= cost
+    debited = await db.users.find_one_and_update(
+        {"user_id": user["user_id"], "balance": {"$gte": cost}},
+        {"$inc": {"balance": -cost}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not debited:
+        # roll back the tools_usage increment so `used` stays accurate
+        await db.tools_usage.update_one(ident, {"$inc": {"count": -1}})
+        balance = float(user.get("balance") or 0)
         raise HTTPException(status_code=429, detail={
             "limit_reached": True,
             "tool": tool_id,
             "free_limit": conf["daily_free"],
-            "used": used,
+            "used": conf["daily_free"],
             "wallet_cost": cost,
             "balance": round(balance, 2),
             "needed": round(cost - balance, 2),
             "top_up_required": True,
             "message": f"You've used your {conf['daily_free']}/day free quota. Top up ₹{int(cost - balance)} or more to continue.",
         })
-
-    # --- (3) deduct wallet + allow ---
-    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": -cost}})
     await db.wallet_transactions.insert_one({
         "id": uuid.uuid4().hex, "user_id": user["user_id"], "type": "debit",
         "amount": cost, "reason": f"AI tool · {tool_id}", "tool_id": tool_id,
         "created_at": _now_iso(),
     })
-    await db.tools_usage.update_one(
-        ident,
-        {"$inc": {"count": 1, "paid_count": 1},
-         "$setOnInsert": {"created_at": _now_iso()}, "$set": {"updated_at": _now_iso()}},
-        upsert=True,
-    )
+    await db.tools_usage.update_one(ident, {"$inc": {"paid_count": 1}})
     return {
-        "source": "wallet", "used": used + 1,
+        "source": "wallet", "used": post_count,
         "free_limit": conf["daily_free"], "remaining_free": 0,
-        "cost": cost, "balance_after": round(balance - cost, 2),
+        "cost": cost, "balance_after": round(float(debited.get("balance") or 0), 2),
     }
 
 
@@ -2663,7 +2676,7 @@ async def tools_breach_check(body: ToolsBreachIn, request: Request):
 
     if r.status_code == 404:
         # Not found = good news (no breaches)
-        return {"breached": False, "count": 0, "breaches": [], "exposure_score": 0, "industries": []}
+        return {"breached": False, "count": 0, "breaches": [], "exposure_score": 0, "industries": [], "quota": quota}
     if r.status_code != 200:
         raise HTTPException(status_code=502, detail="Breach service returned an error")
     data = r.json() or {}
