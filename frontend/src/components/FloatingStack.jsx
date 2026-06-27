@@ -102,7 +102,20 @@ const FloatingStack = () => {
       const r = await api.toolsFaq(sessionId, text);
       setMessages(m => [...m, { role: 'bot', text: r.reply || '...' }]);
     } catch (e) {
-      setMessages(m => [...m, { role: 'bot', text: `> error · ${e.message || 'try again'}` }]);
+      if (e.status === 429 && e.detail?.limit_reached) {
+        const d = e.detail;
+        let msg;
+        if (d.auth_required) {
+          msg = `⌛ free ai limit reached (${d.used}/${d.free_limit} today). sign in + top up wallet at /me to keep chatting · ₹${d.wallet_cost}/msg after free.`;
+        } else if (d.top_up_required) {
+          msg = `⌛ free limit used (${d.used}/${d.free_limit}). top up your wallet at /me — extras cost ₹${d.wallet_cost}/msg. resets at midnight UTC.`;
+        } else {
+          msg = `⌛ ${d.message || 'free limit reached'}`;
+        }
+        setMessages(m => [...m, { role: 'bot', text: msg }]);
+      } else {
+        setMessages(m => [...m, { role: 'bot', text: `> error · ${e.message || 'try again'}` }]);
+      }
     } finally {
       setBusy(false);
     }

@@ -2406,11 +2406,163 @@ FAQ_SYSTEM_PROMPT = (
 )
 
 
+# ====== Tools rate-limit / wallet recharge gate ============================
+#
+# Each AI-powered tool has a free daily quota per IP (anonymous) or per user_id (logged-in).
+# When the free quota is exhausted, logged-in users with sufficient wallet balance can
+# continue using the tool — the per-call cost is debited from their wallet automatically.
+# Anonymous users get a 429 with a clear "sign in & top up to continue" hint.
+#
+TOOLS_FREE_QUOTA: Dict[str, Dict[str, int]] = {
+    "breach":   {"daily_free": 5,  "wallet_cost": 10},
+    "phishing": {"daily_free": 3,  "wallet_cost": 15},
+    "appeal":   {"daily_free": 2,  "wallet_cost": 49},
+    "faq":      {"daily_free": 15, "wallet_cost": 3},
+}
+
+def _today_utc_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for") or ""
+    if fwd:
+        return fwd.split(",")[0].strip()
+    real = request.headers.get("x-real-ip") or ""
+    if real:
+        return real.strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+async def _tools_consume_quota(request: Request, tool_id: str) -> Dict[str, Any]:
+    """Atomically check + decrement the daily quota for `tool_id`.
+
+    Returns a dict describing what happened:
+      {"source": "free" | "wallet" | "admin",
+       "used":     <post-call count>,
+       "free_limit": ...,
+       "remaining_free": ...,
+       "balance_after": ...,  # only when source=wallet
+       "cost":         ...}   # only when source=wallet
+
+    Raises HTTPException(429, ...structured detail...) when neither free quota nor wallet covers the call.
+    """
+    # Admin bypass — admins testing their own integration should never be metered.
+    adm_tok = request.headers.get("x-admin-token") or ""
+    if adm_tok and adm_tok == os.environ.get("ADMIN_TOKEN", ""):
+        return {"source": "admin", "free_limit": -1, "used": 0, "remaining_free": -1, "cost": 0}
+
+    conf = TOOLS_FREE_QUOTA.get(tool_id)
+    if not conf:
+        return {"source": "free", "free_limit": -1, "used": 0, "remaining_free": -1, "cost": 0}
+
+    user = await _get_user_from_request(request)
+    today = _today_utc_str()
+    if user:
+        ident = {"user_id": user["user_id"], "tool": tool_id, "date": today}
+    else:
+        ident = {"ip": _client_ip(request), "tool": tool_id, "date": today}
+
+    rec = await db.tools_usage.find_one(ident) or {}
+    used = int(rec.get("count") or 0)
+
+    # --- (1) within free tier ---
+    if used < conf["daily_free"]:
+        await db.tools_usage.update_one(
+            ident,
+            {"$inc": {"count": 1, "free_count": 1},
+             "$setOnInsert": {"created_at": _now_iso()}, "$set": {"updated_at": _now_iso()}},
+            upsert=True,
+        )
+        return {
+            "source": "free", "used": used + 1,
+            "free_limit": conf["daily_free"],
+            "remaining_free": conf["daily_free"] - used - 1,
+            "cost": 0,
+        }
+
+    # --- (2) free quota exhausted — try wallet ---
+    cost = conf["wallet_cost"]
+    if not user:
+        raise HTTPException(status_code=429, detail={
+            "limit_reached": True,
+            "tool": tool_id,
+            "free_limit": conf["daily_free"],
+            "used": used,
+            "wallet_cost": cost,
+            "auth_required": True,
+            "message": f"Free limit ({conf['daily_free']}/day) reached. Sign in and top up your wallet to keep using {tool_id}.",
+        })
+    balance = float(user.get("balance") or 0)
+    if balance < cost:
+        raise HTTPException(status_code=429, detail={
+            "limit_reached": True,
+            "tool": tool_id,
+            "free_limit": conf["daily_free"],
+            "used": used,
+            "wallet_cost": cost,
+            "balance": round(balance, 2),
+            "needed": round(cost - balance, 2),
+            "top_up_required": True,
+            "message": f"You've used your {conf['daily_free']}/day free quota. Top up ₹{int(cost - balance)} or more to continue.",
+        })
+
+    # --- (3) deduct wallet + allow ---
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": -cost}})
+    await db.wallet_transactions.insert_one({
+        "id": uuid.uuid4().hex, "user_id": user["user_id"], "type": "debit",
+        "amount": cost, "reason": f"AI tool · {tool_id}", "tool_id": tool_id,
+        "created_at": _now_iso(),
+    })
+    await db.tools_usage.update_one(
+        ident,
+        {"$inc": {"count": 1, "paid_count": 1},
+         "$setOnInsert": {"created_at": _now_iso()}, "$set": {"updated_at": _now_iso()}},
+        upsert=True,
+    )
+    return {
+        "source": "wallet", "used": used + 1,
+        "free_limit": conf["daily_free"], "remaining_free": 0,
+        "cost": cost, "balance_after": round(balance - cost, 2),
+    }
+
+
+@api.get("/tools/usage")
+async def tools_usage_snapshot(request: Request):
+    """Returns per-tool usage snapshot for the requesting client (user-aware)."""
+    today = _today_utc_str()
+    user = await _get_user_from_request(request)
+    ip = _client_ip(request) if not user else None
+    out: Dict[str, Any] = {
+        "date": today,
+        "user_id": user["user_id"] if user else None,
+        "logged_in": bool(user),
+        "balance": float(user.get("balance") or 0) if user else 0.0,
+        "currency": (user.get("currency") if user else None) or "INR",
+        "tools": {},
+    }
+    for tool_id, conf in TOOLS_FREE_QUOTA.items():
+        ident = (
+            {"user_id": user["user_id"], "tool": tool_id, "date": today}
+            if user
+            else {"ip": ip, "tool": tool_id, "date": today}
+        )
+        rec = await db.tools_usage.find_one(ident) or {}
+        used = int(rec.get("count") or 0)
+        out["tools"][tool_id] = {
+            "used": used,
+            "free_limit": conf["daily_free"],
+            "remaining_free": max(0, conf["daily_free"] - used),
+            "wallet_cost": conf["wallet_cost"],
+            "paid_uses": int(rec.get("paid_count") or 0),
+        }
+    return out
+
+
 @api.post("/tools/appeal")
-async def tools_generate_appeal(body: ToolsAppealIn):
+async def tools_generate_appeal(body: ToolsAppealIn, request: Request):
     """Generate a polite social-media account appeal letter using the Emergent LLM key."""
     if not body.violation_reason.strip():
         raise HTTPException(status_code=400, detail="violation_reason required")
+    quota = await _tools_consume_quota(request, "appeal")
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception as e:
@@ -2455,15 +2607,16 @@ async def tools_generate_appeal(body: ToolsAppealIn):
         })
     except Exception:
         pass
-    return {"letter": reply}
+    return {"letter": reply, "quota": quota}
 
 
 @api.post("/tools/faq")
-async def tools_faq_chat(body: ToolsFaqIn):
+async def tools_faq_chat(body: ToolsFaqIn, request: Request):
     """Specialized FAQ chatbot for the /tools page (uses Emergent LLM)."""
     msg = (body.message or "").strip()
     if not msg:
         raise HTTPException(status_code=400, detail="Empty message")
+    quota = await _tools_consume_quota(request, "faq")
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception as e:
@@ -2489,16 +2642,17 @@ async def tools_faq_chat(body: ToolsFaqIn):
         "session_id": body.session_id, "role": "bot", "text": reply,
         "scope": "faq", "ts": _now_iso(),
     })
-    return {"reply": reply}
+    return {"reply": reply, "quota": quota}
 
 
 # ---- AI Tools Hub · Batch 2 -----------------------------------------------
 
 @api.post("/tools/breach")
-async def tools_breach_check(body: ToolsBreachIn):
+async def tools_breach_check(body: ToolsBreachIn, request: Request):
     """Public breach checker (no LLM). Queries XposedOrNot free API.
     Privacy: we only forward the email to XposedOrNot — never log it.
     """
+    quota = await _tools_consume_quota(request, "breach")
     email = body.email.strip().lower()
     try:
         async with httpx.AsyncClient(timeout=12.0) as c:
@@ -2545,6 +2699,7 @@ async def tools_breach_check(body: ToolsBreachIn):
         await db.tool_usage.insert_one({"tool": "breach", "count": out["count"], "ts": _now_iso()})
     except Exception:
         pass
+    out["quota"] = quota
     return out
 
 
@@ -2610,12 +2765,13 @@ PHISHING_PROMPT = (
 )
 
 @api.post("/tools/phishing-check")
-async def tools_phishing_check(body: ToolsPhishingIn):
+async def tools_phishing_check(body: ToolsPhishingIn, request: Request):
     msg = (body.message or "").strip()
     if len(msg) < 8:
         raise HTTPException(status_code=400, detail="Paste the full suspicious message (at least 8 chars).")
     if len(msg) > 6000:
         raise HTTPException(status_code=400, detail="Message too long — paste under 6000 characters.")
+    quota = await _tools_consume_quota(request, "phishing")
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception as e:
@@ -2664,6 +2820,7 @@ async def tools_phishing_check(body: ToolsPhishingIn):
         await db.tool_usage.insert_one({"tool": "phishing", "risk": parsed["risk_level"], "ts": _now_iso()})
     except Exception:
         pass
+    parsed["quota"] = quota
     return parsed
 
 

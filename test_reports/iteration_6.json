@@ -1,0 +1,64 @@
+{
+  "summary": "AI-tools rate-limit + wallet auto-debit (iteration 6) — 17/17 backend pytest cases pass and the 3 critical UI flows (BreachChecker usage bar, LimitReachedDialog with limit-signin anonymous CTA, FloatingStack FAQ 429-as-bot-bubble) verified on the live preview URL. Anonymous 429 carries auth_required=true; logged-in low-balance 429 carries top_up_required=true with correct {balance, needed, wallet_cost}; logged-in wallet path returns 200 with quota.source='wallet', cost matching tool config (10/15/49/3), debits balance, inserts a wallet_transactions debit doc with reason='AI tool · <tool>'. Per-IP isolation for anonymous, per-user isolation for logged-in (shared across IPs), and yesterday's tools_usage rows are ignored. Rule-based tools (recovery-odds, account-worth, selfie-coach) confirmed unmetered. Admin bypass via X-Admin-Token+ADMIN_TOKEN env works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/tools/breach", "issue": "When XposedOrNot returns 404 (clean email) the endpoint returns 200 BUT does NOT include `quota` in the response body (early-return path at line 2666 in server.py). Quota IS still consumed in db. Frontend currently coerces missing quota from /tools/usage via refreshUsage(), so it's not visible in UX — but for API consumers that rely on response.quota, the 404-path is inconsistent with the other tools. Fix: attach `quota` to the clean-result branch the same way the breached-result branch does at line 2702."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    "GET /api/tools/usage anonymous → returns logged_in:false, balance:0, all 4 tools with correct free_limit & wallet_cost — PASS",
+    "GET /api/tools/usage Bearer-token → returns logged_in:true, user_id, balance — PASS",
+    "POST /tools/breach anon (X-Forwarded-For new IP, count=5 seeded) → 429 {auth_required:true, free_limit:5, wallet_cost:10} — PASS",
+    "POST /tools/breach anon first call → 200 + usage row created (count=1) — PASS",
+    "POST /tools/breach loggedin balance=0, count=5 seeded → 429 {top_up_required:true, balance:0, needed:10}, NOT auth_required — PASS",
+    "POST /tools/phishing-check loggedin balance=5, count=3 → 429 {top_up_required, wallet_cost:15, free_limit:3, needed:10} — PASS",
+    "POST /tools/appeal loggedin balance=0, count=2 → 429 {top_up_required, wallet_cost:49, free_limit:2} — PASS",
+    "POST /tools/faq anon count=15 → 429 {auth_required, wallet_cost:3, free_limit:15} — PASS",
+    "POST /tools/breach loggedin balance=100, count=5 + mocked xposedornot → 200, db.users.balance 100→90, wallet_transactions debit with tool_id=breach, amount=10, reason contains 'AI tool · breach' — PASS",
+    "POST /tools/appeal loggedin balance=200, count=2 + mocked LlmChat → 200 with body.quota.source='wallet', cost=49, balance_after=151; balance debited to 151, wallet_transactions debit with amount=49 — PASS",
+    "POST /tools/breach with X-Admin-Token matching ADMIN_TOKEN env, count=999 seeded → 200 (admin bypass) — PASS",
+    "Isolation: two different anon IPs see separate usage rows — PASS",
+    "Isolation: same logged-in user across two IPs sees shared usage row — PASS",
+    "Yesterday's tools_usage doc (count=999) does NOT affect today's quota — PASS",
+    "POST /tools/recovery-odds 10x same IP → all 200 (no metering) — PASS",
+    "POST /tools/account-worth 10x same IP → all 200 — PASS",
+    "POST /tools/selfie-coach 10x same IP → all 200 — PASS",
+    "[Frontend] /tools/breach loads usage-bar showing 'FREE TODAY · 5/5' + 'AFTER FREE · ₹10 / use' — PASS",
+    "[Frontend] After 1 scan, usage-bar updates to 4/5 — PASS",
+    "[Frontend] After 5 consecutive scans, LimitReachedDialog appears with limit-signin button visible and limit-topup absent (anonymous) — PASS",
+    "[Frontend] FloatingStack FAQ chat: after backend returns 429, an inline bot bubble appears in the chat body mentioning 'free ai limit reached (15/15)', 'sign in + top up wallet at /me', '₹3/msg'. No LimitReachedDialog modal opens — PASS"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_tools_rate_limit.py",
+    "/app/test_reports/pytest/tools_rate_limit.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: attach `quota` dict to the 404 (clean-email) early-return branch of /api/tools/breach (server.py line ~2666) to keep response shape consistent across the breach endpoint."
+  ],
+  "critical_code_review_comments": [
+    "Race condition in _tools_consume_quota: the check (find_one count) and the increment (update_one $inc) are NOT atomic — two concurrent requests at count=4 can both pass the `used < daily_free` check and both decrement, leading to count=6 with 2 free uses consumed. For higher-concurrency or burst traffic, use a findOneAndUpdate with a filter expression like {count: {$lt: daily_free}} for atomic check-and-increment. Same concern for the wallet path (balance read, then $inc -cost) — could allow a user with balance=10 to make two simultaneous breach calls and go to balance=-10.",
+    "Admin bypass is keyed on the ADMIN_TOKEN env var only. The /api/admin/login endpoint mints uuid4 tokens stored in db.admin.tokens — but those CANNOT bypass the rate-limit (no DB-token check in _tools_consume_quota). Either document this clearly or also accept the per-session admin tokens.",
+    "server.py is now 4091 lines — strongly recommend splitting (tools.py, telegram.py, admin.py, auth.py). Maintainability risk is growing.",
+    "404 branch of /tools/breach returns early without `quota` in the response (see backend_issues.minor). Inconsistent with other branches.",
+    "FAQ chat history is appended to db.chat_history BEFORE the LLM call; a 429 short-circuits before either insert, which is fine — but on LLM 502, the user message was already inserted with no bot reply. Consider transactional bookkeeping."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tools_rate_limit.py (new, 17 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17)",
+    "frontend": "100% (4/4 critical flows verified)"
+  },
+  "test_credentials": "Admin password 'admin123' from /app/memory/test_credentials.md. Test users are created in-process per test with TEST_-prefixed emails and cleaned up via fixture.",
+  "seed_data_creation": "Per-test fixture seeds db.tools_usage rows keyed on randomly-generated 192.0.2.0/24 IPs OR fresh user_id; cleanup wipes any row whose ip matches /^192\\.0\\.2\\./ or user_id matches /^TEST_|^user_TEST_/, plus matching TEST_ users and wallet_transactions. Browser tests use the real preview-pod IP and consume the actual day's quota — note the browser-side FAQ quota was burned during testing for the floating-chat 429 test (15 calls).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest at /app/backend/tests/test_tools_rate_limit.py — 17 tests, ~15s wall. Pattern: import server in-process with a pre-installed asyncio loop (same trick as test_tg_bot_upgrade.py); for HTTP-level rate-limit checks against the public preview URL just seed db.tools_usage with the target {ip|user_id, tool, date} + count and send 1 request. For wallet auto-debit + admin-bypass paths the test spins up an in-process httpx ASGITransport against server.app and monkey-patches httpx.AsyncClient (for XposedOrNot) or emergentintegrations.llm.chat.LlmChat (for appeal/faq). IMPORTANT: when patching httpx.AsyncClient, save a reference to the real class BEFORE the patch so you can use it for your ASGI test client — otherwise your test client itself becomes the fake. Browser tests: floating FAQ chat panel is at data-testid='floating-faq-chat-{panel,toggle,input,send,body,close}', BreachChecker at data-testid='breach-{email-input,submit,result}', usage bar at 'usage-bar', limit dialog at 'limit-reached-dialog' with branches 'limit-signin' | 'limit-register' | 'limit-topup' | 'limit-wait'.",
+  "rca_of_the_issue": "No bugs found. One minor inconsistency (breach 404 path omits quota in response) is documented in action_items. All money-related assertions pass: balance goes 100→90 after breach@₹10, 200→151 after appeal@₹49, and a matching wallet_transactions debit doc is inserted in each case with the right amount and tool_id."
+}

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, FileText, Copy, RefreshCw, Sparkles, Mail, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
+import ToolsUsageBar from '../components/ToolsUsageBar';
+import LimitReachedDialog from '../components/LimitReachedDialog';
 
 const REASONS = [
   'Community Guidelines violation',
@@ -37,6 +39,11 @@ const ToolAppeal = () => {
   const [letter, setLetter] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [usage, setUsage] = useState(null);
+  const [limitDialog, setLimitDialog] = useState(null);
+
+  const refreshUsage = () => api.toolsUsage().then(setUsage).catch(() => {});
+  useEffect(() => { refreshUsage(); }, []);
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -50,9 +57,15 @@ const ToolAppeal = () => {
     try {
       const r = await api.toolsAppeal(form);
       setLetter(r.letter || '');
+      refreshUsage();
       toast.success('Appeal generated · review before sending');
     } catch (e) {
-      toast.error(e.message || 'Failed to generate appeal');
+      if (e.status === 429 && e.detail?.limit_reached) {
+        setLimitDialog(e.detail);
+        refreshUsage();
+      } else {
+        toast.error(e.message || 'Failed to generate appeal');
+      }
     } finally {
       setBusy(false);
     }
@@ -93,6 +106,14 @@ const ToolAppeal = () => {
           {/* FORM */}
           <div className="eh-panel eh-brackets p-5 sm:p-6 space-y-4">
             <span className="br-bl" /><span className="br-br" />
+            <ToolsUsageBar
+              used={usage?.tools?.appeal?.used ?? 0}
+              freeLimit={usage?.tools?.appeal?.free_limit ?? 2}
+              walletCost={usage?.tools?.appeal?.wallet_cost ?? 49}
+              balance={usage?.logged_in ? usage?.balance : null}
+              paidUses={usage?.tools?.appeal?.paid_uses ?? 0}
+              loading={!usage}
+            />
             <div>
               <label className="block eh-mono text-[11px] tracking-widest opacity-80 mb-2">Platform</label>
               <select data-testid="appeal-platform" className="eh-input" value={form.platform} onChange={(e) => update('platform', e.target.value)}>
@@ -180,6 +201,7 @@ const ToolAppeal = () => {
             </p>
           </div>
         </div>
+        <LimitReachedDialog open={!!limitDialog} detail={limitDialog} onClose={() => setLimitDialog(null)} />
       </div>
     </div>
   );

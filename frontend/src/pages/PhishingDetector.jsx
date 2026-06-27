@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ShieldAlert, ShieldCheck, ArrowRight, RotateCcw } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import SafetyTipsCard from '../components/SafetyTipsCard';
+import ToolsUsageBar from '../components/ToolsUsageBar';
+import LimitReachedDialog from '../components/LimitReachedDialog';
 
 const CHANNELS = ['DM', 'SMS', 'Email', 'Comment'];
 
@@ -20,6 +22,11 @@ const PhishingDetector = () => {
   const [channel, setChannel] = useState('DM');
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState(null);
+  const [limitDialog, setLimitDialog] = useState(null);
+
+  const refreshUsage = () => api.toolsUsage().then(setUsage).catch(() => {});
+  useEffect(() => { refreshUsage(); }, []);
 
   const run = async () => {
     if (text.trim().length < 8) {
@@ -30,8 +37,14 @@ const PhishingDetector = () => {
     try {
       const r = await api.toolsPhishing({ message: text.trim(), channel });
       setRes(r);
+      refreshUsage();
     } catch (e) {
-      toast.error(e.message || 'Analysis failed');
+      if (e.status === 429 && e.detail?.limit_reached) {
+        setLimitDialog(e.detail);
+        refreshUsage();
+      } else {
+        toast.error(e.message || 'Analysis failed');
+      }
     } finally { setBusy(false); }
   };
 
@@ -55,6 +68,14 @@ const PhishingDetector = () => {
 
         <div className="eh-panel eh-brackets p-5 sm:p-7 space-y-4">
           <span className="br-bl" /><span className="br-br" />
+          <ToolsUsageBar
+            used={usage?.tools?.phishing?.used ?? 0}
+            freeLimit={usage?.tools?.phishing?.free_limit ?? 3}
+            walletCost={usage?.tools?.phishing?.wallet_cost ?? 15}
+            balance={usage?.logged_in ? usage?.balance : null}
+            paidUses={usage?.tools?.phishing?.paid_uses ?? 0}
+            loading={!usage}
+          />
           <div>
             <label className="block eh-mono text-[11px] tracking-widest opacity-80 mb-2">Channel</label>
             <div className="grid grid-cols-4 gap-2">
@@ -165,6 +186,7 @@ const PhishingDetector = () => {
             </div>
           </div>
         )}
+        <LimitReachedDialog open={!!limitDialog} detail={limitDialog} onClose={() => setLimitDialog(null)} />
       </div>
     </div>
   );

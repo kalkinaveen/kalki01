@@ -1,14 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Search, AlertTriangle, ShieldCheck, ArrowRight, Mail, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import SafetyTipsCard from '../components/SafetyTipsCard';
+import ToolsUsageBar from '../components/ToolsUsageBar';
+import LimitReachedDialog from '../components/LimitReachedDialog';
 
 const BreachChecker = () => {
   const [email, setEmail] = useState('');
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState(null);
+  const [limitDialog, setLimitDialog] = useState(null);
+
+  const refreshUsage = () => api.toolsUsage().then(setUsage).catch(() => {});
+  useEffect(() => { refreshUsage(); }, []);
 
   const run = async () => {
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
@@ -20,8 +27,14 @@ const BreachChecker = () => {
     try {
       const r = await api.toolsBreach(email.trim().toLowerCase());
       setResult(r);
+      refreshUsage();
     } catch (e) {
-      toast.error(e.message || 'Lookup failed');
+      if (e.status === 429 && e.detail?.limit_reached) {
+        setLimitDialog(e.detail);
+        refreshUsage();
+      } else {
+        toast.error(e.message || 'Lookup failed');
+      }
     } finally {
       setBusy(false);
     }
@@ -49,6 +62,14 @@ const BreachChecker = () => {
 
         <div className="eh-panel eh-brackets p-5 sm:p-7">
           <span className="br-bl" /><span className="br-br" />
+          <ToolsUsageBar
+            used={usage?.tools?.breach?.used ?? 0}
+            freeLimit={usage?.tools?.breach?.free_limit ?? 5}
+            walletCost={usage?.tools?.breach?.wallet_cost ?? 10}
+            balance={usage?.logged_in ? usage?.balance : null}
+            paidUses={usage?.tools?.breach?.paid_uses ?? 0}
+            loading={!usage}
+          />
           <label className="block eh-mono text-[11px] tracking-widest opacity-80 mb-2">Email to check</label>
           <div className="flex flex-col sm:flex-row gap-2">
             <input
@@ -146,6 +167,7 @@ const BreachChecker = () => {
             </Link>
           </div>
         )}
+        <LimitReachedDialog open={!!limitDialog} detail={limitDialog} onClose={() => setLimitDialog(null)} />
       </div>
     </div>
   );

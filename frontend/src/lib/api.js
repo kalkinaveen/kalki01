@@ -17,9 +17,11 @@ async function req(path, { method = 'GET', body, admin = false, auth = false } =
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
+    let detail = null;
     try {
       const j = await res.json();
-      msg = (typeof j.detail === 'string' ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(', ') : msg));
+      detail = j.detail;
+      msg = (typeof j.detail === 'string' ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(', ') : (j.detail?.message || msg)));
     } catch (parseErr) {
       console.warn('api: failed to parse error body', parseErr);
     }
@@ -32,6 +34,7 @@ async function req(path, { method = 'GET', body, admin = false, auth = false } =
     }
     const err = new Error(msg);
     err.status = res.status;
+    err.detail = detail;       // preserve structured detail (used by 429 quota dialog)
     throw err;
   }
   return res.json();
@@ -105,14 +108,15 @@ export const api = {
   applyCoupon: (code, amount) => req('/coupons/apply', { method: 'POST', body: { code, amount } }),
   // chat
   chatSend: (session_id, message) => req('/chat/message', { method: 'POST', body: { session_id, message } }),
-  // ai tools
-  toolsAppeal: (data) => req('/tools/appeal', { method: 'POST', body: data }),
-  toolsFaq: (session_id, message) => req('/tools/faq', { method: 'POST', body: { session_id, message } }),
-  toolsBreach: (email) => req('/tools/breach', { method: 'POST', body: { email } }),
+  // ai tools (auth=true so JWT cookie carries; lets backend track quota per user_id + deduct from wallet)
+  toolsAppeal: (data) => req('/tools/appeal', { method: 'POST', body: data, auth: true }),
+  toolsFaq: (session_id, message) => req('/tools/faq', { method: 'POST', body: { session_id, message }, auth: true }),
+  toolsBreach: (email) => req('/tools/breach', { method: 'POST', body: { email }, auth: true }),
   toolsOdds: (data) => req('/tools/recovery-odds', { method: 'POST', body: data }),
-  toolsPhishing: (data) => req('/tools/phishing-check', { method: 'POST', body: data }),
+  toolsPhishing: (data) => req('/tools/phishing-check', { method: 'POST', body: data, auth: true }),
   toolsAccountWorth: (data) => req('/tools/account-worth', { method: 'POST', body: data }),
   toolsSelfieCoach: (data) => req('/tools/selfie-coach', { method: 'POST', body: data }),
+  toolsUsage: () => req('/tools/usage', { auth: true }),
   // announcements
   publicAnnouncements: () => req('/announcements'),
   adminListAnnouncements: () => req('/admin/announcements', { admin: true }),
