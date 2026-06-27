@@ -11,6 +11,12 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Telegram Bot Cyber-Mono Refresh (Iter-8)** ⚡
+  - Replaced every emoji across welcome, /menu, /pay, /help, /track, /orders, /breach, /phishing, /odds, /quote, /wallet, /spin, /news, /refer, /ai, /cancel and all inline button labels with a tight cyber palette: `⚡ ◆ ▰ ▸ ❯ ❮ ⬢ ⬡ ◈ ✦ ✕ ✓ ⌬ ⟶ ↻ ▌ ⇡ ⇣ ● ◐ ○ ◉`.
+  - Added a consistent `━━━━━━━━━━━━━━━` section divider + structured `<b>▸ field</b>` rows for a terminal/elite look.
+  - Rewrote the deposit admin alert + user-DM (approved/declined) using the same palette.
+  - Reset stored welcome_message + payment_info heading + instructions to the new defaults so the user sees the new look immediately. Admin can still re-customize from the panel any time.
+  - Bonus fix: removed a duplicate `p.on_event("shutdown")` typo (pre-existing) that was blocking backend startup on reload.
 - **Wallet Deposit Telegram Approval Flow + Receipt UI/Emails (Iter-7)** 🎯
   - Admin webpanel → Notifications tab now includes 3 new sections under the Telegram Bot:
     1. **Admin Chats** — managed list of TG chat IDs that receive the inline `✅ Approve & Credit / ❌ Decline` buttons whenever a customer submits a wallet deposit. "Ping All" test action verifies setup.

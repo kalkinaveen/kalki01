@@ -485,16 +485,18 @@ DEFAULT_BOT_CFG: Dict[str, Any] = {
     "webhook_secret": "",
     "webhook_url": "",
     "welcome_message": (
-        "👋 <b>Hey! Welcome to ERRORHACKER.</b>\n\n"
-        "I'm here to help — no sign-up needed. Just send me your case ID and I'll show you everything instantly.\n\n"
-        "🆔 <b>Have a Case ID?</b>\n"
-        "Just paste it (like <code>REC-XXXXXXXX</code> or <code>ORD-XXXXXXXX</code>) and I'll fetch your status right away — no login, no fuss.\n\n"
-        "💬 <b>Quick commands:</b>\n"
-        "• <code>/track YOUR_ID</code> — see live status\n"
-        "• <code>/pay YOUR_ID</code> — get payment details\n"
-        "• <code>/recover</code> — start a new case\n"
-        "• <code>/help</code> — menu\n\n"
-        "Tap below for menu — or just paste your ID 👇"
+        "⚡ <b>ERRORHACKER · OPS</b>\n"
+        "<i>secure ops channel · errorhacker.site</i>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "Track cases, pull payment info and start a new recovery — right here. No login needed.\n\n"
+        "<b>▸ Have an ID?</b>  Paste it and I'll fetch the live status instantly\n"
+        "    <code>REC-XXXXXXXX</code>  ·  <code>ORD-XXXXXXXX</code>\n\n"
+        "<b>▸ Quick commands</b>\n"
+        "    <code>/menu</code>  open the full console\n"
+        "    <code>/track</code>  live status\n"
+        "    <code>/pay</code>  payment details\n"
+        "    <code>/recover</code>  start a case\n"
+        "    <code>/help</code>  ops cheat-sheet"
     ),
     "commands": {"track": True, "orders": True, "pay": True, "recover": True, "help": True},
     # NEW: chat IDs allowed to approve/decline wallet deposits via the bot
@@ -502,25 +504,26 @@ DEFAULT_BOT_CFG: Dict[str, Any] = {
     # NEW: customizable payment info shown by /pay command + Payment Info menu button.
     # Fully edited from the webpanel. {amount} and {order_id} placeholders auto-substituted.
     "payment_info": {
-        "heading": "💳 <b>PAYMENT OPTIONS</b>",
-        "intro": "Pick any method — your wallet credits the moment our team verifies.",
+        "heading": "◆ <b>PAYMENT GATEWAY</b>",
+        "intro": "Pay via any method below — wallet credits the moment our team verifies.",
         "upi_id": "errorhacker@upi",
         "upi_name": "ERRORHACKER",
         "crypto_wallets": [
             {"coin": "USDT", "network": "TRC20", "address": "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"},
         ],
         "instructions": (
-            "1. Send the exact amount to any address above.\n"
-            "2. Copy the UPI Reference / UTR or crypto TXID.\n"
-            "3. Tap <b>I've Paid</b> below to submit proof — admin verifies in 5–30 min."
+            "<b>▸ steps</b>\n"
+            "  1.  Send the exact amount to any address above\n"
+            "  2.  Copy the UPI Reference / UTR or crypto TXID\n"
+            "  3.  Tap <b>I've Paid</b> below to submit proof — verified in 5–30 min"
         ),
-        "support_text": "Need help? Reply here or tap Support below.",
+        "support_text": "<i>Need help? Reply here or tap Support below.</i>",
         "show_paid_button": True,
         "show_support_button": True,
         "show_quote_button": True,
-        "paid_button_label": "✅ I've Paid",
-        "support_button_label": "💬 Talk to Support",
-        "quote_button_label": "💎 Get Free Quote",
+        "paid_button_label": "✓ I've Paid",
+        "support_button_label": "▌ Talk to Support",
+        "quote_button_label": "◆ Get Free Quote",
         "support_url": "https://t.me/errorhacker",
         "quote_url": "https://errorhacker.site/recovery",
         "paid_form_url": "https://errorhacker.site/me/wallet",
@@ -546,15 +549,15 @@ def _bot_main_keyboard(bot_username: str = "", enabled: Optional[Dict[str, bool]
     enabled = enabled or {"track": True, "orders": True, "pay": True, "recover": True, "help": True}
     rows = []
     if enabled.get("track"):
-        rows.append([{"text": "📦 Track My Case / Order", "callback_data": "menu_track"}])
+        rows.append([{"text": "▸  Track Case / Order", "callback_data": "menu_track"}])
     if enabled.get("pay"):
-        rows.append([{"text": "💳 Payment Info", "callback_data": "menu_pay"}])
+        rows.append([{"text": "◆  Payment Gateway", "callback_data": "menu_pay"}])
     if enabled.get("recover"):
-        rows.append([{"text": "🛡 Start a New Recovery", "url": "https://errorhacker.site/recovery"}])
+        rows.append([{"text": "⬢  Start New Recovery", "url": "https://errorhacker.site/recovery"}])
     if enabled.get("orders"):
-        rows.append([{"text": "🔔 Get Live Alerts (optional)", "callback_data": "menu_orders"}])
+        rows.append([{"text": "▰  Live Alerts (optional)", "callback_data": "menu_orders"}])
     if enabled.get("help"):
-        rows.append([{"text": "ℹ Help", "callback_data": "menu_help"}])
+        rows.append([{"text": "?  Help & Commands", "callback_data": "menu_help"}])
     return {"inline_keyboard": rows}
 
 def _status_emoji(s: str) -> str:
@@ -613,60 +616,62 @@ async def _send_welcome(bot_token: str, chat_id: int, bot_cfg: Optional[Dict[str
 
 async def _send_help(bot_token: str, chat_id: int):
     text = (
-        "💬 <b>How can I help?</b>\n\n"
-        "<b>📦 Track your case</b>\n"
-        "Just paste your ID — e.g. <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code>.\n"
-        "Or type: <code>/track YOUR_ID</code>\n\n"
-        "<b>💳 Payment info</b>\n"
-        "<code>/pay YOUR_ID</code> — UPI / crypto details\n\n"
-        "<b>🛡 Start a recovery</b>\n"
-        "<code>/recover</code> — opens our secure web wizard\n\n"
-        "<b>🔔 Want auto-DMs when status changes?</b>\n"
-        "That's totally optional. If you'd like instant alerts the moment something happens, just visit your <a href=\"https://errorhacker.site/me\">/me</a> page and tap <i>Connect Telegram</i>. Otherwise you can keep chatting here anytime — no login needed."
+        "? <b>OPS CHEAT-SHEET</b>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "<b>▸ Track a case</b>\n"
+        "    Paste your ID — e.g. <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code>\n"
+        "    or use:  <code>/track YOUR_ID</code>\n\n"
+        "<b>◆ Payment info</b>\n"
+        "    <code>/pay YOUR_ID</code>  — UPI / crypto details\n\n"
+        "<b>⬢ Start a recovery</b>\n"
+        "    <code>/recover</code>  — opens our secure web wizard\n\n"
+        "<b>▰ Auto-DM alerts (optional)</b>\n"
+        "    Want pings the moment status changes? Visit <a href=\"https://errorhacker.site/me\">/me</a> → <i>Connect Telegram</i>. Otherwise just chat — no login required."
     )
     await _tg_send(bot_token, chat_id, text)
 
 async def _send_recover(bot_token: str, chat_id: int):
     text = (
-        "<b>🛡 ACCOUNT RECOVERY</b>\n\n"
+        "⬢ <b>ACCOUNT RECOVERY</b>\n"
+        "━━━━━━━━━━━━━━━\n\n"
         "Use our secure web wizard for the full 3-step intake (proofs upload, secure quote, Telegram updates).\n\n"
         "Tap the button below to open it."
     )
-    await _tg_send(bot_token, chat_id, text, {"inline_keyboard": [[{"text": "🚀 Open Recovery Wizard", "url": "https://errorhacker.site/recovery"}]]})
+    await _tg_send(bot_token, chat_id, text, {"inline_keyboard": [[{"text": "⚡  Open Recovery Wizard", "url": "https://errorhacker.site/recovery"}]]})
 
 async def _handle_track(bot_token: str, chat_id: int, raw_id: str):
     rid = (raw_id or "").strip().upper()
     if not rid:
         await _tg_send(bot_token, chat_id,
-                       "Send an ID like <code>/track ORD-XXXXXXXX</code> or <code>/track REC-XXXXXXXX</code>.")
+                       "▸ Send an ID like <code>/track ORD-XXXXXXXX</code> or <code>/track REC-XXXXXXXX</code>.")
         return
     if rid.startswith("REC-"):
         text = await _fmt_case(rid)
     else:
         text = await _fmt_order(rid)
     if not text:
-        await _tg_send(bot_token, chat_id, f"❌ No order or recovery case found with ID <code>{rid}</code>.")
+        await _tg_send(bot_token, chat_id, f"✕ No order or recovery case found with ID <code>{rid}</code>.")
         return
-    kb = {"inline_keyboard": [[{"text": "🔗 Open Live Tracker", "url": f"https://errorhacker.site/track?id={rid}"}]]}
+    kb = {"inline_keyboard": [[{"text": "⟶  Open Live Tracker", "url": f"https://errorhacker.site/track?id={rid}"}]]}
     await _tg_send(bot_token, chat_id, text, kb)
 
 async def _handle_orders(bot_token: str, chat_id: int):
     user = await db.users.find_one({"telegram_chat_id": chat_id})
     if not user:
         await _tg_send(bot_token, chat_id,
-                       "🔓 <b>No login needed to track an order!</b>\n\n"
-                       "Just paste your <b>ORD-XXXXXXXX</b> ID (or <b>REC-XXXXXXXX</b> for recovery) right here and I'll show you the status instantly.\n\n"
-                       "<i>If you'd like a list of <b>all</b> your orders or auto-DMs when status changes, that's optional — visit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → Connect Telegram. Takes 5 seconds, no password.</i>")
+                       "▸ <b>No login needed to track an order</b>\n\n"
+                       "Just paste your <b>ORD-XXXXXXXX</b> ID (or <b>REC-XXXXXXXX</b> for recovery) here and I'll show the live status instantly.\n\n"
+                       "<i>For a list of <b>all</b> your orders or auto-DM alerts, that's optional — visit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → Connect Telegram. 5 sec, no password.</i>")
         return
     rows = await db.orders.find({"user_id": user.get("user_id")}).sort("createdAt", -1).to_list(10)
     if not rows:
-        await _tg_send(bot_token, chat_id, "You don't have any orders yet. Open the shop on errorhacker.site.")
+        await _tg_send(bot_token, chat_id, "▸ No orders yet. Open the shop at errorhacker.site.")
         return
-    lines = ["<b>// YOUR LATEST ORDERS</b>\n"]
+    lines = ["▸ <b>YOUR LATEST ORDERS</b>\n━━━━━━━━━━━━━━━"]
     buttons = []
     for o in rows[:8]:
         lines.append(f"{_status_emoji(o.get('status', ''))} <code>{o['id']}</code> · {(o.get('serviceName') or o.get('service') or '—')[:40]} · <b>{(o.get('status') or 'received').upper()}</b>")
-        buttons.append([{"text": f"📦 {o['id']}", "callback_data": f"track_{o['id']}"}])
+        buttons.append([{"text": f"▸  {o['id']}", "callback_data": f"track_{o['id']}"}])
     await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": buttons})
 
 async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
@@ -692,7 +697,8 @@ async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
             pass
 
     lines = []
-    lines.append(pinfo.get("heading") or "💳 <b>PAYMENT OPTIONS</b>")
+    lines.append(pinfo.get("heading") or "◆ <b>PAYMENT GATEWAY</b>")
+    lines.append("━━━━━━━━━━━━━━━")
     if pinfo.get("intro"):
         lines.append("")
         lines.append(pinfo["intro"])
@@ -703,18 +709,18 @@ async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
     upi_id = pinfo.get("upi_id") or legacy_pay.get("upi_id")
     if upi_id:
         lines.append("")
-        lines.append(f"<b>UPI ·</b> <code>{upi_id}</code>")
+        lines.append(f"<b>▸ UPI</b>   <code>{upi_id}</code>")
         nm = pinfo.get("upi_name") or legacy_pay.get("upi_name")
         if nm:
-            lines.append(f"   → {nm}")
+            lines.append(f"     <i>{nm}</i>")
     # Crypto block
     cw = pinfo.get("crypto_wallets") or legacy_pay.get("crypto_wallets") or []
     if cw:
         lines.append("")
-        lines.append("<b>CRYPTO</b>")
+        lines.append("<b>▸ CRYPTO</b>")
         for w in cw[:6]:
             net = f" · {w.get('network')}" if w.get("network") else ""
-            lines.append(f"• <b>{w.get('coin')}</b>{net}: <code>{w.get('address')}</code>")
+            lines.append(f"   <b>{w.get('coin')}</b>{net}\n   <code>{w.get('address')}</code>")
     # Instructions (with {amount} / {order_id} placeholders)
     instr = (pinfo.get("instructions") or legacy_pay.get("instructions") or "")
     if instr:
@@ -736,7 +742,7 @@ async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
         kb_rows.append([{"text": pinfo.get("quote_button_label", "💎 Get Free Quote"), "url": pinfo["quote_url"]}])
     if pinfo.get("show_support_button", True) and pinfo.get("support_url"):
         kb_rows.append([{"text": pinfo.get("support_button_label", "💬 Talk to Support"), "url": pinfo["support_url"]}])
-    kb_rows.append([{"text": "🔙 Main Menu", "callback_data": "menu_main"}])
+    kb_rows.append([{"text": "❮  Main Menu", "callback_data": "menu_main"}])
 
     await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": kb_rows})
 
@@ -764,19 +770,19 @@ async def _notify_admins_deposit_pending(deposit: Dict[str, Any]):
         if deposit.get("method") == "crypto":
             coin_line = f" · {deposit.get('coin', '')}"
         text = (
-            f"💰 <b>NEW DEPOSIT — review needed</b>\n"
-            f"───────────────\n"
-            f"<b>User:</b>    {user.get('email', '—')}\n"
-            f"<b>User ID:</b> <code>{deposit.get('user_id', '')}</code>\n"
-            f"<b>Amount:</b>  <b>₹{deposit.get('amount', 0)}</b>\n"
-            f"<b>Method:</b>  {(deposit.get('method') or 'manual').upper()}{coin_line}\n"
-            f"<b>Ref:</b>     <code>{deposit.get('tx_reference') or '—'}</code>\n"
-            f"<b>Time:</b>    {deposit.get('createdAt', '—')[:19].replace('T', ' ')}"
+            f"⚡ <b>NEW DEPOSIT · review needed</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"<b>▸ User</b>     {user.get('email', '—')}\n"
+            f"<b>▸ User ID</b>  <code>{deposit.get('user_id', '')}</code>\n"
+            f"<b>▸ Amount</b>   <b>₹{deposit.get('amount', 0)}</b>\n"
+            f"<b>▸ Method</b>   {(deposit.get('method') or 'manual').upper()}{coin_line}\n"
+            f"<b>▸ Ref</b>      <code>{deposit.get('tx_reference') or '—'}</code>\n"
+            f"<b>▸ Time</b>     {deposit.get('createdAt', '—')[:19].replace('T', ' ')}"
         )
         dep_id = deposit.get("id")
         kb = {"inline_keyboard": [[
-            {"text": "✅ Approve & Credit", "callback_data": f"dep_approve_{dep_id}"},
-            {"text": "❌ Decline",          "callback_data": f"dep_decline_{dep_id}"},
+            {"text": "✓ Approve & Credit", "callback_data": f"dep_approve_{dep_id}"},
+            {"text": "✕ Decline",          "callback_data": f"dep_decline_{dep_id}"},
         ]]}
         for cid in admin_ids:
             try:
@@ -837,11 +843,12 @@ async def _approve_deposit_internal(deposit_id: str) -> Dict[str, Any]:
             tok = await _get_bot_token()
             if tok:
                 await _tg_send(tok, int(user_chat),
-                    f"✅ <b>Deposit approved</b>\n\n"
-                    f"<b>+₹{amount:,.0f}</b> credited to your wallet.\n"
-                    f"New balance: <b>₹{new_balance:,.2f}</b>\n\n"
+                    f"✓ <b>Deposit approved</b>\n"
+                    f"━━━━━━━━━━━━━━━\n\n"
+                    f"<b>+₹{amount:,.0f}</b> credited to your wallet\n"
+                    f"New balance · <b>₹{new_balance:,.2f}</b>\n\n"
                     f"<i>Tx Ref: {dep.get('tx_reference', '—')}</i>",
-                    {"inline_keyboard": [[{"text": "💰 Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]})
+                    {"inline_keyboard": [[{"text": "◈  Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]})
         except Exception:
             pass
     return {"ok": True, "deposit": {**_clean(dep), "status": "approved"}, "balance": new_balance}
@@ -866,10 +873,11 @@ async def _reject_deposit_internal(deposit_id: str, reason: str = "") -> Dict[st
             tok = await _get_bot_token()
             if tok:
                 await _tg_send(tok, int(user_chat),
-                    f"❌ <b>Deposit declined</b>\n\n"
+                    f"✕ <b>Deposit declined</b>\n"
+                    f"━━━━━━━━━━━━━━━\n\n"
                     f"₹{float(dep.get('amount') or 0):,.0f} top-up could not be verified.\n"
                     f"{('Reason: ' + reason) if reason else 'Please double-check your UPI/UTR or crypto TXID and re-submit.'}",
-                    {"inline_keyboard": [[{"text": "💰 Re-submit", "url": "https://errorhacker.site/me/wallet"}]]})
+                    {"inline_keyboard": [[{"text": "◈  Re-submit", "url": "https://errorhacker.site/me/wallet"}]]})
         except Exception:
             pass
     return {"ok": True, "deposit": {**_clean(dep), "status": "rejected"}}
@@ -945,25 +953,27 @@ async def _tg_ai_bump(chat_id: int):
 # ---- Main menu (rich button grid) ------------------------------------------
 def _main_menu_kb() -> Dict[str, Any]:
     return {"inline_keyboard": [
-        [{"text": "🆘 Recover Account", "url": "https://errorhacker.site/recovery"},
-         {"text": "📦 My Order",        "callback_data": "menu_orders"}],
-        [{"text": "💰 Wallet",          "callback_data": "menu_wallet"},
-         {"text": "🎰 Spin",            "callback_data": "menu_spin"}],
-        [{"text": "🛡 Breach Check",    "callback_data": "menu_breach"},
-         {"text": "⚠ Phishing Check",   "callback_data": "menu_phishing"}],
-        [{"text": "📊 Recovery Odds",   "callback_data": "menu_odds_start"},
-         {"text": "💎 Get Quote",       "callback_data": "menu_quote_start"}],
-        [{"text": "📣 Latest News",     "callback_data": "menu_news"},
-         {"text": "🎁 Refer & Earn",    "callback_data": "menu_refer"}],
-        [{"text": "🤖 Ask AI Anything", "callback_data": "menu_ai"},
-         {"text": "ℹ Help",             "callback_data": "menu_help"}],
+        [{"text": "⬢  Recover Account", "url": "https://errorhacker.site/recovery"},
+         {"text": "▸  My Orders",       "callback_data": "menu_orders"}],
+        [{"text": "◈  Wallet",          "callback_data": "menu_wallet"},
+         {"text": "✦  Daily Spin",      "callback_data": "menu_spin"}],
+        [{"text": "⬡  Breach Scan",     "callback_data": "menu_breach"},
+         {"text": "⚠  Phishing Scan",   "callback_data": "menu_phishing"}],
+        [{"text": "▰  Recovery Odds",   "callback_data": "menu_odds_start"},
+         {"text": "◆  Instant Quote",   "callback_data": "menu_quote_start"}],
+        [{"text": "⌬  Latest Updates",  "callback_data": "menu_news"},
+         {"text": "⇡  Refer & Earn",    "callback_data": "menu_refer"}],
+        [{"text": "▌  Ask AI Anything", "callback_data": "menu_ai"},
+         {"text": "?  Help",            "callback_data": "menu_help"}],
     ]}
 
 async def _send_main_menu(bot_token: str, chat_id: int, intro: str = ""):
     text = intro or (
-        "📋 <b>ERRORHACKER · MAIN MENU</b>\n\n"
-        "Tap any button below to get started — or just <i>type your question</i> and our AI will help.\n\n"
-        "🟢 <b>Tip:</b> paste a Case ID (REC-/ORD-) anytime for instant status."
+        "▌ <b>ERRORHACKER · CONSOLE</b>\n"
+        "<i>tap a module · or type a question</i>\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "<b>▸ Quick paste</b>   drop a <code>REC-</code> or <code>ORD-</code> ID for instant status\n"
+        "<b>▸ Quick chat</b>    just type — our AI replies in seconds"
     )
     await _tg_send(bot_token, chat_id, text, _main_menu_kb())
 
@@ -973,21 +983,22 @@ async def _handle_breach(bot_token: str, chat_id: int, email: str = ""):
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         await _tg_state_set(chat_id, "awaiting_breach_email", {})
         await _tg_send(bot_token, chat_id,
-                       "🛡 <b>BREACH CHECKER</b>\n\n"
-                       "Send me the email you want to scan against the world's known data breaches.\n"
+                       "⬡ <b>BREACH SCAN</b>\n"
+                       "━━━━━━━━━━━━━━━\n\n"
+                       "Send the email you want scanned against the world's known data-leak archives.\n"
                        "<i>example: you@example.com</i>\n\n"
-                       "🔒 We never store your email.")
+                       "▸ <i>We never store your email.</i>")
         return
     await _tg_state_clear(chat_id)
-    await _tg_send(bot_token, chat_id, f"🔎 scanning <code>{email}</code> …")
+    await _tg_send(bot_token, chat_id, f"⌬ scanning <code>{email}</code> …")
     try:
         async with httpx.AsyncClient(timeout=12.0) as c:
             r = await c.get("https://api.xposedornot.com/v1/breach-analytics", params={"email": email})
         if r.status_code == 404:
-            await _tg_send(bot_token, chat_id, f"✅ <b>{email}</b> was NOT found in any known breach.\n\n<i>Stay vigilant — enable 2FA on every important account.</i>")
+            await _tg_send(bot_token, chat_id, f"✓ <b>{email}</b> was NOT found in any known breach.\n\n<i>Stay vigilant — enable 2FA on every important account.</i>")
             return
         if r.status_code != 200:
-            await _tg_send(bot_token, chat_id, "⚠ Breach service temporarily unavailable. Try again in a minute.")
+            await _tg_send(bot_token, chat_id, "▰ Breach service temporarily unavailable. Try again in a minute.")
             return
         data = r.json() or {}
         bm = (data.get("BreachMetrics") or {})
@@ -997,26 +1008,27 @@ async def _handle_breach(bot_token: str, chat_id: int, email: str = ""):
         score = int(risk.get("risk_score") or 0)
         label = str(risk.get("risk_label") or "Low")
         lines = [
-            f"🚨 <b>FOUND IN {count} BREACH{'ES' if count != 1 else ''}</b>",
+            f"▰ <b>FOUND IN {count} BREACH{'ES' if count != 1 else ''}</b>",
+            "━━━━━━━━━━━━━━━",
             f"Exposure score · <b>{score}/100</b> · risk <b>{label}</b>",
             "",
-            "<b>Top exposures:</b>",
+            "<b>▸ Top exposures</b>",
         ]
         for b in breaches_list[:5]:
             name = b.get("breach") or "Unknown"
             date = b.get("xposed_date") or ""
-            lines.append(f"• <code>{name}</code> {f'· {date}' if date else ''}")
+            lines.append(f"   <code>{name}</code>{f' · {date}' if date else ''}")
         lines.append("")
-        lines.append("<b>What to do now:</b>")
-        lines.append("1. Change passwords on every site that uses this email.")
-        lines.append("2. Enable 2FA on an authenticator app (NOT just SMS).")
-        lines.append("3. Watch for phishing emails referencing these breaches.")
+        lines.append("<b>▸ What to do now</b>")
+        lines.append("   1.  Change passwords on every site using this email")
+        lines.append("   2.  Enable 2FA on an authenticator app (NOT SMS)")
+        lines.append("   3.  Watch for phishing referencing these breaches")
         await _tg_send(bot_token, chat_id, "\n".join(lines),
-                       {"inline_keyboard": [[{"text": "🛡 Get Pro Recovery Help", "url": "https://errorhacker.site/recovery"}],
-                                            [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+                       {"inline_keyboard": [[{"text": "⬢  Get Pro Recovery Help", "url": "https://errorhacker.site/recovery"}],
+                                            [{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
     except Exception as e:
         log.warning("tg breach failed: %s", e)
-        await _tg_send(bot_token, chat_id, "⚠ Couldn't scan right now. Try again shortly.")
+        await _tg_send(bot_token, chat_id, "▰ Couldn't scan right now. Try again shortly.")
 
 # ---- /odds (interactive) ---------------------------------------------------
 ODDS_PLATFORMS = [("instagram", "Instagram"), ("facebook", "Facebook"), ("tiktok", "TikTok"), ("snapchat", "Snapchat"), ("twitter", "Twitter / X")]
@@ -1027,14 +1039,14 @@ async def _handle_odds_start(bot_token: str, chat_id: int):
     await _tg_state_set(chat_id, "odds_pick_platform", {})
     kb = [[{"text": l, "callback_data": f"odds_p_{v}"}] for v, l in ODDS_PLATFORMS]
     await _tg_send(bot_token, chat_id,
-                   "📊 <b>RECOVERY ODDS</b> · step 1/3\n\nWhich platform?",
+                   "▰ <b>RECOVERY ODDS</b> · step 1/3\n━━━━━━━━━━━━━━━\n\nWhich platform?",
                    {"inline_keyboard": kb})
 
 async def _handle_odds_pick_issue(bot_token: str, chat_id: int, platform: str):
     await _tg_state_set(chat_id, "odds_pick_issue", {"platform": platform})
     kb = [[{"text": l, "callback_data": f"odds_i_{v}"}] for v, l in ODDS_ISSUES]
     await _tg_send(bot_token, chat_id,
-                   f"📊 <b>RECOVERY ODDS</b> · step 2/3\n\nPlatform: <b>{platform.title()}</b>\nWhat happened?",
+                   f"▰ <b>RECOVERY ODDS</b> · step 2/3\n━━━━━━━━━━━━━━━\nPlatform: <b>{platform.title()}</b>\n\nWhat happened?",
                    {"inline_keyboard": kb})
 
 async def _handle_odds_pick_when(bot_token: str, chat_id: int, issue: str):
@@ -1044,7 +1056,7 @@ async def _handle_odds_pick_when(bot_token: str, chat_id: int, issue: str):
     await _tg_state_set(chat_id, "odds_pick_when", data)
     kb = [[{"text": l, "callback_data": f"odds_w_{v}"}] for v, l in ODDS_WHEN]
     await _tg_send(bot_token, chat_id,
-                   f"📊 <b>RECOVERY ODDS</b> · step 3/3\n\nWhen did it happen?",
+                   "▰ <b>RECOVERY ODDS</b> · step 3/3\n━━━━━━━━━━━━━━━\n\nWhen did it happen?",
                    {"inline_keyboard": kb})
 
 async def _handle_odds_finish(bot_token: str, chat_id: int, when: str):
@@ -1063,29 +1075,31 @@ async def _handle_odds_finish(bot_token: str, chat_id: int, when: str):
         dmin += 2; dmax += 5
 
     tier = "high" if odds >= 70 else "medium" if odds >= 45 else "low"
-    tier_emoji = {"high": "🟢", "medium": "🟡", "low": "🔴"}[tier]
+    tier_dot = {"high": "●", "medium": "◐", "low": "○"}[tier]
 
     await _tg_send(bot_token, chat_id,
-        f"📊 <b>YOUR RECOVERY ODDS</b>\n\n"
-        f"<b>Self-recovery:</b> {odds}%\n"
-        f"<b>With ERRORHACKER:</b> {pro}% {tier_emoji}\n"
-        f"<b>Estimated time:</b> {dmin}–{dmax} days\n\n"
+        f"▰ <b>YOUR RECOVERY ODDS</b>\n"
+        f"━━━━━━━━━━━━━━━\n\n"
+        f"<b>▸ Self-recovery</b>      {odds}%\n"
+        f"<b>▸ With ERRORHACKER</b>  {pro}% {tier_dot}\n"
+        f"<b>▸ Estimated time</b>    {dmin}–{dmax} days\n\n"
         f"<i>Platform: {platform.title()} · Issue: {issue.replace('_', ' ')} · {when}</i>\n\n"
-        f"💡 Pro tip: never share OTP/password — including with someone claiming to be from the platform.",
+        f"⚡ <b>Pro tip</b> — never share OTP / password, even with someone claiming to be from the platform.",
         {"inline_keyboard": [
-            [{"text": "🚀 Boost My Odds · Start Recovery", "url": "https://errorhacker.site/recovery"}],
-            [{"text": "🔄 Recalculate", "callback_data": "menu_odds_start"},
-             {"text": "🔙 Main Menu", "callback_data": "menu_main"}],
+            [{"text": "⚡  Boost My Odds · Start Recovery", "url": "https://errorhacker.site/recovery"}],
+            [{"text": "↻  Recalculate", "callback_data": "menu_odds_start"},
+             {"text": "❮  Main Menu", "callback_data": "menu_main"}],
         ]})
 
 # ---- /phishing -------------------------------------------------------------
 async def _handle_phishing_start(bot_token: str, chat_id: int):
     await _tg_state_set(chat_id, "awaiting_phishing_text", {})
     await _tg_send(bot_token, chat_id,
-                   "⚠ <b>PHISHING DETECTOR</b>\n\n"
-                   "Forward or paste the suspicious message (DM / SMS / email body) right here.\n"
-                   "Our AI will analyse it in seconds.\n\n"
-                   "<i>🔒 We never store your message.</i>")
+                   "⚠ <b>PHISHING SCAN</b>\n"
+                   "━━━━━━━━━━━━━━━\n\n"
+                   "Forward or paste the suspicious message (DM / SMS / email body) here.\n"
+                   "AI will analyse it in seconds.\n\n"
+                   "▸ <i>We never store your message.</i>")
 
 async def _handle_phishing_analyse(bot_token: str, chat_id: int, msg: str):
     await _tg_state_clear(chat_id)
@@ -1128,22 +1142,23 @@ async def _handle_phishing_analyse(bot_token: str, chat_id: int, msg: str):
         parsed = {"risk_level": "medium", "confidence": 50, "red_flags": [], "verdict": (reply or "")[:140], "action": "Treat with caution."}
 
     rl = str(parsed.get("risk_level", "medium")).lower()
-    emoji = {"safe": "✅", "low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}.get(rl, "🟡")
+    dot = {"safe": "○", "low": "●", "medium": "◐", "high": "◉", "critical": "▰"}.get(rl, "◐")
     lines = [
-        f"{emoji} <b>{rl.upper()} RISK</b> · confidence {parsed.get('confidence', 0)}%",
+        f"{dot} <b>{rl.upper()} RISK</b>  ·  confidence {parsed.get('confidence', 0)}%",
+        "━━━━━━━━━━━━━━━",
         "",
-        f"<b>Verdict:</b> {parsed.get('verdict', '—')}",
+        f"<b>▸ Verdict</b>  {parsed.get('verdict', '—')}",
     ]
     flags = parsed.get("red_flags") or []
     if flags:
-        lines.append("\n<b>Red flags:</b>")
+        lines.append("\n<b>▸ Red flags</b>")
         for f in flags[:6]:
-            lines.append(f"• {f}")
+            lines.append(f"   <code>·</code> {f}")
     if parsed.get("action"):
-        lines.append(f"\n💡 <b>Action:</b> {parsed['action']}")
-    kb_rows = [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]
+        lines.append(f"\n<b>⚡ Action</b>  {parsed['action']}")
+    kb_rows = [[{"text": "❮  Main Menu", "callback_data": "menu_main"}]]
     if rl in ("high", "critical"):
-        kb_rows.insert(0, [{"text": "🛡 I already clicked — recover me", "url": "https://errorhacker.site/recovery"}])
+        kb_rows.insert(0, [{"text": "⬢  I already clicked — recover me", "url": "https://errorhacker.site/recovery"}])
     await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": kb_rows})
 
 # ---- /quote (interactive) --------------------------------------------------
@@ -1165,14 +1180,14 @@ async def _handle_quote_start(bot_token: str, chat_id: int):
     await _tg_state_set(chat_id, "quote_pick_platform", {})
     kb = [[{"text": l, "callback_data": f"q_p_{v}"}] for v, l in QUOTE_PLATFORMS]
     await _tg_send(bot_token, chat_id,
-                   "💎 <b>INSTANT QUOTE</b> · step 1/3\n\nWhich platform?",
+                   "◆ <b>INSTANT QUOTE</b> · step 1/3\n━━━━━━━━━━━━━━━\n\nWhich platform?",
                    {"inline_keyboard": kb})
 
 async def _handle_quote_pick_issue(bot_token: str, chat_id: int, platform: str):
     await _tg_state_set(chat_id, "quote_pick_issue", {"platform": platform})
     kb = [[{"text": l, "callback_data": f"q_i_{v}"}] for v, l in QUOTE_ISSUES]
     await _tg_send(bot_token, chat_id,
-                   f"💎 step 2/3 · platform <b>{platform.title()}</b>\n\nWhat happened?",
+                   f"◆ <b>INSTANT QUOTE</b> · step 2/3\n━━━━━━━━━━━━━━━\nPlatform: <b>{platform.title()}</b>\n\nWhat happened?",
                    {"inline_keyboard": kb})
 
 async def _handle_quote_pick_urgency(bot_token: str, chat_id: int, issue: str):
@@ -1181,7 +1196,7 @@ async def _handle_quote_pick_urgency(bot_token: str, chat_id: int, issue: str):
     data["issue"] = issue
     await _tg_state_set(chat_id, "quote_pick_urgency", data)
     kb = [[{"text": l, "callback_data": f"q_u_{v}"}] for v, l in QUOTE_URGENCY]
-    await _tg_send(bot_token, chat_id, "💎 step 3/3 · how urgent?", {"inline_keyboard": kb})
+    await _tg_send(bot_token, chat_id, "◆ <b>INSTANT QUOTE</b> · step 3/3\n━━━━━━━━━━━━━━━\n\nHow urgent?", {"inline_keyboard": kb})
 
 async def _handle_quote_finish(bot_token: str, chat_id: int, urgency: str):
     state = await _tg_state_get(chat_id)
@@ -1193,17 +1208,18 @@ async def _handle_quote_finish(bot_token: str, chat_id: int, urgency: str):
     price = int(price * _QUOTE_PLATFORM_MULT.get(platform, 1.0))
     eta = {"low": "5–10 days", "medium": "3–6 days", "high": "24–72 hrs"}[urgency]
     await _tg_send(bot_token, chat_id,
-        f"💎 <b>YOUR INSTANT QUOTE</b>\n\n"
-        f"<b>Platform:</b> {platform.title()}\n"
-        f"<b>Issue:</b> {issue.replace('_', ' ').title()}\n"
-        f"<b>Tier:</b> {urgency.title()}\n"
-        f"<b>Indicative price:</b> ₹{price:,}\n"
-        f"<b>ETA:</b> {eta}\n\n"
+        f"◆ <b>YOUR INSTANT QUOTE</b>\n"
+        f"━━━━━━━━━━━━━━━\n\n"
+        f"<b>▸ Platform</b>           {platform.title()}\n"
+        f"<b>▸ Issue</b>              {issue.replace('_', ' ').title()}\n"
+        f"<b>▸ Tier</b>               {urgency.title()}\n"
+        f"<b>▸ Indicative price</b>   ₹{price:,}\n"
+        f"<b>▸ ETA</b>                {eta}\n\n"
         f"<i>Final price is locked after our team reviews your case (1–2 hrs). No payment until you accept the quote.</i>",
         {"inline_keyboard": [
-            [{"text": "🚀 Start Recovery Now", "url": "https://errorhacker.site/recovery"}],
-            [{"text": "🔄 New Quote", "callback_data": "menu_quote_start"},
-             {"text": "🔙 Main Menu", "callback_data": "menu_main"}],
+            [{"text": "⚡  Start Recovery Now", "url": "https://errorhacker.site/recovery"}],
+            [{"text": "↻  New Quote", "callback_data": "menu_quote_start"},
+             {"text": "❮  Main Menu", "callback_data": "menu_main"}],
         ]})
 
 # ---- /wallet ---------------------------------------------------------------
@@ -1230,7 +1246,7 @@ async def _handle_wallet(bot_token: str, chat_id: int):
                    {"inline_keyboard": [
                        [{"text": "🎰 Spin & Earn", "callback_data": "menu_spin"},
                         {"text": "💳 Top Up",     "url": "https://errorhacker.site/me"}],
-                       [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+                       [{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
 
 # ---- /spin (daily) ---------------------------------------------------------
 SPIN_PRIZES = [
@@ -1248,13 +1264,13 @@ async def _handle_spin(bot_token: str, chat_id: int):
     user = await db.users.find_one({"telegram_chat_id": chat_id})
     if not user:
         await _tg_send(bot_token, chat_id,
-                       "🔗 <b>Link your account to spin</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i>.")
+                       "⟶ <b>Link your account to spin</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i>.")
         return
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     spin_doc = await db.spin_history.find_one({"user_id": user["user_id"], "date": today})
     if spin_doc:
         await _tg_send(bot_token, chat_id,
-                       f"⌛ <b>Come back tomorrow!</b>\n\nYou already spun today and won <b>₹{spin_doc.get('amount', 0)}</b>.")
+                       f"○ <b>Come back tomorrow</b>\n\nYou already spun today and won <b>₹{spin_doc.get('amount', 0)}</b>.")
         return
     weights = [p["weight"] for p in SPIN_PRIZES]
     prize = _random.choices(SPIN_PRIZES, weights=weights, k=1)[0]
@@ -1268,39 +1284,39 @@ async def _handle_spin(bot_token: str, chat_id: int):
     await db.spin_history.insert_one({"user_id": user["user_id"], "date": today, "amount": amount, "via": "telegram", "created_at": _now_iso()})
     new_bal = float(user.get("balance") or 0) + amount
     await _tg_send(bot_token, chat_id,
-        f"🎰 <b>SPIN RESULT</b>\n\n"
-        f"You won <b>{prize['label']}</b>!\n"
-        f"New balance: <b>₹{new_bal:.2f}</b>\n\n"
+        f"✦ <b>SPIN RESULT</b>\n"
+        f"━━━━━━━━━━━━━━━\n\n"
+        f"You won  <b>{prize['label']}</b>\n"
+        f"New balance  <b>₹{new_bal:.2f}</b>\n\n"
         f"<i>Come back tomorrow for another spin.</i>",
-        {"inline_keyboard": [[{"text": "💰 Wallet", "callback_data": "menu_wallet"},
-                              {"text": "🔙 Menu",  "callback_data": "menu_main"}]]})
+        {"inline_keyboard": [[{"text": "◈  Wallet", "callback_data": "menu_wallet"},
+                              {"text": "❮  Menu",  "callback_data": "menu_main"}]]})
 
 # ---- /news -----------------------------------------------------------------
 async def _handle_news(bot_token: str, chat_id: int):
     rows = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(3)
     if not rows:
-        await _tg_send(bot_token, chat_id, "📣 No news yet — stay tuned!")
+        await _tg_send(bot_token, chat_id, "⌬ No updates yet — stay tuned.")
         return
-    lines = ["📣 <b>LATEST UPDATES</b>\n"]
+    lines = ["⌬ <b>LATEST UPDATES</b>\n━━━━━━━━━━━━━━━"]
     for a in rows:
-        lines.append(f"• <b>{a.get('title', '—')}</b>")
+        lines.append(f"\n<b>▸ {a.get('title', '—')}</b>")
         body = (a.get("body") or "")[:160]
-        lines.append(f"  {body}")
+        lines.append(f"   {body}")
         if a.get("link"):
             lk = a["link"]
             if not lk.startswith("http"):
                 lk = f"https://errorhacker.site{lk}"
-            lines.append(f"  🔗 {lk}")
-        lines.append("")
+            lines.append(f"   <code>⟶</code> {lk}")
     await _tg_send(bot_token, chat_id, "\n".join(lines),
-                   {"inline_keyboard": [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+                   {"inline_keyboard": [[{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
 
 # ---- /refer ----------------------------------------------------------------
 async def _handle_refer(bot_token: str, chat_id: int):
     user = await db.users.find_one({"telegram_chat_id": chat_id})
     if not user:
         await _tg_send(bot_token, chat_id,
-                       "🔗 <b>Link your account first</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i> to get your unique referral link.")
+                       "⟶ <b>Link your account first</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i> to get your unique referral link.")
         return
     code = (user.get("referral_code") or user["user_id"][:8]).upper()
     if not user.get("referral_code"):
@@ -1308,33 +1324,34 @@ async def _handle_refer(bot_token: str, chat_id: int):
     link = f"https://errorhacker.site/r/{code}"
     referrals = await db.users.count_documents({"referred_by": code})
     await _tg_send(bot_token, chat_id,
-        f"🎁 <b>REFER &amp; EARN</b>\n\n"
+        f"⇡ <b>REFER &amp; EARN</b>\n"
+        f"━━━━━━━━━━━━━━━\n\n"
         f"Share this link with anyone who needs account recovery:\n"
         f"<code>{link}</code>\n\n"
-        f"<b>You earn:</b> ₹100 wallet credit per friend who completes a paid recovery.\n"
-        f"<b>They get:</b> ₹50 off their first order.\n\n"
-        f"<b>Your referrals so far:</b> {referrals}",
-        {"inline_keyboard": [[{"text": "📤 Share to a chat",
+        f"<b>▸ You earn</b>    ₹100 wallet credit per friend who completes a paid recovery\n"
+        f"<b>▸ They get</b>    ₹50 off their first order\n"
+        f"<b>▸ Total refs</b>  {referrals}",
+        {"inline_keyboard": [[{"text": "⇡  Share to a chat",
                                "switch_inline_query": f"Get your social account recovered fast. Use my link → {link}"}],
-                             [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+                             [{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
 
 # ---- AI free-chat fallback (Claude Haiku, rate-limited) --------------------
 async def _handle_ai_chat(bot_token: str, chat_id: int, text: str):
     remaining, _ = await _tg_ai_quota(chat_id)
     if remaining <= 0:
         await _tg_send(bot_token, chat_id,
-                       "⏳ You've used all your free AI questions for today (10/10). It resets at midnight UTC.\n\n"
-                       "Tip: use commands like /breach, /odds, /quote — they don't count against your AI quota.",
-                       {"inline_keyboard": [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+                       "○ You've used all free AI questions for today (10/10). Resets at midnight UTC.\n\n"
+                       "<i>Tip: use commands like /breach, /odds, /quote — they don't count against your AI quota.</i>",
+                       {"inline_keyboard": [[{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
         return
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except Exception:
-        await _tg_send(bot_token, chat_id, "⚠ AI assistant unavailable right now.")
+        await _tg_send(bot_token, chat_id, "▰ AI assistant unavailable right now.")
         return
     key = os.environ.get("EMERGENT_LLM_KEY", "")
     if not key:
-        await _tg_send(bot_token, chat_id, "⚠ AI key not configured.")
+        await _tg_send(bot_token, chat_id, "▰ AI key not configured.")
         return
     await _tg_ai_bump(chat_id)
     sid = f"tg-{chat_id}"
@@ -1343,11 +1360,11 @@ async def _handle_ai_chat(bot_token: str, chat_id: int, text: str):
         reply = await chat.send_message(UserMessage(text=text))
     except Exception as e:
         log.warning("tg ai chat failed: %s", e)
-        await _tg_send(bot_token, chat_id, "⚠ AI temporarily unavailable. Try again in a moment.")
+        await _tg_send(bot_token, chat_id, "▰ AI temporarily unavailable. Try again in a moment.")
         return
     quota_line = f"\n\n<i>· {remaining - 1}/10 AI questions left today</i>" if remaining - 1 > 0 else "\n\n<i>· last AI question today — use commands for more</i>"
     await _tg_send(bot_token, chat_id, (reply or "—") + quota_line,
-                   {"inline_keyboard": [[{"text": "📋 Main Menu", "callback_data": "menu_main"}]]})
+                   {"inline_keyboard": [[{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
 
 
 async def _handle_callback(bot_token: str, chat_id: int, data: str):
@@ -1355,7 +1372,7 @@ async def _handle_callback(bot_token: str, chat_id: int, data: str):
         await _send_main_menu(bot_token, chat_id)
     elif data == "menu_track":
         await _tg_send(bot_token, chat_id,
-                       "🆔 <b>Just paste your ID</b>\n\nLike <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code> — I'll fetch your live status instantly. No login needed.")
+                       "▸ <b>Just paste your ID</b>\n\nLike <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code> — I'll fetch the live status instantly. No login needed.")
     elif data == "menu_orders":
         await _handle_orders(bot_token, chat_id)
     elif data == "menu_pay":
@@ -1383,7 +1400,8 @@ async def _handle_callback(bot_token: str, chat_id: int, data: str):
         await _tg_state_set(chat_id, "awaiting_ai", {})
         rem, _ = await _tg_ai_quota(chat_id)
         await _tg_send(bot_token, chat_id,
-                       f"🤖 <b>ASK AI ANYTHING</b>\n\n"
+                       f"▌ <b>ASK AI ANYTHING</b>\n"
+                       f"━━━━━━━━━━━━━━━\n\n"
                        f"Type your question — pricing, recovery time, what to do if hacked, anything.\n\n"
                        f"<i>You have {rem}/10 AI questions left today.</i>")
     # --- odds flow ---
@@ -1409,7 +1427,7 @@ async def _handle_callback(bot_token: str, chat_id: int, data: str):
     elif data.startswith("dep_approve_") or data.startswith("dep_decline_"):
         bot_cfg = await _get_bot_cfg()
         if not _is_tg_admin(bot_cfg, chat_id):
-            await _tg_send(bot_token, chat_id, "🚫 <b>Not authorised.</b>\nOnly approved admin chats can approve/decline deposits.")
+            await _tg_send(bot_token, chat_id, "✕ <b>Not authorised.</b>\nOnly approved admin chats can approve/decline deposits.")
             return
         if data.startswith("dep_approve_"):
             dep_id = data[len("dep_approve_"):]
@@ -1458,7 +1476,7 @@ async def _process_update(update: Dict[str, Any]):
                 await _handle_link(bot_token, chat_id, chat, payload[5:])
             else:
                 await _send_welcome(bot_token, chat_id)
-                await _send_main_menu(bot_token, chat_id, "📋 <b>Tap a button to begin</b>")
+                await _send_main_menu(bot_token, chat_id, "▌ <b>Initialise</b> — tap a module below")
             return
         if text.startswith("/menu"):
             await _send_main_menu(bot_token, chat_id)
@@ -1517,7 +1535,7 @@ async def _process_update(update: Dict[str, Any]):
             return
         if text.startswith("/cancel"):
             await _tg_state_clear(chat_id)
-            await _send_main_menu(bot_token, chat_id, "🚫 cancelled.")
+            await _send_main_menu(bot_token, chat_id, "✕ cancelled.")
             return
 
         # ---- state-aware text (in the middle of a multi-step flow) ----
