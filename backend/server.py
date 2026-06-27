@@ -186,6 +186,21 @@ class ChatIn(BaseModel):
     session_id: str
     message: str
 
+# ---- AI Tools (Hub) ----
+class ToolsAppealIn(BaseModel):
+    platform: str = "Instagram"
+    violation_reason: str  # e.g. "Community Guidelines", "Impersonation", "Spam"
+    account_handle: Optional[str] = ""
+    account_age: Optional[str] = ""      # e.g. "3 years"
+    followers: Optional[str] = ""        # e.g. "12k"
+    backstory: Optional[str] = ""        # 1-3 sentences user provides
+    tone: Optional[str] = "polite"       # polite | formal | emotional
+    language: Optional[str] = "english"
+
+class ToolsFaqIn(BaseModel):
+    session_id: str
+    message: str
+
 # ---- Payment models ----
 class PaymentSettingsIn(BaseModel):
     manual_enabled: bool = True
@@ -1776,6 +1791,119 @@ async def chat_message(body: ChatIn):
         raise HTTPException(status_code=502, detail="AI assistant returned empty response")
     await db.chat_history.insert_one({"session_id": body.session_id, "role": "bot", "text": reply, "ts": datetime.now(timezone.utc).isoformat()})
     return {"reply": reply}
+
+# ---- AI Tools Hub ----------------------------------------------------------
+APPEAL_SYSTEM_PROMPT = (
+    "You are an expert at writing polite, professional account-recovery appeal letters "
+    "to social media platforms (Instagram, Facebook, TikTok). Your output must:\n"
+    "- Be addressed to the platform's review team.\n"
+    "- Be 4-6 short paragraphs, plain text, no markdown.\n"
+    "- Acknowledge the alleged violation respectfully without admitting wrongdoing if the user denies it.\n"
+    "- Emphasize good-faith use, account history, and impact on the user.\n"
+    "- Ask for review/reinstatement.\n"
+    "- Close with a courteous sign-off.\n"
+    "Never invent specific dates, names, or account stats not given by the user."
+)
+
+FAQ_SYSTEM_PROMPT = (
+    "You are ERR0R-HELP, the official AI assistant for ERRORHACKER (errorhacker.site) — an underground "
+    "account-recovery & social-media intel service. Be concise, friendly, and lowercase-terminal styled. "
+    "Reply in 2-4 sentences max unless the user asks for a step-by-step.\n\n"
+    "Topics you handle: Instagram/Facebook/TikTok account recovery, disabled / hacked / 2FA-locked accounts, "
+    "appeal process, recovery ETA (typical 2-7 days), pricing (from ₹999 for basic up to ₹15,000 for premium), "
+    "manual UPI / crypto payment flow, order tracking (via /track), wallet & spin rewards, "
+    "Telegram support bot, refund/refill policy.\n\n"
+    "If asked something illegal/unethical, politely decline and suggest /recovery or our Telegram. "
+    "If user wants a human, direct them to Telegram chat or team@errorhacker.site. "
+    "Never invent prices or guarantees."
+)
+
+
+@api.post("/tools/appeal")
+async def tools_generate_appeal(body: ToolsAppealIn):
+    """Generate a polite social-media account appeal letter using the Emergent LLM key."""
+    if not body.violation_reason.strip():
+        raise HTTPException(status_code=400, detail="violation_reason required")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception as e:
+        log.error("emergentintegrations import failed: %s", e)
+        raise HTTPException(status_code=500, detail="AI assistant unavailable")
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="AI key not configured")
+
+    facts = [
+        f"Platform: {body.platform}",
+        f"Reason given by platform: {body.violation_reason}",
+    ]
+    if body.account_handle: facts.append(f"Handle: @{body.account_handle.lstrip('@')}")
+    if body.account_age:    facts.append(f"Account age: {body.account_age}")
+    if body.followers:      facts.append(f"Followers: {body.followers}")
+    if body.backstory:      facts.append(f"User's side of the story: {body.backstory}")
+    facts.append(f"Tone: {body.tone}")
+    facts.append(f"Language: {body.language}")
+
+    user_msg = (
+        "Please write a complete appeal letter using these facts. "
+        "Output the letter only — no preamble.\n\n" + "\n".join(facts)
+    )
+
+    sid = uuid.uuid4().hex
+    chat = LlmChat(api_key=key, session_id=sid, system_message=APPEAL_SYSTEM_PROMPT).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    try:
+        reply = await chat.send_message(UserMessage(text=user_msg))
+    except Exception as e:
+        log.warning("appeal generation failed: %s", e)
+        raise HTTPException(status_code=502, detail="AI temporarily unavailable")
+    if not reply:
+        raise HTTPException(status_code=502, detail="AI returned empty response")
+    # log usage (best effort)
+    try:
+        await db.tool_usage.insert_one({
+            "tool": "appeal",
+            "platform": body.platform,
+            "reason": body.violation_reason,
+            "ts": _now_iso(),
+        })
+    except Exception:
+        pass
+    return {"letter": reply}
+
+
+@api.post("/tools/faq")
+async def tools_faq_chat(body: ToolsFaqIn):
+    """Specialized FAQ chatbot for the /tools page (uses Emergent LLM)."""
+    msg = (body.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Empty message")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception as e:
+        log.error("emergentintegrations import failed: %s", e)
+        raise HTTPException(status_code=500, detail="AI assistant unavailable")
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="AI key not configured")
+
+    await db.chat_history.insert_one({
+        "session_id": body.session_id, "role": "user", "text": msg,
+        "scope": "faq", "ts": _now_iso(),
+    })
+    chat = LlmChat(api_key=key, session_id=body.session_id, system_message=FAQ_SYSTEM_PROMPT).with_model("anthropic", "claude-haiku-4-5-20251001")
+    try:
+        reply = await chat.send_message(UserMessage(text=msg))
+    except Exception as e:
+        log.warning("faq chat send_message failed: %s", e)
+        raise HTTPException(status_code=502, detail="AI temporarily unavailable")
+    if not reply:
+        raise HTTPException(status_code=502, detail="AI returned empty response")
+    await db.chat_history.insert_one({
+        "session_id": body.session_id, "role": "bot", "text": reply,
+        "scope": "faq", "ts": _now_iso(),
+    })
+    return {"reply": reply}
+
 
 # ---- Feed (Instagram-style) ------------------------------------------------
 async def _enrich_feed_item(item: Dict[str, Any], kind: str, user: Optional[Dict[str, Any]]):

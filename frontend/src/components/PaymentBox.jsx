@@ -42,7 +42,7 @@ const PaymentBox = ({ order, onUpdated }) => {
       const fd = new FormData();
       fd.append('file', f);
       // Public upload via order-scoped endpoint would be ideal; use admin uploads if logged in. Fallback: prompt user to paste link.
-      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/uploads`, { method: 'POST', body: fd, headers: { 'X-Admin-Token': '' } });
+      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/recovery/reviews/upload-media`, { method: 'POST', body: fd });
       if (!res.ok) throw new Error('Upload not allowed publicly. Please paste a screenshot URL instead.');
       const j = await res.json();
       setProof(`${process.env.REACT_APP_BACKEND_URL}${j.url}`);

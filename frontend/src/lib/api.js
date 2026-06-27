@@ -105,6 +105,9 @@ export const api = {
   applyCoupon: (code, amount) => req('/coupons/apply', { method: 'POST', body: { code, amount } }),
   // chat
   chatSend: (session_id, message) => req('/chat/message', { method: 'POST', body: { session_id, message } }),
+  // ai tools
+  toolsAppeal: (data) => req('/tools/appeal', { method: 'POST', body: data }),
+  toolsFaq: (session_id, message) => req('/tools/faq', { method: 'POST', body: { session_id, message } }),
   // payments
   getPaymentSettings: () => req('/payments/settings'),
   putPaymentSettings: (data) => req('/payments/settings', { method: 'PUT', body: data, admin: true }),

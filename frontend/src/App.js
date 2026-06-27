@@ -16,6 +16,9 @@ import MembershipsPage from './pages/MembershipsPage';
 import RecoveryPage from './pages/RecoveryPage';
 import BlogsPage from './pages/BlogsPage';
 import ToolsPage from './pages/ToolsPage';
+import ToolDiagnose from './pages/ToolDiagnose';
+import ToolAppeal from './pages/ToolAppeal';
+import ToolSecurityScore from './pages/ToolSecurityScore';
 import InfoPage from './pages/InfoPage';
 import OrderTracker from './pages/OrderTracker';
 import FAQPage from './pages/FAQPage';
@@ -84,6 +87,9 @@ function App() {
                 <Route path="/blogs" element={<SiteShell><RecoveryPage /></SiteShell>} />
                 <Route path="/blog" element={<SiteShell><RecoveryPage /></SiteShell>} />
                 <Route path="/tools" element={<SiteShell><ToolsPage /></SiteShell>} />
+                <Route path="/tools/diagnose" element={<SiteShell><ToolDiagnose /></SiteShell>} />
+                <Route path="/tools/appeal" element={<SiteShell><ToolAppeal /></SiteShell>} />
+                <Route path="/tools/security-score" element={<SiteShell><ToolSecurityScore /></SiteShell>} />
                 <Route path="/track" element={<SiteShell><OrderTracker /></SiteShell>} />
                 <Route path="/faq" element={<SiteShell><FAQPage /></SiteShell>} />
                 <Route path="/info" element={<SiteShell><InfoPage /></SiteShell>} />
