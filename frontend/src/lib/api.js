@@ -116,6 +116,7 @@ export const api = {
   // announcements
   publicAnnouncements: () => req('/announcements'),
   adminListAnnouncements: () => req('/admin/announcements', { admin: true }),
+  adminAnnouncementAudience: (audience) => req(`/admin/announcements/audience?audience=${encodeURIComponent(audience)}`, { admin: true }),
   adminCreateAnnouncement: (data) => req('/admin/announcements', { method: 'POST', body: data, admin: true }),
   adminDeleteAnnouncement: (id) => req(`/admin/announcements/${id}`, { method: 'DELETE', admin: true }),
   // payments

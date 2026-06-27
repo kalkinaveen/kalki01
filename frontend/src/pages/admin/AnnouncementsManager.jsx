@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Megaphone, Plus, Trash2, Send, Mail, Users, Sparkles, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Send, Mail, Users, Sparkles, CheckCircle2, X, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 
@@ -28,6 +28,7 @@ const AnnouncementsManager = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);  // audience size preview before blast
   const [form, setForm] = useState({
     title: '',
     body: '',
@@ -61,13 +62,31 @@ const AnnouncementsManager = () => {
       toast.error('Title and body are required');
       return;
     }
+    // Step 1 — fetch audience preview (no blast yet)
+    setBusy(true);
+    try {
+      const p = await api.adminAnnouncementAudience(form.audience);
+      setPreview(p);
+    } catch (e) {
+      toast.error(e.message || 'Could not load audience preview');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmBlast = async () => {
     setBusy(true);
     try {
       const created = await api.adminCreateAnnouncement(form);
-      toast.success(`Announcement sent · TG ${created.tg_sent || 0} · Email ${created.email_sent || 0}`);
+      toast.success(`Blast queued · sending to ${(preview?.telegram_reachable || 0)} TG + ${(preview?.email_reachable || 0)} email in background`);
       setShowForm(false);
+      setPreview(null);
       setForm({ title: '', body: '', link: '', tool_id: '', audience: 'all', send_telegram: true, send_email: true });
+      // counters arrive as the background task completes — reload twice
       load();
+      setTimeout(load, 3500);
+      setTimeout(load, 12000);
+      return created;
     } catch (e) {
       toast.error(e.message || 'Failed to send');
     } finally {
@@ -248,12 +267,69 @@ const AnnouncementsManager = () => {
             <div className="flex gap-2 mt-6">
               <button onClick={() => !busy && setShowForm(false)} className="eh-btn-ghost flex-1 justify-center text-xs">CANCEL</button>
               <button data-testid="ann-submit" onClick={submit} disabled={busy} className="eh-btn-primary flex-1 justify-center text-xs" style={{ opacity: busy ? .7 : 1 }}>
-                {busy ? <><Loader2 size={12} className="animate-spin" /> SENDING…</> : <><Megaphone size={12} /> BLAST IT</>}
+                {busy ? <><Loader2 size={12} className="animate-spin" /> CHECKING…</> : <><Megaphone size={12} /> PREVIEW &amp; SEND</>}
               </button>
             </div>
             <p className="text-[10px] opacity-50 eh-mono mt-3 text-center">
-              Telegram users get a push notification · email-opted-out users are skipped
+              You&apos;ll see exact audience size before anything goes out.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Audience preview / confirm modal */}
+      {preview && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3" onClick={() => !busy && setPreview(null)}>
+          <div className="w-full max-w-md eh-panel eh-brackets p-5 sm:p-7" onClick={e => e.stopPropagation()} data-testid="ann-preview-modal">
+            <span className="br-bl" /><span className="br-br" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl grid place-items-center shrink-0" style={{ background: 'rgba(255,211,77,.08)', border: '1px solid rgba(255,211,77,.4)' }}>
+                <AlertTriangle size={22} color="#ffd34d" />
+              </div>
+              <div>
+                <div className="eh-kicker mb-1">// CONFIRM BLAST</div>
+                <h3 className="eh-display text-lg font-black leading-tight">This will reach real users</h3>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-lg p-4 bg-[#0d1115] border border-[var(--eh-border)] mb-4">
+              <div className="flex items-center justify-between text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
+                <span className="opacity-70">Audience</span>
+                <span className="eh-mono font-bold">{(preview.audience || 'all').toUpperCase()}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="opacity-70 inline-flex items-center gap-1.5"><Users size={13} /> Total matched</span>
+                <span className="eh-mono font-bold">{preview.total}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="opacity-70 inline-flex items-center gap-1.5"><Send size={13} /> Telegram reachable</span>
+                <span className="eh-mono font-bold" data-testid="ann-preview-tg">{form.send_telegram ? preview.telegram_reachable : 0}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="opacity-70 inline-flex items-center gap-1.5"><Mail size={13} /> Email reachable</span>
+                <span className="eh-mono font-bold" data-testid="ann-preview-email">{form.send_email ? preview.email_reachable : 0}</span>
+              </div>
+            </div>
+            {(preview.total === 0 || ((form.send_telegram ? preview.telegram_reachable : 0) + (form.send_email ? preview.email_reachable : 0) === 0)) ? (
+              <p className="text-[12px] opacity-70 mb-4 eh-mono leading-relaxed">
+                · 0 reachable recipients — toggle Telegram/Email or pick a different audience.
+              </p>
+            ) : (
+              <p className="text-[12px] opacity-70 mb-4 leading-relaxed" style={{ fontFamily: 'Inter, sans-serif' }}>
+                Once you confirm, the blast runs in the background. Email opt-outs are skipped automatically.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => !busy && setPreview(null)} className="eh-btn-ghost flex-1 justify-center text-xs">BACK TO EDIT</button>
+              <button
+                data-testid="ann-confirm"
+                onClick={confirmBlast}
+                disabled={busy || ((form.send_telegram ? preview.telegram_reachable : 0) + (form.send_email ? preview.email_reachable : 0) === 0)}
+                className="eh-btn-primary flex-1 justify-center text-xs"
+                style={{ opacity: busy ? .7 : 1 }}
+              >
+                {busy ? <><Loader2 size={12} className="animate-spin" /> SENDING…</> : <><Megaphone size={12} /> CONFIRM &amp; BLAST</>}
+              </button>
+            </div>
           </div>
         </div>
       )}

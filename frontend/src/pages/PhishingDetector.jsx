@@ -89,8 +89,8 @@ const PhishingDetector = () => {
         </div>
 
         {res && theme && (
-          <div className="mt-6 space-y-4" data-testid="phish-result">
-            <div className="eh-panel p-5 sm:p-7">
+          <div className="mt-6 space-y-4" data-testid="phishing-result">
+            <div className="eh-panel p-5 sm:p-7" data-testid="phish-risk-badge">
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 rounded-xl grid place-items-center shrink-0" style={{ background: `${theme.color}14`, border: `1px solid ${theme.color}66` }}>
                   <theme.Icon size={26} color={theme.color} />

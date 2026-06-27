@@ -2253,13 +2253,79 @@ async def list_announcements_admin(x_admin_token: Optional[str] = Header(None)):
     rows = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return rows
 
+@api.get("/admin/announcements/audience")
+async def announcement_audience_count(audience: str = "all", x_admin_token: Optional[str] = Header(None)):
+    """Returns counts for the chosen audience — so admin can preview before BLAST IT."""
+    await _check_admin(x_admin_token)
+    f: Dict[str, Any] = {}
+    if audience == "wallet":
+        f = {"balance": {"$gt": 0}}
+    elif audience == "paying":
+        paid_uids = await db.orders.distinct("user_id", {"status": {"$in": ["paid", "completed", "delivered"]}})
+        f = {"user_id": {"$in": paid_uids}} if paid_uids else {"user_id": "__none__"}
+    total = await db.users.count_documents(f)
+    tg = await db.users.count_documents({**f, "telegram_chat_id": {"$exists": True, "$ne": None}})
+    email = await db.users.count_documents({**f, "email": {"$exists": True, "$ne": None}, "email_optout": {"$ne": True}})
+    return {"audience": audience, "total": total, "telegram_reachable": tg, "email_reachable": email}
+
+
+async def _run_announcement_blast(ann_id: str, doc: Dict[str, Any], audience_filter: Dict[str, Any], full_link: str):
+    """Background worker — performs the actual TG + email blast and updates counters."""
+    # Telegram
+    if doc.get("send_telegram"):
+        try:
+            token = await _get_bot_token()
+            if token:
+                tg_filter = {**audience_filter, "telegram_chat_id": {"$exists": True, "$ne": None}}
+                cursor = db.users.find(tg_filter, {"telegram_chat_id": 1})
+                sent = 0; failed = 0
+                tg_message = f"📣 *{doc['title']}*\n\n{doc['body']}"
+                if full_link:
+                    tg_message += f"\n\n🔗 {full_link}"
+                async for u in cursor:
+                    cid = u.get("telegram_chat_id")
+                    if not cid: continue
+                    r = await _tg_send(token, cid, tg_message)
+                    if r.get("ok"): sent += 1
+                    else:           failed += 1
+                    await asyncio.sleep(0.05)
+                await db.announcements.update_one({"id": ann_id}, {"$set": {"tg_sent": sent, "tg_failed": failed}})
+        except Exception as e:
+            log.error("announcement TG blast failed: %s", e)
+
+    # Resend
+    if doc.get("send_email"):
+        try:
+            from email_service import send_email, _wrap
+            email_filter = {**audience_filter, "email": {"$exists": True, "$ne": None}, "email_optout": {"$ne": True}}
+            cursor = db.users.find(email_filter, {"email": 1, "name": 1})
+            sent = 0; failed = 0
+            preheader = doc["body"][:120]
+            html_body = f'<p style="margin:0 0 10px 0">{doc["body"].replace(chr(10), "<br>")}</p>'
+            html = _wrap(doc["title"], preheader, html_body, cta_label="OPEN" if full_link else "", cta_url=full_link)
+            async for u in cursor:
+                em = u.get("email")
+                if not em: continue
+                r = await send_email(em, doc["title"], html)
+                if r.get("ok"): sent += 1
+                else:           failed += 1
+            await db.announcements.update_one({"id": ann_id}, {"$set": {"email_sent": sent, "email_failed": failed}})
+        except Exception as e:
+            log.error("announcement email blast failed: %s", e)
+
+    # Mark tool as NEW in config if tool_id was supplied (so the tile shows a NEW badge)
+    if doc.get("tool_id"):
+        await db.tool_meta.update_one(
+            {"tool_id": doc["tool_id"]},
+            {"$set": {"is_new": True, "marked_at": _now_iso(), "announcement_id": ann_id}},
+            upsert=True,
+        )
+    await db.announcements.update_one({"id": ann_id}, {"$set": {"status": "sent", "finished_at": _now_iso()}})
+
+
 @api.post("/admin/announcements")
 async def create_announcement(body: AnnouncementIn, x_admin_token: Optional[str] = Header(None)):
-    """Create + (optionally) blast an announcement.
-
-    On the Telegram side we reuse the existing _tg_send infrastructure.
-    On the email side we iterate registered users (respecting opt-out via `email_optout=true`).
-    """
+    """Create an announcement + schedule a background blast. Returns immediately."""
     await _check_admin(x_admin_token)
     if not body.title.strip() or not body.body.strip():
         raise HTTPException(status_code=400, detail="title and body are required")
@@ -2274,11 +2340,9 @@ async def create_announcement(body: AnnouncementIn, x_admin_token: Optional[str]
         "audience": body.audience or "all",
         "send_telegram": body.send_telegram,
         "send_email": body.send_email,
-        "tg_sent": 0,
-        "tg_failed": 0,
-        "email_sent": 0,
-        "email_failed": 0,
-        "status": "pending",
+        "tg_sent": 0, "tg_failed": 0,
+        "email_sent": 0, "email_failed": 0,
+        "status": "sending",
         "created_at": _now_iso(),
     }
     await db.announcements.insert_one(doc)
@@ -2288,70 +2352,18 @@ async def create_announcement(body: AnnouncementIn, x_admin_token: Optional[str]
     if body.audience == "wallet":
         audience_filter = {"balance": {"$gt": 0}}
     elif body.audience == "paying":
-        # users with at least one paid order
         paid_uids = await db.orders.distinct("user_id", {"status": {"$in": ["paid", "completed", "delivered"]}})
-        if paid_uids:
-            audience_filter = {"user_id": {"$in": paid_uids}}
-        else:
-            audience_filter = {"user_id": "__none__"}  # short-circuit to empty
+        audience_filter = {"user_id": {"$in": paid_uids}} if paid_uids else {"user_id": "__none__"}
 
     site_url = os.environ.get("SITE_URL", "https://errorhacker.site").rstrip("/")
     full_link = ""
     if doc["link"]:
         full_link = doc["link"] if doc["link"].startswith("http") else f"{site_url}{doc['link']}"
 
-    # --- Telegram blast ---
-    if body.send_telegram:
-        token = await _get_bot_token()
-        if token:
-            tg_filter = {**audience_filter, "telegram_chat_id": {"$exists": True, "$ne": None}}
-            cursor = db.users.find(tg_filter, {"telegram_chat_id": 1})
-            sent = 0; failed = 0
-            tg_message = f"📣 *{doc['title']}*\n\n{doc['body']}"
-            if full_link:
-                tg_message += f"\n\n🔗 {full_link}"
-            async for u in cursor:
-                cid = u.get("telegram_chat_id")
-                if not cid: continue
-                r = await _tg_send(token, cid, tg_message)
-                if r.get("ok"): sent += 1
-                else:           failed += 1
-                await asyncio.sleep(0.05)
-            await db.announcements.update_one({"id": ann_id}, {"$set": {"tg_sent": sent, "tg_failed": failed}})
+    # Fire-and-forget — the request returns immediately, the blast runs in the background.
+    asyncio.create_task(_run_announcement_blast(ann_id, doc, audience_filter, full_link))
 
-    # --- Resend blast ---
-    if body.send_email:
-        try:
-            from email_service import send_email, _wrap
-            email_filter = {**audience_filter, "email": {"$exists": True, "$ne": None}, "email_optout": {"$ne": True}}
-            cursor = db.users.find(email_filter, {"email": 1, "name": 1})
-            sent = 0; failed = 0
-            preheader = doc["body"][:120]
-            html_body = (
-                f'<p style="margin:0 0 10px 0">{doc["body"].replace(chr(10), "<br>")}</p>'
-            )
-            html = _wrap(doc["title"], preheader, html_body, cta_label="OPEN" if full_link else "", cta_url=full_link)
-            async for u in cursor:
-                em = u.get("email")
-                if not em: continue
-                r = await send_email(em, doc["title"], html)
-                if r.get("ok"): sent += 1
-                else:           failed += 1
-            await db.announcements.update_one({"id": ann_id}, {"$set": {"email_sent": sent, "email_failed": failed}})
-        except Exception as e:
-            log.error("announcement email blast failed: %s", e)
-
-    # Mark tool as NEW in config if tool_id was supplied (so the tile shows a NEW badge)
-    if doc["tool_id"]:
-        await db.tool_meta.update_one(
-            {"tool_id": doc["tool_id"]},
-            {"$set": {"is_new": True, "marked_at": _now_iso(), "announcement_id": ann_id}},
-            upsert=True,
-        )
-
-    await db.announcements.update_one({"id": ann_id}, {"$set": {"status": "sent"}})
-    final = await db.announcements.find_one({"id": ann_id}, {"_id": 0})
-    return final
+    return await db.announcements.find_one({"id": ann_id}, {"_id": 0})
 
 @api.delete("/admin/announcements/{ann_id}")
 async def delete_announcement(ann_id: str, x_admin_token: Optional[str] = Header(None)):

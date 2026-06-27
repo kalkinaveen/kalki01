@@ -96,7 +96,7 @@ const FloatingStack = () => {
         </div>
       )}
 
-      <div className="eh-float-stack" aria-label="quick actions">
+      <div className="eh-float-stack" aria-label="quick actions" data-testid="floating-stack">
         {/* AI FAQ Chatbot */}
         <button
           type="button"
