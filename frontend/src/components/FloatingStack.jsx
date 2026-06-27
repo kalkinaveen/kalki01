@@ -1,8 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Send, X, Bot, Sparkles, Headphones, Mail } from 'lucide-react';
+import { Send, X, Bot, Sparkles, Mail } from 'lucide-react';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { api } from '../lib/api';
+
+/** Custom contact glyph — a terminal-style chat bubble with a broadcast antenna + live ping. */
+const ContactGlyph = ({ open }) => (
+  <svg viewBox="0 0 28 28" width="22" height="22" aria-hidden="true" style={{ display: 'block' }}>
+    <defs>
+      <linearGradient id="cgFill" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"  stopColor="#001a10" />
+        <stop offset="100%" stopColor="#052b1d" />
+      </linearGradient>
+    </defs>
+    {/* Antenna mast */}
+    <line x1="22" y1="3" x2="22" y2="9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity={open ? 0 : 1} />
+    {/* Broadcast waves */}
+    <path d="M19 5 Q22 3 25 5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity={open ? 0 : .85} className="cg-wave cg-wave-1" />
+    <path d="M17.5 6 Q22 1.5 26.5 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity={open ? 0 : .55} className="cg-wave cg-wave-2" />
+    {/* Chat bubble body */}
+    <path
+      d="M3 8 H21 Q24 8 24 11 V19 Q24 22 21 22 H12 L7 25.5 V22 H6 Q3 22 3 19 Z"
+      fill="url(#cgFill)"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+    />
+    {/* Terminal dots inside bubble */}
+    <circle cx="9"  cy="15" r="1.4" fill="currentColor" className="cg-dot cg-dot-1" />
+    <circle cx="13.5" cy="15" r="1.4" fill="currentColor" className="cg-dot cg-dot-2" />
+    <circle cx="18" cy="15" r="1.4" fill="currentColor" className="cg-dot cg-dot-3" />
+    {/* Live ping at antenna tip */}
+    <circle cx="22" cy="3" r="2" fill="currentColor" className="cg-ping" opacity={open ? 0 : 1} />
+  </svg>
+);
 
 /**
  * FloatingStack — fixed bottom-right action cluster.
@@ -195,7 +226,7 @@ const FloatingStack = () => {
             >
               <span className="ehc-ring ehc-ring-1" />
               <span className="ehc-ring ehc-ring-2" />
-              {contactOpen ? <X size={22} /> : <Headphones size={22} />}
+              {contactOpen ? <X size={22} /> : <ContactGlyph open={false} />}
               {!contactOpen && <span className="ehc-dot" />}
             </button>
           </div>

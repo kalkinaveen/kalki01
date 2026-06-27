@@ -763,6 +763,34 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   width: 10px; height: 10px; border-radius: 50%;
   background: #229ED9;
   box-shadow: 0 0 8px #229ED9;
+  animation: cg-online 1.6s ease-in-out infinite;
+}
+@keyframes cg-online {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: .55; transform: scale(.85); }
+}
+
+/* Custom contact glyph — terminal dots + broadcast waves + antenna ping */
+.eh-float-contact svg { filter: drop-shadow(0 0 6px rgba(0,255,157,.55)); }
+.cg-dot { animation: cg-dot-blink 1.4s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+.cg-dot-2 { animation-delay: .18s; }
+.cg-dot-3 { animation-delay: .36s; }
+@keyframes cg-dot-blink {
+  0%, 80%, 100% { opacity: .35; }
+  40%           { opacity: 1;   }
+}
+.cg-wave { animation: cg-wave-out 2.2s ease-out infinite; transform-origin: 22px 6px; transform-box: fill-box; }
+.cg-wave-1 { animation-delay: 0s;    }
+.cg-wave-2 { animation-delay: .55s;  }
+@keyframes cg-wave-out {
+  0%   { opacity: 0;   transform: scale(.55); }
+  35%  { opacity: .85;                       }
+  100% { opacity: 0;   transform: scale(1.4); }
+}
+.cg-ping { animation: cg-ping 1.4s ease-in-out infinite; transform-origin: 22px 3px; transform-box: fill-box; }
+@keyframes cg-ping {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.65); }
 }
 
 /* Contact popover (above the button) */
