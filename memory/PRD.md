@@ -24,6 +24,19 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - **SafetyTipsCard** component — every tool ships with built-in safety/precaution tips (warn / info / ok variants).
 - **FloatingStack** — single fixed bottom-right cluster (AI chat → Mail → Telegram); fixed mobile overlap.
 - **Admin Broadcast Center** (`/admin → Broadcast`) — create announcement, **audience preview** (total + TG-reachable + email-reachable) before the blast; blast runs as a **background task** so the response is instant; email-opt-out users skipped; ledger of TG/email sent vs failed per announcement; auto-marks tool as NEW.
+- **Telegram Customer Bot — Major Upgrade ✨**
+  - `/menu` rich inline-button hub (Recovery · Order · Wallet · Spin · Breach · Phishing · Odds · Quote · News · Refer · Ask AI · Help)
+  - `/breach <email>` — XposedOrNot scan inside chat with safety steps
+  - `/odds` — interactive 3-step recovery-odds calculator
+  - `/phishing` — forward suspicious text → Claude Sonnet 4.5 strict-JSON verdict
+  - `/quote` — interactive 3-step instant price quote
+  - `/wallet` — balance + last 5 transactions
+  - `/spin` — daily wheel · auto-credits wallet · idempotent per UTC day
+  - `/news` — latest 3 announcements from Broadcast Center
+  - `/refer` — personal referral link + counter (auto-generates `referral_code`)
+  - 🤖 **AI Free-Chat fallback** — any non-command message routes to Claude Haiku 4.5; rate-limited **10 msgs/chat/day** in `tg_ai_quota`
+  - `/cancel` to abort multi-step flows; state stored in new `tg_state` collection
+  - Pytest at `/app/backend/tests/test_tg_bot_upgrade.py` — 23/23 green
 - Customer Telegram bot (webhook, /track /pay /recover /help, account linking)
 - Wallet · daily Spin · live ticker
 - "Works With" admin-managed brand marquee
