@@ -173,9 +173,16 @@ html.light .eh-script { text-shadow: 0 0 4px rgba(0,158,98,0.3); }
   width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--eh-border);
   color: var(--eh-text); padding: .8rem 1rem; font-family: 'Share Tech Mono', monospace;
   border-radius: 4px; outline:none; transition: border .15s ease, box-shadow .15s ease;
+  font-size: 14px;
 }
 html.light .eh-input, html.light .eh-textarea { background:#fff; }
 .eh-input:focus, .eh-textarea:focus { border-color: var(--eh-green); box-shadow: 0 0 0 3px rgba(0,255,157,0.15); }
+/* iOS Safari auto-zooms on focus when input font-size < 16px. Force 16px on mobile across all inputs to kill the zoom-in bug. */
+@media (max-width: 640px) {
+  .eh-input, .eh-textarea, input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="search"], input[type="url"], textarea, select {
+    font-size: 16px !important;
+  }
+}
 
 /* Marquee */
 .eh-marquee { overflow:hidden; background: var(--eh-green); color:#001a10; }
@@ -676,7 +683,8 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   align-items: flex-end;
   pointer-events: none; /* allow page clicks between buttons */
 }
-.eh-float-stack > .eh-float-btn { pointer-events: auto; }
+.eh-float-stack .eh-float-btn,
+.eh-float-stack .eh-contact-pop { pointer-events: auto; }
 
 .eh-float-btn {
   position: relative;
@@ -740,10 +748,66 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   50%      { transform: scale(1.18); }
 }
 
+/* CONTACT (merged Telegram + Email — home only) */
+.eh-float-contact {
+  background: linear-gradient(135deg, #0a0d10 0%, #050608 100%);
+  color: var(--eh-green);
+  border: 1.5px solid rgba(0,255,157,.45);
+  box-shadow: 0 8px 24px rgba(0,255,157,.30), 0 0 0 4px rgba(0,255,157,.10);
+}
+.eh-float-contact:hover { box-shadow: 0 12px 30px rgba(0,255,157,.5), 0 0 0 5px rgba(0,255,157,.18); }
+.eh-float-contact .ehc-ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; border: 1.5px solid var(--eh-green); animation: ehm-radar 2.6s ease-out infinite; }
+.eh-float-contact .ehc-ring-2 { animation-delay: 1.3s; }
+.eh-float-contact .ehc-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #229ED9;
+  box-shadow: 0 0 8px #229ED9;
+}
+
+/* Contact popover (above the button) */
+.eh-contact-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  z-index: 51;
+  width: 240px;
+  padding: 8px;
+  background: #0a0d10;
+  border: 1px solid rgba(0,255,157,.35);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0,255,157,.20), 0 0 0 1px rgba(0,255,157,.18);
+  animation: eh-fchat-in .18s cubic-bezier(.18,.89,.32,1.28) backwards;
+}
+.eh-contact-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--eh-text);
+  transition: background .15s ease, transform .15s ease;
+}
+.eh-contact-item:hover { background: rgba(255,255,255,.04); transform: translateX(-1px); }
+.eh-contact-ico {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.eh-contact-pop::after {
+  content: '';
+  position: absolute;
+  right: 22px; bottom: -6px;
+  width: 12px; height: 12px;
+  background: #0a0d10;
+  border-right: 1px solid rgba(0,255,157,.35);
+  border-bottom: 1px solid rgba(0,255,157,.35);
+  transform: rotate(45deg);
+}
+
 @media (max-width: 640px) {
   .eh-float-stack { right: 14px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); gap: 10px; }
   .eh-float-btn { width: 50px; height: 50px; }
-  .eh-float-mail-v2 .ehm-svg { width: 20px; height: 20px; }
 }
 
 /* ============================
@@ -841,9 +905,10 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   border: 1px solid var(--eh-border);
   border-radius: 8px;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 12.5px;
+  font-size: 16px; /* iOS Safari auto-zooms if < 16px on focus — keep 16px to prevent zoom */
   outline: none;
   transition: border .15s ease, box-shadow .15s ease;
+  min-width: 0;
 }
 .eh-fchat-input:focus { border-color: var(--eh-green); box-shadow: 0 0 0 3px rgba(0,255,157,.15); }
 .eh-fchat-send {
@@ -853,12 +918,23 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   border: none; cursor: pointer;
   box-shadow: 0 0 12px rgba(0,255,157,.35);
   transition: filter .18s ease, transform .18s ease;
+  flex-shrink: 0;
 }
 .eh-fchat-send:hover { filter: brightness(1.1); }
 .eh-fchat-send:disabled { opacity: .5; cursor: not-allowed; }
 
 @media (max-width: 640px) {
-  .eh-fchat-panel { right: 14px; left: 14px; width: auto; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); height: 64vh; }
+  .eh-fchat-panel {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    height: min(440px, 60dvh);
+    border-radius: 14px;
+  }
+  .eh-fchat-msg .bubble { font-size: 13.5px; }
+  .eh-fchat-body { padding: 10px 10px 4px; }
+  .eh-fchat-foot { padding: 8px 10px; }
 }
 
 /* ============================

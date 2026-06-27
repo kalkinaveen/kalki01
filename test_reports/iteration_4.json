@@ -1,0 +1,40 @@
+{
+  "summary": "Verified the FloatingStack bug-fix batch (iOS auto-zoom kill, merged Contact popover, home-only Contact, AI bot on all routes). Found and fixed a CSS pointer-events bug that made the new Contact button completely unclickable by real mouse/touch input (button worked only via programmatic .click()). After the 1-line CSS fix, all 6 requested test cases pass on mobile (390x844) and desktop (1280x900 / 1920x800).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "rca_of_the_issue": {
+    "issue": "Real mouse/touch clicks on [data-testid=floating-contact-toggle] did NOT open the popover. Programmatic btn.click() worked, so the React handler was correct.",
+    "root_cause": ".eh-float-stack has pointer-events:none (to let page content show through between buttons). The whitelist rule was '.eh-float-stack > .eh-float-btn { pointer-events: auto; }'. The new Contact button is wrapped in an extra <div ref=contactWrapRef style=position:relative> (so the absolute-positioned popover can anchor to it). That makes the contact button a *grandchild* of .eh-float-stack, so the > direct-child selector does NOT match it -> it inherits pointer-events:none -> hit-testing skips it -> elementsFromPoint(centerOfContactBtn) returned the hero <DIV> behind it, not the button. The AI bot button is a direct child so it was unaffected, masking the issue.",
+    "reproduction": "Mobile viewport 390x844, navigate to /. Tap the headphones (contact) button at bottom-right. Nothing happens.",
+    "fix_applied": "/app/frontend/src/index.css line ~686: changed '.eh-float-stack > .eh-float-btn { pointer-events: auto; }' to '.eh-float-stack .eh-float-btn, .eh-float-stack .eh-contact-pop { pointer-events: auto; }' (descendant selector + explicitly enable popover hit-testing).",
+    "verification": "After fix, page.click on floating-contact-toggle opens the popover; outside click closes; toggle close works; both Telegram (https://t.me/og_errorhacker) and Email (mailto:root@errorhacker.site) links resolve correctly."
+  },
+  "tests_executed": [
+    "MOBILE / home: floating-stack has exactly 2 buttons (AI + Contact); old testids floating-telegram & floating-mail-support absent — PASS",
+    "MOBILE / home: tap floating-contact-toggle -> floating-contact-popover renders with floating-contact-telegram (href contains 't.me/') + floating-contact-email (href starts 'mailto:') — PASS",
+    "MOBILE / home: outside-click and same-button toggle both close the popover — PASS",
+    "MOBILE / home: floating-faq-chat-input getComputedStyle font-size = 16px; visualViewport.scale = 1 after focus (no iOS auto-zoom) — PASS",
+    "MOBILE /tools, /recovery, /track: floating-contact-toggle ABSENT, floating-faq-chat-toggle PRESENT — PASS",
+    "MOBILE /tools: AI chat panel opens bounded within 390x844 viewport (no overflow) — PASS",
+    "DESKTOP 1280x900 home: AI chat E2E — sent 'Pricing?', /api/tools/faq returned 200 in ~2.5s with full reply rendered in chat body — PASS",
+    "DESKTOP home: AI(56x56 at x=1844,y=720) + Contact(56x56 at x=1844,y=652) stacked vertically, no overlap — PASS",
+    "DESKTOP /tools: contact button absent — PASS"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED by testing agent (1-line CSS): .eh-float-stack pointer-events whitelist must use descendant selector, not direct-child, because the Contact button is wrapped in an extra positioning div.",
+    "Consider also enabling pointer-events:auto on the wrapping <div> in FloatingStack.jsx (currently style={{position:'relative'}}) as a defensive belt-and-braces measure in case the popover gets restyled later."
+  ],
+  "updated_files": ["/app/frontend/src/index.css"],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "100% after CSS fix" },
+  "test_credentials": "none — public floating UI",
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bug-fix batch verified end-to-end on mobile + desktop. One real bug found (pointer-events whitelist using direct-child selector) and patched in /app/frontend/src/index.css. AI chat E2E (/api/tools/faq) responds ~2-3s on desktop. iOS auto-zoom mitigation confirmed via 16px font-size + visualViewport.scale=1. No other regressions detected."
+}
