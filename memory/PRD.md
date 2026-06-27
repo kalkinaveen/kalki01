@@ -11,6 +11,12 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **AI Tools Hub (`/tools`)** — 4 free tools in animated tile grid (Space Grotesk + neon green):
+  1. **Issue Checker** (`/tools/diagnose`) — 5-dropdown rule-based Instagram diagnosis → tailored roadmap + risk badge + recovery CTA.
+  2. **Appeal Generator** (`/tools/appeal`) — Claude Sonnet 4.5 via Emergent LLM key writes a polite, platform-ready appeal letter; copy & mailto handoff.
+  3. **Security Score** (`/tools/security-score`) — 6-question audit → animated score ring (0–100) with weak-spots list.
+  4. **AI FAQ Assistant** — Claude Haiku 4.5 chatbot, floating bubble bottom-right (also reachable from the hub tile).
+- **FloatingStack** — single fixed bottom-right cluster (AI chat → Mail → Telegram) replacing the older overlapping `FloatingTelegram` + `FloatingMail` positioning bug; safe-area-inset padding for iOS notch.
 - Customer Telegram bot (webhook, /track /pay /recover /help, account linking)
 - Wallet · daily Spin · live ticker
 - "Works With" admin-managed brand marquee
@@ -28,11 +34,17 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
   - Auto-fallback to `onboarding@resend.dev` if domain not verified
 
 ## Backlog
+- 4 more AI tools: Scam Detector, Recovery Time Predictor, Recovery Checklist, Instagram Safety Report (lead-gen email)
+- New-tool announcement system: admin toggle "NEW" → Telegram broadcast + Resend email blast
+- Stripe payment gateway (alongside Razorpay)
+- Multi-currency UI auto-switch (backend supports it)
+- Feed moderator "Hide/Trash" UI (delete → hide for `feed_mod` role)
+- 30-day auto-purge trashed feed posts (cron)
+- Refactor: split `server.py` (~2,900 lines) into `routes/auth.py`, `routes/recovery.py`, `routes/wallet.py`, `routes/tools.py`, `routes/feed.py`
+- DRY the LLM bootstrap (extract `get_llm_chat()` helper)
+- IP/session rate-limit on `/api/tools/*` to guard Emergent LLM key budget
 - Razorpay auto-credit wallet on deposit
-- Stripe alongside Razorpay (international)
 - WhatsApp Business notifications (Twilio or Meta)
-- Multi-currency UI hookup
-- 30-day auto-purge trashed feed posts
 - VIP tiers / cashback on orders
 - Leaderboard / achievements / streak multipliers on spin
 - PWA / add-to-home-screen
