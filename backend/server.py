@@ -33,6 +33,7 @@ from email_service import (
     notify_quote_sent,
     notify_order_status,
     notify_wallet_credited,
+    send_wallet_receipt_email,
 )
 
 # --------------------------------------------------------------------------
@@ -496,6 +497,34 @@ DEFAULT_BOT_CFG: Dict[str, Any] = {
         "Tap below for menu — or just paste your ID 👇"
     ),
     "commands": {"track": True, "orders": True, "pay": True, "recover": True, "help": True},
+    # NEW: chat IDs allowed to approve/decline wallet deposits via the bot
+    "admin_chat_ids": [],
+    # NEW: customizable payment info shown by /pay command + Payment Info menu button.
+    # Fully edited from the webpanel. {amount} and {order_id} placeholders auto-substituted.
+    "payment_info": {
+        "heading": "💳 <b>PAYMENT OPTIONS</b>",
+        "intro": "Pick any method — your wallet credits the moment our team verifies.",
+        "upi_id": "errorhacker@upi",
+        "upi_name": "ERRORHACKER",
+        "crypto_wallets": [
+            {"coin": "USDT", "network": "TRC20", "address": "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"},
+        ],
+        "instructions": (
+            "1. Send the exact amount to any address above.\n"
+            "2. Copy the UPI Reference / UTR or crypto TXID.\n"
+            "3. Tap <b>I've Paid</b> below to submit proof — admin verifies in 5–30 min."
+        ),
+        "support_text": "Need help? Reply here or tap Support below.",
+        "show_paid_button": True,
+        "show_support_button": True,
+        "show_quote_button": True,
+        "paid_button_label": "✅ I've Paid",
+        "support_button_label": "💬 Talk to Support",
+        "quote_button_label": "💎 Get Free Quote",
+        "support_url": "https://t.me/errorhacker",
+        "quote_url": "https://errorhacker.site/recovery",
+        "paid_form_url": "https://errorhacker.site/me/wallet",
+    },
 }
 
 async def _get_bot_cfg() -> Dict[str, Any]:
@@ -641,32 +670,209 @@ async def _handle_orders(bot_token: str, chat_id: int):
     await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": buttons})
 
 async def _handle_pay(bot_token: str, chat_id: int, order_id: str = ""):
+    """Render the payment info screen. Uses the FULLY CUSTOMIZABLE payment_info block
+    from `telegram_bot.payment_info` (managed in the admin webpanel).
+    Falls back to the global site payments config for legacy installations.
+    """
+    bot_cfg = await _get_bot_cfg()
+    pinfo = (bot_cfg.get("payment_info") or {})
     cfg = await _ensure_config()
-    pay = (cfg.get("payments") or {})
-    lines = ["<b>💳 PAYMENT DETAILS</b>\n"]
+    legacy_pay = (cfg.get("payments") or {})
+
+    # Lookup order context if user supplied an ID
     order_text = None
+    amount_hint = ""
     if order_id:
         order_text = await _fmt_order(order_id)
-        if order_text:
-            lines.append(order_text + "\n")
-    if pay.get("manual_enabled"):
-        if pay.get("upi_id"):
-            lines.append(f"<b>UPI:</b> <code>{pay['upi_id']}</code>")
-            if pay.get("upi_name"):
-                lines.append(f"   → {pay['upi_name']}")
-        if pay.get("bank_details"):
-            lines.append(f"\n<b>BANK</b>\n<code>{pay['bank_details']}</code>")
-    if pay.get("crypto_enabled") and pay.get("crypto_wallets"):
-        lines.append("\n<b>CRYPTO</b>")
-        for w in (pay.get("crypto_wallets") or [])[:6]:
+        try:
+            ord_doc = await db.orders.find_one({"id": order_id})
+            if ord_doc and ord_doc.get("amount"):
+                amount_hint = f"₹{ord_doc['amount']}"
+        except Exception:
+            pass
+
+    lines = []
+    lines.append(pinfo.get("heading") or "💳 <b>PAYMENT OPTIONS</b>")
+    if pinfo.get("intro"):
+        lines.append("")
+        lines.append(pinfo["intro"])
+    if order_text:
+        lines.append("")
+        lines.append(order_text)
+    # UPI block
+    upi_id = pinfo.get("upi_id") or legacy_pay.get("upi_id")
+    if upi_id:
+        lines.append("")
+        lines.append(f"<b>UPI ·</b> <code>{upi_id}</code>")
+        nm = pinfo.get("upi_name") or legacy_pay.get("upi_name")
+        if nm:
+            lines.append(f"   → {nm}")
+    # Crypto block
+    cw = pinfo.get("crypto_wallets") or legacy_pay.get("crypto_wallets") or []
+    if cw:
+        lines.append("")
+        lines.append("<b>CRYPTO</b>")
+        for w in cw[:6]:
             net = f" · {w.get('network')}" if w.get("network") else ""
             lines.append(f"• <b>{w.get('coin')}</b>{net}: <code>{w.get('address')}</code>")
-    if pay.get("instructions"):
-        lines.append(f"\n<i>{pay['instructions']}</i>")
-    kb = None
-    if order_id:
-        kb = {"inline_keyboard": [[{"text": "🔗 Submit Payment Proof", "url": f"https://errorhacker.site/track?id={order_id}"}]]}
-    await _tg_send(bot_token, chat_id, "\n".join(lines), kb)
+    # Instructions (with {amount} / {order_id} placeholders)
+    instr = (pinfo.get("instructions") or legacy_pay.get("instructions") or "")
+    if instr:
+        instr = instr.replace("{amount}", amount_hint or "your amount").replace("{order_id}", order_id or "your order")
+        lines.append("")
+        lines.append(f"<i>{instr}</i>")
+    if pinfo.get("support_text"):
+        lines.append("")
+        lines.append(pinfo["support_text"])
+
+    # Inline keyboard built from configurable buttons
+    kb_rows: List[List[Dict[str, str]]] = []
+    if pinfo.get("show_paid_button", True):
+        paid_url = pinfo.get("paid_form_url") or "https://errorhacker.site/me/wallet"
+        if order_id:
+            paid_url = f"https://errorhacker.site/track?id={order_id}"
+        kb_rows.append([{"text": pinfo.get("paid_button_label", "✅ I've Paid"), "url": paid_url}])
+    if pinfo.get("show_quote_button", True) and pinfo.get("quote_url"):
+        kb_rows.append([{"text": pinfo.get("quote_button_label", "💎 Get Free Quote"), "url": pinfo["quote_url"]}])
+    if pinfo.get("show_support_button", True) and pinfo.get("support_url"):
+        kb_rows.append([{"text": pinfo.get("support_button_label", "💬 Talk to Support"), "url": pinfo["support_url"]}])
+    kb_rows.append([{"text": "🔙 Main Menu", "callback_data": "menu_main"}])
+
+    await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": kb_rows})
+
+
+# ====== Admin notifications + Approve/Decline (deposits) ===================
+def _is_tg_admin(bot_cfg: Dict[str, Any], chat_id: int) -> bool:
+    raw = bot_cfg.get("admin_chat_ids") or []
+    try:
+        return int(chat_id) in [int(x) for x in raw if x]
+    except Exception:
+        return False
+
+async def _notify_admins_deposit_pending(deposit: Dict[str, Any]):
+    """DM every admin chat with the deposit details + Approve/Decline buttons."""
+    try:
+        bot_token = await _get_bot_token()
+        if not bot_token:
+            return
+        bot_cfg = await _get_bot_cfg()
+        admin_ids = bot_cfg.get("admin_chat_ids") or []
+        if not admin_ids:
+            return
+        user = await db.users.find_one({"user_id": deposit.get("user_id")}) or {}
+        coin_line = ""
+        if deposit.get("method") == "crypto":
+            coin_line = f" · {deposit.get('coin', '')}"
+        text = (
+            f"💰 <b>NEW DEPOSIT — review needed</b>\n"
+            f"───────────────\n"
+            f"<b>User:</b>    {user.get('email', '—')}\n"
+            f"<b>User ID:</b> <code>{deposit.get('user_id', '')}</code>\n"
+            f"<b>Amount:</b>  <b>₹{deposit.get('amount', 0)}</b>\n"
+            f"<b>Method:</b>  {(deposit.get('method') or 'manual').upper()}{coin_line}\n"
+            f"<b>Ref:</b>     <code>{deposit.get('tx_reference') or '—'}</code>\n"
+            f"<b>Time:</b>    {deposit.get('createdAt', '—')[:19].replace('T', ' ')}"
+        )
+        dep_id = deposit.get("id")
+        kb = {"inline_keyboard": [[
+            {"text": "✅ Approve & Credit", "callback_data": f"dep_approve_{dep_id}"},
+            {"text": "❌ Decline",          "callback_data": f"dep_decline_{dep_id}"},
+        ]]}
+        for cid in admin_ids:
+            try:
+                await _tg_send(bot_token, int(cid), text, kb)
+            except Exception as e:
+                log.warning("notify_admin failed for %s: %s", cid, e)
+    except Exception as e:
+        log.error("notify_admins_deposit_pending failed: %s", e)
+
+
+async def _approve_deposit_internal(deposit_id: str) -> Dict[str, Any]:
+    """Shared approval logic — used by both the web admin endpoint AND the TG callback.
+    Uses the existing `_wallet_txn` flow so the wallet ledger stays consistent."""
+    dep = await db.wallet_deposits.find_one({"id": deposit_id})
+    if not dep:
+        return {"ok": False, "error": "Deposit not found"}
+    if dep.get("status") == "approved":
+        return {"ok": False, "error": "Already approved", "deposit": _clean(dep)}
+    if dep.get("status") == "rejected":
+        return {"ok": False, "error": "Already rejected", "deposit": _clean(dep)}
+    amount = float(dep.get("amount") or 0)
+    user_id = dep.get("user_id")
+    user = await db.users.find_one({"user_id": user_id})
+    if not user:
+        return {"ok": False, "error": "User not found"}
+
+    await _wallet_txn(
+        user_id, "credit", amount,
+        note=f"Deposit approved · {dep.get('method', 'manual')} {dep.get('tx_reference', '') or ''}".strip(),
+        ref={"deposit_id": deposit_id, "tx_reference": dep.get("tx_reference", ""), "method": dep.get("method", "manual")},
+    )
+    # fetch the just-created txn to send a clean receipt
+    last_txn = await db.wallet_txns.find_one(
+        {"user_id": user_id, "ref.deposit_id": deposit_id},
+        sort=[("createdAt", -1)],
+    )
+    await db.wallet_deposits.update_one(
+        {"id": deposit_id},
+        {"$set": {"status": "approved", "approved_at": _now_iso()}},
+    )
+    wallet = await db.wallets.find_one({"user_id": user_id}) or {}
+    new_balance = float(wallet.get("balance") or 0)
+
+    if user.get("email"):
+        try:
+            asyncio.create_task(notify_wallet_credited(
+                user["email"], user.get("name", ""), amount, new_balance,
+            ))
+            if last_txn:
+                asyncio.create_task(send_wallet_receipt_email(
+                    user["email"], user.get("name", ""), _clean(last_txn), new_balance,
+                ))
+        except Exception as e:
+            log.warning("notify_wallet_credited dispatch failed: %s", e)
+    user_chat = user.get("telegram_chat_id")
+    if user_chat:
+        try:
+            tok = await _get_bot_token()
+            if tok:
+                await _tg_send(tok, int(user_chat),
+                    f"✅ <b>Deposit approved</b>\n\n"
+                    f"<b>+₹{amount:,.0f}</b> credited to your wallet.\n"
+                    f"New balance: <b>₹{new_balance:,.2f}</b>\n\n"
+                    f"<i>Tx Ref: {dep.get('tx_reference', '—')}</i>",
+                    {"inline_keyboard": [[{"text": "💰 Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]})
+        except Exception:
+            pass
+    return {"ok": True, "deposit": {**_clean(dep), "status": "approved"}, "balance": new_balance}
+
+
+async def _reject_deposit_internal(deposit_id: str, reason: str = "") -> Dict[str, Any]:
+    dep = await db.wallet_deposits.find_one({"id": deposit_id})
+    if not dep:
+        return {"ok": False, "error": "Deposit not found"}
+    if dep.get("status") == "approved":
+        return {"ok": False, "error": "Already approved"}
+    if dep.get("status") == "rejected":
+        return {"ok": False, "error": "Already rejected", "deposit": _clean(dep)}
+    await db.wallet_deposits.update_one(
+        {"id": deposit_id},
+        {"$set": {"status": "rejected", "rejected_at": _now_iso(), "reject_reason": reason or ""}},
+    )
+    user = await db.users.find_one({"user_id": dep.get("user_id")}) or {}
+    user_chat = user.get("telegram_chat_id")
+    if user_chat:
+        try:
+            tok = await _get_bot_token()
+            if tok:
+                await _tg_send(tok, int(user_chat),
+                    f"❌ <b>Deposit declined</b>\n\n"
+                    f"₹{float(dep.get('amount') or 0):,.0f} top-up could not be verified.\n"
+                    f"{('Reason: ' + reason) if reason else 'Please double-check your UPI/UTR or crypto TXID and re-submit.'}",
+                    {"inline_keyboard": [[{"text": "💰 Re-submit", "url": "https://errorhacker.site/me/wallet"}]]})
+        except Exception:
+            pass
+    return {"ok": True, "deposit": {**_clean(dep), "status": "rejected"}}
 
 async def _handle_link(bot_token: str, chat_id: int, chat: Dict[str, Any], code: str):
     code = (code or "").strip().upper()
@@ -1199,6 +1405,29 @@ async def _handle_callback(bot_token: str, chat_id: int, data: str):
         await _handle_track(bot_token, chat_id, data[6:])
     elif data.startswith("pay_"):
         await _handle_pay(bot_token, chat_id, data[4:])
+    # --- admin: approve / decline a wallet deposit ---
+    elif data.startswith("dep_approve_") or data.startswith("dep_decline_"):
+        bot_cfg = await _get_bot_cfg()
+        if not _is_tg_admin(bot_cfg, chat_id):
+            await _tg_send(bot_token, chat_id, "🚫 <b>Not authorised.</b>\nOnly approved admin chats can approve/decline deposits.")
+            return
+        if data.startswith("dep_approve_"):
+            dep_id = data[len("dep_approve_"):]
+            res = await _approve_deposit_internal(dep_id)
+            if res.get("ok"):
+                dep = res["deposit"]
+                await _tg_send(bot_token, chat_id,
+                    f"✅ <b>APPROVED</b> · ₹{dep.get('amount', 0)} credited\n"
+                    f"User <code>{dep.get('user_id', '')}</code> new balance: ₹{res.get('balance', 0):,.2f}")
+            else:
+                await _tg_send(bot_token, chat_id, f"⚠ {res.get('error', 'Failed')}")
+        else:
+            dep_id = data[len("dep_decline_"):]
+            res = await _reject_deposit_internal(dep_id, reason="Declined by admin via Telegram")
+            if res.get("ok"):
+                await _tg_send(bot_token, chat_id, f"❌ <b>DECLINED</b> · deposit <code>{dep_id}</code> rejected. User has been notified.")
+            else:
+                await _tg_send(bot_token, chat_id, f"⚠ {res.get('error', 'Failed')}")
 
 async def _process_update(update: Dict[str, Any]):
     """Async, fire-and-forget update handler — must never raise to caller."""
@@ -1979,6 +2208,94 @@ async def admin_bot_settings_update(body: TelegramBotSettingsIn, x_admin_token: 
     cfg = await _save_bot_cfg(upd)
     cfg.pop("webhook_secret", None)
     return {"ok": True, "telegram_bot": cfg}
+
+
+@api.get("/admin/telegram/admin-chats")
+async def admin_tg_admin_chats(x_admin_token: Optional[str] = Header(None)):
+    """List the Telegram chat IDs allowed to approve/decline wallet deposits via the bot."""
+    await _check_admin(x_admin_token)
+    cfg = await _get_bot_cfg()
+    return {"admin_chat_ids": cfg.get("admin_chat_ids", [])}
+
+@api.put("/admin/telegram/admin-chats")
+async def admin_tg_admin_chats_set(body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    raw = body.get("admin_chat_ids") or []
+    cleaned: List[int] = []
+    for v in raw:
+        try:
+            cleaned.append(int(str(v).strip()))
+        except Exception:
+            continue
+    # de-dup, preserve order
+    seen = set(); uniq = []
+    for v in cleaned:
+        if v not in seen: seen.add(v); uniq.append(v)
+    cfg = await _save_bot_cfg({"admin_chat_ids": uniq})
+    cfg.pop("webhook_secret", None)
+    return {"ok": True, "admin_chat_ids": uniq, "telegram_bot": cfg}
+
+@api.post("/admin/telegram/admin-chats/test")
+async def admin_tg_admin_chats_test(x_admin_token: Optional[str] = Header(None)):
+    """Send a test message to every configured admin chat — useful for verifying setup."""
+    await _check_admin(x_admin_token)
+    token = await _get_bot_token()
+    cfg = await _get_bot_cfg()
+    ids = cfg.get("admin_chat_ids") or []
+    if not token or not ids:
+        return {"ok": False, "sent": 0, "error": "Set bot token + at least one admin chat ID first"}
+    sent = 0
+    for cid in ids:
+        try:
+            r = await _tg_send(token, int(cid), "🔔 <b>Admin test ping</b>\nIf you see this, your Telegram chat is correctly authorised to approve wallet deposits.")
+            if r.get("ok"): sent += 1
+        except Exception:
+            continue
+    return {"ok": True, "sent": sent, "total": len(ids)}
+
+
+@api.get("/admin/telegram/payment-info")
+async def admin_tg_payment_info(x_admin_token: Optional[str] = Header(None)):
+    """Return the customizable payment-info block sent by the bot's /pay command."""
+    await _check_admin(x_admin_token)
+    cfg = await _get_bot_cfg()
+    return cfg.get("payment_info") or DEFAULT_BOT_CFG["payment_info"]
+
+@api.put("/admin/telegram/payment-info")
+async def admin_tg_payment_info_set(body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    # Merge over current to preserve any fields the UI didn't send
+    cur = (await _get_bot_cfg()).get("payment_info") or dict(DEFAULT_BOT_CFG["payment_info"])
+    allowed = {
+        "heading", "intro", "upi_id", "upi_name", "crypto_wallets",
+        "instructions", "support_text",
+        "show_paid_button", "show_support_button", "show_quote_button",
+        "paid_button_label", "support_button_label", "quote_button_label",
+        "support_url", "quote_url", "paid_form_url",
+    }
+    for k in allowed:
+        if k in body:
+            cur[k] = body[k]
+    cfg = await _save_bot_cfg({"payment_info": cur})
+    cfg.pop("webhook_secret", None)
+    return {"ok": True, "payment_info": cur}
+
+@api.post("/admin/telegram/payment-info/preview")
+async def admin_tg_payment_info_preview(body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
+    """Send a preview to the first admin chat so the operator can see what the bot will render."""
+    await _check_admin(x_admin_token)
+    cfg = await _get_bot_cfg()
+    target = body.get("chat_id") or (cfg.get("admin_chat_ids") or [None])[0]
+    if not target:
+        raise HTTPException(status_code=400, detail="No chat_id supplied and no admin chats configured")
+    # Persist a temporary copy so _handle_pay picks it up
+    if body.get("payment_info"):
+        await _save_bot_cfg({"payment_info": body["payment_info"]})
+    token = await _get_bot_token()
+    if not token:
+        raise HTTPException(status_code=400, detail="Bot token not set")
+    await _handle_pay(token, int(target), "")
+    return {"ok": True}
 
 @api.post("/admin/telegram/bot/enable")
 async def admin_bot_enable(body: TelegramBotEnableIn, x_admin_token: Optional[str] = Header(None)):
@@ -3796,6 +4113,17 @@ async def me_wallet_txns(request: Request, limit: int = 50):
     rows = await db.wallet_txns.find({"user_id": user["user_id"]}).sort("createdAt", -1).to_list(min(limit, 200))
     return [_clean(r) for r in rows]
 
+@api.get("/me/wallet/transactions/{txn_id}")
+async def me_wallet_txn_one(txn_id: str, request: Request):
+    """Fetch a single wallet transaction — used by the printable receipt page."""
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    txn = await db.wallet_txns.find_one({"id": txn_id, "user_id": user["user_id"]})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return _clean(txn)
+
 @api.post("/me/wallet/deposit")
 async def me_wallet_deposit_request(body: WalletDepositRequestIn, request: Request):
     """Customer submits a deposit proof — admin must approve before crediting wallet.
@@ -3818,11 +4146,13 @@ async def me_wallet_deposit_request(body: WalletDepositRequestIn, request: Reque
     }
     await db.wallet_deposits.insert_one(dep)
     dep.pop("_id", None)
-    # Notify admin on telegram
+    # Notify admins via Telegram bot with Approve/Decline inline buttons (new path).
+    asyncio.create_task(_notify_admins_deposit_pending(dep))
+    # Legacy generic alert (kept for backwards-compat with the old single-channel notifier).
     try:
         cfg = await _ensure_config()
         notif = (cfg.get("notifications") or {}).get("telegram") or {}
-        if notif.get("enabled"):
+        if notif.get("enabled") and notif.get("bot_token") and notif.get("chat_id"):
             asyncio.create_task(_telegram_send(notif.get("bot_token", ""), notif.get("chat_id", ""),
                 f"<b>WALLET DEPOSIT // ERRORHACKER</b>\n<b>User:</b> {user.get('email')}\n<b>Amount:</b> ₹{body.amount}\n<b>Method:</b> {body.method} {body.coin or ''}\n<b>Ref:</b> {body.tx_reference}\n<b>Proof:</b> {body.proof_url or '—'}"))
     except Exception:
@@ -3841,38 +4171,18 @@ async def admin_wallet_deposits(x_admin_token: Optional[str] = Header(None), sta
 @api.post("/admin/wallet/deposits/{deposit_id}/approve")
 async def admin_wallet_deposit_approve(deposit_id: str, x_admin_token: Optional[str] = Header(None)):
     await _check_admin(x_admin_token)
-    dep = await db.wallet_deposits.find_one({"id": deposit_id})
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deposit not found")
-    if dep.get("status") != "pending":
-        raise HTTPException(status_code=400, detail=f"Already {dep.get('status')}")
-    await _wallet_txn(dep["user_id"], "credit", dep["amount"], note=f"Deposit approved · {dep.get('method')} {dep.get('tx_reference') or ''}",
-                      ref={"deposit_id": deposit_id})
-    await db.wallet_deposits.update_one({"id": deposit_id}, {"$set": {"status": "approved", "approved_at": _now_iso()}})
-    # DM user on Telegram if linked
-    user = await db.users.find_one({"user_id": dep["user_id"]})
-    chat_id = (user or {}).get("telegram_chat_id")
-    if chat_id:
-        token = await _get_bot_token()
-        if token:
-            asyncio.create_task(_tg_send(token, chat_id,
-                f"💰 <b>Wallet credited</b>\n+₹{dep['amount']} added to your ERRORHACKER wallet.\n\nTap below to view balance & spend.",
-                {"inline_keyboard": [[{"text": "🪙 Open Wallet", "url": "https://errorhacker.site/me/wallet"}]]}))
-    # Email the user that wallet was credited
-    if user and user.get("email"):
-        wallet = await db.wallets.find_one({"user_id": dep["user_id"]})
-        asyncio.create_task(notify_wallet_credited(
-            user["email"], user.get("name", ""), dep["amount"], (wallet or {}).get("balance", 0)
-        ))
-    return {"ok": True}
+    res = await _approve_deposit_internal(deposit_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error") or "Approval failed")
+    return res
 
 @api.post("/admin/wallet/deposits/{deposit_id}/reject")
-async def admin_wallet_deposit_reject(deposit_id: str, x_admin_token: Optional[str] = Header(None)):
+async def admin_wallet_deposit_reject(deposit_id: str, x_admin_token: Optional[str] = Header(None), reason: Optional[str] = ""):
     await _check_admin(x_admin_token)
-    res = await db.wallet_deposits.update_one({"id": deposit_id, "status": "pending"}, {"$set": {"status": "rejected", "rejected_at": _now_iso()}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Deposit not found or already processed")
-    return {"ok": True}
+    res = await _reject_deposit_internal(deposit_id, reason=reason or "")
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error") or "Reject failed")
+    return res
 
 @api.post("/admin/wallet/{user_id}/adjust")
 async def admin_wallet_adjust(user_id: str, body: WalletAdjustIn, x_admin_token: Optional[str] = Header(None)):

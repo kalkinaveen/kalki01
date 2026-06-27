@@ -60,6 +60,50 @@ def _wrap(title: str, preheader: str, body_html: str, cta_label: str = "", cta_u
 </body></html>'''
 
 
+def _receipt_url(txn_id: str) -> str:
+    return f"{SITE_URL}/receipt/{txn_id}"
+
+
+async def send_wallet_receipt_email(email: str, name: str, txn: Dict[str, Any], new_balance: Optional[float] = None):
+    """Send a clean printable receipt email for any wallet transaction (deposit, spin, debit)."""
+    if not email or not txn:
+        return
+    is_credit = txn.get("type") in ("credit", "spin", "cashback", "refund")
+    sign = "+" if is_credit else "−"
+    color = "#00ff9d" if is_credit else "#ff5577"
+    type_label = {
+        "credit": "Wallet Top-up",
+        "debit": "Wallet Debit",
+        "spin": "Spin Reward",
+        "cashback": "Cashback",
+        "refund": "Refund",
+    }.get(txn.get("type", ""), str(txn.get("type", "")).title())
+    ref = txn.get("ref") or {}
+    method = (ref.get("method") or "").upper()
+    tx_ref = ref.get("tx_reference") or ""
+    bal_after = txn.get("balance_after", new_balance) or 0.0
+    rows_html = f"""
+      <tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;">Type</td><td style="padding:8px 0;text-align:right;color:#e5e7eb;font-size:13px;font-weight:600;">{type_label}</td></tr>
+      <tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Amount</td><td style="padding:8px 0;text-align:right;color:{color};font-family:'Space Grotesk',Inter,sans-serif;font-size:18px;font-weight:800;border-top:1px dashed #1f2937;">{sign}₹{float(txn.get("amount", 0)):,.2f}</td></tr>
+      {f'<tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Method</td><td style="padding:8px 0;text-align:right;color:#e5e7eb;font-size:13px;border-top:1px dashed #1f2937;">{method}</td></tr>' if method else ''}
+      {f'<tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Reference</td><td style="padding:8px 0;text-align:right;color:#e5e7eb;font-family:JetBrains Mono,monospace;font-size:11px;word-break:break-all;border-top:1px dashed #1f2937;">{tx_ref}</td></tr>' if tx_ref else ''}
+      <tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Balance After</td><td style="padding:8px 0;text-align:right;color:#00ff9d;font-family:'Space Grotesk',Inter,sans-serif;font-size:14px;font-weight:700;border-top:1px dashed #1f2937;">₹{float(bal_after):,.2f}</td></tr>
+      <tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Receipt ID</td><td style="padding:8px 0;text-align:right;color:#e5e7eb;font-family:JetBrains Mono,monospace;font-size:11px;border-top:1px dashed #1f2937;">{txn.get("id", "—")}</td></tr>
+      <tr><td style="padding:8px 0;color:#94a3b8;font-size:12px;border-top:1px dashed #1f2937;">Date</td><td style="padding:8px 0;text-align:right;color:#e5e7eb;font-family:JetBrains Mono,monospace;font-size:11px;border-top:1px dashed #1f2937;">{(txn.get("createdAt") or "")[:19].replace("T", " ")}</td></tr>
+    """
+    body = f"""
+      <p>Hey {name or 'there'},</p>
+      <p>Here's your receipt for the transaction below.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:10px;background:#10141a;border:1px solid #1f2937;border-radius:10px;padding:18px 22px;">
+        {rows_html}
+      </table>
+      <p style="margin-top:18px;font-size:12px;color:#64748b;">Keep this receipt for your records. You can also view it any time on your account.</p>
+    """
+    subject = f"[ERRORHACKER] Receipt · {sign}₹{float(txn.get('amount', 0)):,.0f} · {txn.get('id', '')}"
+    html = _wrap(f"Receipt · {sign}₹{float(txn.get('amount', 0)):,.0f}", f"Wallet receipt {txn.get('id', '')}", body, "VIEW RECEIPT", _receipt_url(txn.get("id", "")))
+    await send_email(email, subject, html)
+
+
 async def send_email(to: str, subject: str, html: str) -> Dict[str, Any]:
     """Non-blocking send. Logs and swallows errors so caller flow never breaks."""
     if not RESEND_API_KEY or not to:

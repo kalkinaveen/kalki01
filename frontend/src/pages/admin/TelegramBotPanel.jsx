@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Send as TgIcon, Loader2, Power, Save, Users, Megaphone, Copy, Check, RefreshCw, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import TgAdminChatsPanel from './TgAdminChatsPanel';
+import TgPaymentInfoPanel from './TgPaymentInfoPanel';
+import PendingDepositsPanel from './PendingDepositsPanel';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -180,6 +183,15 @@ const TelegramBotPanel = () => {
           {broadcastBusy ? <Loader2 size={12} className="animate-spin" /> : <Megaphone size={12} />} SEND TO {users.length} USER(S)
         </button>
       </div>
+
+      {/* Admin chat IDs (for deposit approvals via Telegram) */}
+      <TgAdminChatsPanel />
+
+      {/* Customizable /pay payment info */}
+      <TgPaymentInfoPanel />
+
+      {/* Pending wallet deposits — approve / reject inline */}
+      <PendingDepositsPanel />
 
       {/* Linked users list */}
       <div className="eh-panel p-5">

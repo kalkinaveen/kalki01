@@ -172,7 +172,7 @@ const MyWallet = () => {
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {txns.map(t => (
-              <div key={t.id} className="flex items-center justify-between gap-3 p-3 border border-[var(--eh-border)] rounded text-sm" data-testid={`wallet-txn-${t.id}`}>
+              <Link key={t.id} to={`/receipt/${t.id}`} className="flex items-center justify-between gap-3 p-3 border border-[var(--eh-border)] rounded text-sm hover:border-[rgba(0,255,157,.4)] hover:bg-[rgba(0,255,157,.04)] transition-colors group" data-testid={`wallet-txn-${t.id}`}>
                 <div className="flex items-center gap-2.5 min-w-0">
                   {TYPE_ICON[t.type] || <ArrowDownLeft size={14} />}
                   <div className="min-w-0">
@@ -184,9 +184,9 @@ const MyWallet = () => {
                   <div className={`eh-mono font-bold ${['credit', 'spin', 'cashback', 'refund'].includes(t.type) ? 'text-[var(--eh-green)]' : 'text-red-400'}`}>
                     {['credit', 'spin', 'cashback', 'refund'].includes(t.type) ? '+' : '−'}₹{Number(t.amount).toLocaleString('en-IN')}
                   </div>
-                  <div className="eh-mono text-[10px] opacity-50">{new Date(t.createdAt).toLocaleDateString()}</div>
+                  <div className="eh-mono text-[10px] opacity-50 group-hover:text-[var(--eh-green)]">{new Date(t.createdAt).toLocaleDateString()} · RECEIPT →</div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

@@ -59,12 +59,21 @@ export const api = {
   // wallet
   walletGet: () => req('/me/wallet', { auth: true }),
   walletTxns: () => req('/me/wallet/transactions', { auth: true }),
+  walletTxn: (id) => req(`/me/wallet/transactions/${id}`, { auth: true }),
   walletDeposit: (data) => req('/me/wallet/deposit', { method: 'POST', body: data, auth: true }),
   adminWalletDeposits: (status) => req(`/admin/wallet/deposits${status ? `?status=${status}` : ''}`, { admin: true }),
   adminWalletApprove: (id) => req(`/admin/wallet/deposits/${id}/approve`, { method: 'POST', admin: true }),
-  adminWalletReject: (id) => req(`/admin/wallet/deposits/${id}/reject`, { method: 'POST', admin: true }),
+  adminWalletReject: (id, reason = '') => req(`/admin/wallet/deposits/${id}/reject${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`, { method: 'POST', admin: true }),
   adminWalletAdjust: (uid, data) => req(`/admin/wallet/${uid}/adjust`, { method: 'POST', body: data, admin: true }),
   adminWallets: () => req('/admin/wallets', { admin: true }),
+  // telegram admin chats (for deposit approvals)
+  adminTgChatsGet: () => req('/admin/telegram/admin-chats', { admin: true }),
+  adminTgChatsSet: (ids) => req('/admin/telegram/admin-chats', { method: 'PUT', body: { admin_chat_ids: ids }, admin: true }),
+  adminTgChatsTest: () => req('/admin/telegram/admin-chats/test', { method: 'POST', admin: true }),
+  // telegram bot /pay info (customizable payment block sent by the bot)
+  adminTgPayInfoGet: () => req('/admin/telegram/payment-info', { admin: true }),
+  adminTgPayInfoSet: (data) => req('/admin/telegram/payment-info', { method: 'PUT', body: data, admin: true }),
+  adminTgPayInfoPreview: (data) => req('/admin/telegram/payment-info/preview', { method: 'POST', body: data, admin: true }),
   // spin wheel
   spinConfig: () => req('/spin/config'),
   spinConfigUpdate: (data) => req('/admin/spin/config', { method: 'PUT', body: data, admin: true }),
