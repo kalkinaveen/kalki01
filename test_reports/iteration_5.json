@@ -1,0 +1,49 @@
+{
+  "summary": "Telegram bot major-upgrade backend verification (iteration 5). Wrote in-process pytest suite at /app/backend/tests/test_tg_bot_upgrade.py that monkey-patches server._tg_call + server._get_bot_token (no real Telegram traffic) and directly invokes backend.server._process_update(...) to drive the state machine. Mongo state is asserted on real db. 23/23 tests pass (100% green) covering every new TG command (/menu /breach /odds /quote /phishing /quote /wallet /spin /news /refer /cancel + AI free-chat fallback) plus regressions on /tools/* endpoints and /admin/announcements.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "tests_executed": [
+    "/menu → returns rich main menu inline_keyboard — PASS",
+    "/breach test@example.com → reaches XposedOrNot path and CLEARS tg_state — PASS",
+    "/breach (no arg) → sets tg_state.key='awaiting_breach_email'; follow-up email clears state — PASS",
+    "/odds full 3-step flow: odds_pick_platform → odds_pick_issue → odds_pick_when → CLEARED, final reply contains 'RECOVERY ODDS' — PASS",
+    "/quote full 3-step flow: q_p_instagram → q_i_hacked → q_u_high → CLEARED, reply contains 'INSTANT QUOTE' — PASS",
+    "/spin unlinked chat_id 99999 → 'Link your account' reply; no spin_history/wallet_transactions row created — PASS",
+    "/spin linked: exactly 1 spin_history + 1 wallet_transactions credit; balance incremented; second same-day spin rejected (Come back tomorrow), no new rows — PASS",
+    "/phishing → tg_state.key='awaiting_phishing_text'; mocked Claude Sonnet 4.5 returns JSON; state cleared after analysis; reply contains 'HIGH RISK' — PASS",
+    "/wallet unlinked → link nudge; linked → balance + last 5 txns rendered — PASS",
+    "/news → reads db.announcements desc by created_at, returns up to 3 — PASS",
+    "/refer linked → generates referral_code if absent, reply includes errorhacker.site/r/<CODE> — PASS",
+    "AI rate-limit: 11 plain-text msgs from chat 88888 → tg_ai_quota.count capped at 10, 11th returns 'free AI questions' exhausted reply — PASS",
+    "/cancel → tg_state for chat removed — PASS",
+    "Regression: /start /help /recover and raw 'REC-AB12CD34' all route correctly — PASS",
+    "Regression HTTP POST: /api/tools/recovery-odds, /api/tools/breach, /api/tools/phishing-check, /api/tools/account-worth, /api/tools/selfie-coach, /api/tools/appeal, /api/tools/faq — all 200 — PASS",
+    "Regression admin: POST /api/admin/login → POST /api/admin/announcements → GET list → GET audience preview → DELETE — all 200 — PASS"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_tg_bot_upgrade.py",
+    "/app/test_reports/pytest/tg_bot_upgrade.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 3934 lines — should be split into modules (telegram_bot.py, tools.py, admin.py, payments.py) for maintainability. Not blocking but accumulating tech debt.",
+    "_handle_phishing_analyse imports emergentintegrations.llm.chat inside the function (line ~894). Same pattern in _handle_ai_chat. Move to top-of-module import (or a single helper) to avoid repeated import overhead per request.",
+    "AI quota is incremented BEFORE the LLM call (_tg_ai_bump on line 1133); if the LLM fails the user still loses a question. Consider bumping only on successful reply.",
+    "_handle_spin computes new_bal = float(user.get('balance') or 0) + amount from the pre-increment cached read; safer to re-read users.find_one after $inc to display the actual persisted balance (race-safe).",
+    "DeprecationWarning on @app.on_event(startup/shutdown) — FastAPI lifespan handlers preferred (cosmetic).",
+    "/refer: referral_code is derived from user_id[:8].upper(); for user_ids that aren't hex this could collide. Consider uuid4().hex[:8] or a short b62 hash."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tg_bot_upgrade.py (new)"
+  ],
+  "success_rate": { "backend": "100% (23/23)", "frontend": "n/a (backend-only request)" },
+  "test_credentials": "Admin password 'admin123' (from /app/memory/test_credentials.md) used for /api/admin/* regression. Bot token + webhook secret were NOT needed — _get_bot_token + _tg_call are monkey-patched in-process per the iteration_3 pattern recommended by the main agent.",
+  "seed_data_creation": "Per-test setup creates TEST_-prefixed users with telegram_chat_id in {99999, 88888, 77777} and a TEST_ announcement for /news. cleanup_data fixture wipes db.tg_state, db.tg_ai_quota, db.users (by chat_id), db.spin_history (TEST_), db.wallet_transactions (TEST_) before AND after every test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest at /app/backend/tests/test_tg_bot_upgrade.py — runs end-to-end in 23s. Pattern: install single asyncio loop BEFORE `import server` so motor.AsyncIOMotorClient binds to the same loop the tests use (otherwise you get 'attached to a different loop' RuntimeError). Stub server._tg_call → returns {ok:True}, server._get_bot_token → returns 'TEST_BOT_TOKEN'. For AI tests, monkey-patch emergentintegrations.llm.chat.LlmChat with a FakeChat that exposes with_model() and async send_message(). HTTP regression tests hit the public REACT_APP_BACKEND_URL.",
+  "rca_of_the_issue": "No bugs found. All new TG bot flows behave per spec — state machine advances correctly through odds/quote/phishing/breach multi-step flows and clears at the end; spin is idempotent per UTC day; AI quota hard-caps at 10/day per chat_id; unlinked-user nudges work for /wallet /spin /refer."
+}

@@ -699,8 +699,455 @@ async def _handle_link(bot_token: str, chat_id: int, chat: Dict[str, Any], code:
                    f"You'll get instant DMs whenever your order or recovery case status changes.",
                    _bot_main_keyboard(bot_cfg.get("username", ""), bot_cfg.get("commands")))
 
+
+# ============================================================================
+# Telegram bot upgrade — interactive menu, AI tools, wallet, spin, news, AI chat
+# ============================================================================
+
+# ---- per-chat state (multi-step flows like /odds, /quote, /phishing) -------
+async def _tg_state_set(chat_id: int, key: str, data: Dict[str, Any]):
+    await db.tg_state.update_one(
+        {"chat_id": chat_id},
+        {"$set": {"chat_id": chat_id, "key": key, "data": data, "updated_at": _now_iso()}},
+        upsert=True,
+    )
+
+async def _tg_state_get(chat_id: int) -> Dict[str, Any]:
+    doc = await db.tg_state.find_one({"chat_id": chat_id}) or {}
+    return doc
+
+async def _tg_state_clear(chat_id: int):
+    await db.tg_state.delete_one({"chat_id": chat_id})
+
+# ---- AI free-chat rate-limit (per chat_id) ---------------------------------
+AI_DAILY_LIMIT = 10
+async def _tg_ai_quota(chat_id: int) -> tuple:
+    """Returns (remaining, reset_iso)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rec = await db.tg_ai_quota.find_one({"chat_id": chat_id, "date": today}) or {}
+    used = int(rec.get("count") or 0)
+    return max(0, AI_DAILY_LIMIT - used), today
+
+async def _tg_ai_bump(chat_id: int):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    await db.tg_ai_quota.update_one(
+        {"chat_id": chat_id, "date": today},
+        {"$inc": {"count": 1}, "$setOnInsert": {"created_at": _now_iso()}},
+        upsert=True,
+    )
+
+# ---- Main menu (rich button grid) ------------------------------------------
+def _main_menu_kb() -> Dict[str, Any]:
+    return {"inline_keyboard": [
+        [{"text": "🆘 Recover Account", "url": "https://errorhacker.site/recovery"},
+         {"text": "📦 My Order",        "callback_data": "menu_orders"}],
+        [{"text": "💰 Wallet",          "callback_data": "menu_wallet"},
+         {"text": "🎰 Spin",            "callback_data": "menu_spin"}],
+        [{"text": "🛡 Breach Check",    "callback_data": "menu_breach"},
+         {"text": "⚠ Phishing Check",   "callback_data": "menu_phishing"}],
+        [{"text": "📊 Recovery Odds",   "callback_data": "menu_odds_start"},
+         {"text": "💎 Get Quote",       "callback_data": "menu_quote_start"}],
+        [{"text": "📣 Latest News",     "callback_data": "menu_news"},
+         {"text": "🎁 Refer & Earn",    "callback_data": "menu_refer"}],
+        [{"text": "🤖 Ask AI Anything", "callback_data": "menu_ai"},
+         {"text": "ℹ Help",             "callback_data": "menu_help"}],
+    ]}
+
+async def _send_main_menu(bot_token: str, chat_id: int, intro: str = ""):
+    text = intro or (
+        "📋 <b>ERRORHACKER · MAIN MENU</b>\n\n"
+        "Tap any button below to get started — or just <i>type your question</i> and our AI will help.\n\n"
+        "🟢 <b>Tip:</b> paste a Case ID (REC-/ORD-) anytime for instant status."
+    )
+    await _tg_send(bot_token, chat_id, text, _main_menu_kb())
+
+# ---- /breach ---------------------------------------------------------------
+async def _handle_breach(bot_token: str, chat_id: int, email: str = ""):
+    email = (email or "").strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        await _tg_state_set(chat_id, "awaiting_breach_email", {})
+        await _tg_send(bot_token, chat_id,
+                       "🛡 <b>BREACH CHECKER</b>\n\n"
+                       "Send me the email you want to scan against the world's known data breaches.\n"
+                       "<i>example: you@example.com</i>\n\n"
+                       "🔒 We never store your email.")
+        return
+    await _tg_state_clear(chat_id)
+    await _tg_send(bot_token, chat_id, f"🔎 scanning <code>{email}</code> …")
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as c:
+            r = await c.get("https://api.xposedornot.com/v1/breach-analytics", params={"email": email})
+        if r.status_code == 404:
+            await _tg_send(bot_token, chat_id, f"✅ <b>{email}</b> was NOT found in any known breach.\n\n<i>Stay vigilant — enable 2FA on every important account.</i>")
+            return
+        if r.status_code != 200:
+            await _tg_send(bot_token, chat_id, "⚠ Breach service temporarily unavailable. Try again in a minute.")
+            return
+        data = r.json() or {}
+        bm = (data.get("BreachMetrics") or {})
+        risk = ((bm.get("risk") or [{}])[0] or {})
+        breaches_list = (data.get("ExposedBreaches") or {}).get("breaches_details") or []
+        count = len(breaches_list)
+        score = int(risk.get("risk_score") or 0)
+        label = str(risk.get("risk_label") or "Low")
+        lines = [
+            f"🚨 <b>FOUND IN {count} BREACH{'ES' if count != 1 else ''}</b>",
+            f"Exposure score · <b>{score}/100</b> · risk <b>{label}</b>",
+            "",
+            "<b>Top exposures:</b>",
+        ]
+        for b in breaches_list[:5]:
+            name = b.get("breach") or "Unknown"
+            date = b.get("xposed_date") or ""
+            lines.append(f"• <code>{name}</code> {f'· {date}' if date else ''}")
+        lines.append("")
+        lines.append("<b>What to do now:</b>")
+        lines.append("1. Change passwords on every site that uses this email.")
+        lines.append("2. Enable 2FA on an authenticator app (NOT just SMS).")
+        lines.append("3. Watch for phishing emails referencing these breaches.")
+        await _tg_send(bot_token, chat_id, "\n".join(lines),
+                       {"inline_keyboard": [[{"text": "🛡 Get Pro Recovery Help", "url": "https://errorhacker.site/recovery"}],
+                                            [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+    except Exception as e:
+        log.warning("tg breach failed: %s", e)
+        await _tg_send(bot_token, chat_id, "⚠ Couldn't scan right now. Try again shortly.")
+
+# ---- /odds (interactive) ---------------------------------------------------
+ODDS_PLATFORMS = [("instagram", "Instagram"), ("facebook", "Facebook"), ("tiktok", "TikTok"), ("snapchat", "Snapchat"), ("twitter", "Twitter / X")]
+ODDS_ISSUES = [("hacked", "Hacked"), ("disabled", "Disabled"), ("locked_2fa", "2FA locked"), ("forgot_password", "Forgot password"), ("impersonation", "Impersonation"), ("shadowban", "Shadowban")]
+ODDS_WHEN = [("today", "Today"), ("week", "This week"), ("month", "1–4 wks"), ("older", "1+ month")]
+
+async def _handle_odds_start(bot_token: str, chat_id: int):
+    await _tg_state_set(chat_id, "odds_pick_platform", {})
+    kb = [[{"text": l, "callback_data": f"odds_p_{v}"}] for v, l in ODDS_PLATFORMS]
+    await _tg_send(bot_token, chat_id,
+                   "📊 <b>RECOVERY ODDS</b> · step 1/3\n\nWhich platform?",
+                   {"inline_keyboard": kb})
+
+async def _handle_odds_pick_issue(bot_token: str, chat_id: int, platform: str):
+    await _tg_state_set(chat_id, "odds_pick_issue", {"platform": platform})
+    kb = [[{"text": l, "callback_data": f"odds_i_{v}"}] for v, l in ODDS_ISSUES]
+    await _tg_send(bot_token, chat_id,
+                   f"📊 <b>RECOVERY ODDS</b> · step 2/3\n\nPlatform: <b>{platform.title()}</b>\nWhat happened?",
+                   {"inline_keyboard": kb})
+
+async def _handle_odds_pick_when(bot_token: str, chat_id: int, issue: str):
+    state = await _tg_state_get(chat_id)
+    data = state.get("data") or {}
+    data["issue"] = issue
+    await _tg_state_set(chat_id, "odds_pick_when", data)
+    kb = [[{"text": l, "callback_data": f"odds_w_{v}"}] for v, l in ODDS_WHEN]
+    await _tg_send(bot_token, chat_id,
+                   f"📊 <b>RECOVERY ODDS</b> · step 3/3\n\nWhen did it happen?",
+                   {"inline_keyboard": kb})
+
+async def _handle_odds_finish(bot_token: str, chat_id: int, when: str):
+    state = await _tg_state_get(chat_id)
+    data = state.get("data") or {}
+    platform = data.get("platform", "instagram")
+    issue = data.get("issue", "hacked")
+    await _tg_state_clear(chat_id)
+
+    base = _BASE_ODDS.get(issue, {"odds": 50, "days": (5, 14)})
+    odds = base["odds"] + _PLATFORM_MOD.get(platform, -5) + _WHEN_MOD.get(when, 0) + 8 + 6 + 5  # assume yes/yes/yes
+    odds = max(5, min(95, odds))
+    pro = min(95, odds + 25)
+    dmin, dmax = base["days"]
+    if when in ("month", "older"):
+        dmin += 2; dmax += 5
+
+    tier = "high" if odds >= 70 else "medium" if odds >= 45 else "low"
+    tier_emoji = {"high": "🟢", "medium": "🟡", "low": "🔴"}[tier]
+
+    await _tg_send(bot_token, chat_id,
+        f"📊 <b>YOUR RECOVERY ODDS</b>\n\n"
+        f"<b>Self-recovery:</b> {odds}%\n"
+        f"<b>With ERRORHACKER:</b> {pro}% {tier_emoji}\n"
+        f"<b>Estimated time:</b> {dmin}–{dmax} days\n\n"
+        f"<i>Platform: {platform.title()} · Issue: {issue.replace('_', ' ')} · {when}</i>\n\n"
+        f"💡 Pro tip: never share OTP/password — including with someone claiming to be from the platform.",
+        {"inline_keyboard": [
+            [{"text": "🚀 Boost My Odds · Start Recovery", "url": "https://errorhacker.site/recovery"}],
+            [{"text": "🔄 Recalculate", "callback_data": "menu_odds_start"},
+             {"text": "🔙 Main Menu", "callback_data": "menu_main"}],
+        ]})
+
+# ---- /phishing -------------------------------------------------------------
+async def _handle_phishing_start(bot_token: str, chat_id: int):
+    await _tg_state_set(chat_id, "awaiting_phishing_text", {})
+    await _tg_send(bot_token, chat_id,
+                   "⚠ <b>PHISHING DETECTOR</b>\n\n"
+                   "Forward or paste the suspicious message (DM / SMS / email body) right here.\n"
+                   "Our AI will analyse it in seconds.\n\n"
+                   "<i>🔒 We never store your message.</i>")
+
+async def _handle_phishing_analyse(bot_token: str, chat_id: int, msg: str):
+    await _tg_state_clear(chat_id)
+    msg = (msg or "").strip()
+    if len(msg) < 8:
+        await _tg_send(bot_token, chat_id, "❗ message too short to analyse. Paste the full text.")
+        return
+    if len(msg) > 6000:
+        msg = msg[:6000]
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception:
+        await _tg_send(bot_token, chat_id, "⚠ AI analysis unavailable right now.")
+        return
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        await _tg_send(bot_token, chat_id, "⚠ AI key not configured.")
+        return
+    await _tg_send(bot_token, chat_id, "🔎 analysing …")
+    sid = uuid.uuid4().hex
+    try:
+        chat = LlmChat(api_key=key, session_id=sid, system_message=PHISHING_PROMPT).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        reply = await chat.send_message(UserMessage(text=f"Channel: Telegram\n---message---\n{msg}\n---end---"))
+    except Exception as e:
+        log.warning("tg phishing LLM failed: %s", e)
+        await _tg_send(bot_token, chat_id, "⚠ AI temporarily unavailable.")
+        return
+
+    import json as _json, re as _re
+    parsed = None
+    try:
+        parsed = _json.loads(reply or "")
+    except Exception:
+        m = _re.search(r"\{[\s\S]*\}", reply or "")
+        if m:
+            try:    parsed = _json.loads(m.group(0))
+            except Exception: parsed = None
+    if not isinstance(parsed, dict):
+        parsed = {"risk_level": "medium", "confidence": 50, "red_flags": [], "verdict": (reply or "")[:140], "action": "Treat with caution."}
+
+    rl = str(parsed.get("risk_level", "medium")).lower()
+    emoji = {"safe": "✅", "low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}.get(rl, "🟡")
+    lines = [
+        f"{emoji} <b>{rl.upper()} RISK</b> · confidence {parsed.get('confidence', 0)}%",
+        "",
+        f"<b>Verdict:</b> {parsed.get('verdict', '—')}",
+    ]
+    flags = parsed.get("red_flags") or []
+    if flags:
+        lines.append("\n<b>Red flags:</b>")
+        for f in flags[:6]:
+            lines.append(f"• {f}")
+    if parsed.get("action"):
+        lines.append(f"\n💡 <b>Action:</b> {parsed['action']}")
+    kb_rows = [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]
+    if rl in ("high", "critical"):
+        kb_rows.insert(0, [{"text": "🛡 I already clicked — recover me", "url": "https://errorhacker.site/recovery"}])
+    await _tg_send(bot_token, chat_id, "\n".join(lines), {"inline_keyboard": kb_rows})
+
+# ---- /quote (interactive) --------------------------------------------------
+QUOTE_PLATFORMS = [("instagram", "Instagram"), ("facebook", "Facebook"), ("tiktok", "TikTok"), ("snapchat", "Snapchat")]
+QUOTE_ISSUES = [("hacked", "Hacked"), ("disabled", "Disabled"), ("locked_2fa", "2FA Lock"), ("forgot_password", "Lost Password"), ("impersonation", "Impersonation")]
+QUOTE_URGENCY = [("low", "Standard"), ("medium", "Priority"), ("high", "Urgent ⚡")]
+
+# Indicative price table — adjust freely in admin in a future iteration
+_QUOTE_PRICE = {
+    "hacked":          {"low": 1499, "medium": 2499, "high": 3999},
+    "disabled":        {"low": 1999, "medium": 2999, "high": 4999},
+    "locked_2fa":      {"low":  999, "medium": 1499, "high": 2499},
+    "forgot_password": {"low":  799, "medium": 1199, "high": 1999},
+    "impersonation":   {"low": 1499, "medium": 2499, "high": 3999},
+}
+_QUOTE_PLATFORM_MULT = {"instagram": 1.0, "facebook": 1.05, "tiktok": 1.1, "snapchat": 1.15}
+
+async def _handle_quote_start(bot_token: str, chat_id: int):
+    await _tg_state_set(chat_id, "quote_pick_platform", {})
+    kb = [[{"text": l, "callback_data": f"q_p_{v}"}] for v, l in QUOTE_PLATFORMS]
+    await _tg_send(bot_token, chat_id,
+                   "💎 <b>INSTANT QUOTE</b> · step 1/3\n\nWhich platform?",
+                   {"inline_keyboard": kb})
+
+async def _handle_quote_pick_issue(bot_token: str, chat_id: int, platform: str):
+    await _tg_state_set(chat_id, "quote_pick_issue", {"platform": platform})
+    kb = [[{"text": l, "callback_data": f"q_i_{v}"}] for v, l in QUOTE_ISSUES]
+    await _tg_send(bot_token, chat_id,
+                   f"💎 step 2/3 · platform <b>{platform.title()}</b>\n\nWhat happened?",
+                   {"inline_keyboard": kb})
+
+async def _handle_quote_pick_urgency(bot_token: str, chat_id: int, issue: str):
+    state = await _tg_state_get(chat_id)
+    data = state.get("data") or {}
+    data["issue"] = issue
+    await _tg_state_set(chat_id, "quote_pick_urgency", data)
+    kb = [[{"text": l, "callback_data": f"q_u_{v}"}] for v, l in QUOTE_URGENCY]
+    await _tg_send(bot_token, chat_id, "💎 step 3/3 · how urgent?", {"inline_keyboard": kb})
+
+async def _handle_quote_finish(bot_token: str, chat_id: int, urgency: str):
+    state = await _tg_state_get(chat_id)
+    data = state.get("data") or {}
+    platform = data.get("platform", "instagram")
+    issue = data.get("issue", "hacked")
+    await _tg_state_clear(chat_id)
+    price = _QUOTE_PRICE.get(issue, _QUOTE_PRICE["hacked"]).get(urgency, 2499)
+    price = int(price * _QUOTE_PLATFORM_MULT.get(platform, 1.0))
+    eta = {"low": "5–10 days", "medium": "3–6 days", "high": "24–72 hrs"}[urgency]
+    await _tg_send(bot_token, chat_id,
+        f"💎 <b>YOUR INSTANT QUOTE</b>\n\n"
+        f"<b>Platform:</b> {platform.title()}\n"
+        f"<b>Issue:</b> {issue.replace('_', ' ').title()}\n"
+        f"<b>Tier:</b> {urgency.title()}\n"
+        f"<b>Indicative price:</b> ₹{price:,}\n"
+        f"<b>ETA:</b> {eta}\n\n"
+        f"<i>Final price is locked after our team reviews your case (1–2 hrs). No payment until you accept the quote.</i>",
+        {"inline_keyboard": [
+            [{"text": "🚀 Start Recovery Now", "url": "https://errorhacker.site/recovery"}],
+            [{"text": "🔄 New Quote", "callback_data": "menu_quote_start"},
+             {"text": "🔙 Main Menu", "callback_data": "menu_main"}],
+        ]})
+
+# ---- /wallet ---------------------------------------------------------------
+async def _handle_wallet(bot_token: str, chat_id: int):
+    user = await db.users.find_one({"telegram_chat_id": chat_id})
+    if not user:
+        await _tg_send(bot_token, chat_id,
+                       "🔗 <b>Link your account first</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i>. Takes 5 sec, no password.")
+        return
+    bal = float(user.get("balance") or 0)
+    cur = user.get("currency") or "INR"
+    sym = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}.get(cur, "")
+    txs = await db.wallet_transactions.find({"user_id": user.get("user_id")}).sort("created_at", -1).to_list(5)
+    lines = [f"💰 <b>WALLET BALANCE</b>\n\n<b>{sym}{bal:.2f}</b> {cur}", ""]
+    if txs:
+        lines.append("<b>Last 5 transactions:</b>")
+        for t in txs:
+            sign = "+" if (t.get("type") == "credit") else "−"
+            amt = float(t.get("amount") or 0)
+            lines.append(f"{sign} {sym}{amt:.2f} · {t.get('reason', '')[:40]}")
+    else:
+        lines.append("<i>No transactions yet — spin the wheel to earn your first coins!</i>")
+    await _tg_send(bot_token, chat_id, "\n".join(lines),
+                   {"inline_keyboard": [
+                       [{"text": "🎰 Spin & Earn", "callback_data": "menu_spin"},
+                        {"text": "💳 Top Up",     "url": "https://errorhacker.site/me"}],
+                       [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+
+# ---- /spin (daily) ---------------------------------------------------------
+SPIN_PRIZES = [
+    {"amount": 5,    "weight": 35, "label": "₹5"},
+    {"amount": 10,   "weight": 28, "label": "₹10"},
+    {"amount": 25,   "weight": 18, "label": "₹25"},
+    {"amount": 50,   "weight": 10, "label": "₹50"},
+    {"amount": 100,  "weight": 6,  "label": "₹100"},
+    {"amount": 250,  "weight": 2,  "label": "₹250 🎉"},
+    {"amount": 500,  "weight": 1,  "label": "₹500 💎"},
+]
+import random as _random  # noqa: E402
+
+async def _handle_spin(bot_token: str, chat_id: int):
+    user = await db.users.find_one({"telegram_chat_id": chat_id})
+    if not user:
+        await _tg_send(bot_token, chat_id,
+                       "🔗 <b>Link your account to spin</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i>.")
+        return
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    spin_doc = await db.spin_history.find_one({"user_id": user["user_id"], "date": today})
+    if spin_doc:
+        await _tg_send(bot_token, chat_id,
+                       f"⌛ <b>Come back tomorrow!</b>\n\nYou already spun today and won <b>₹{spin_doc.get('amount', 0)}</b>.")
+        return
+    weights = [p["weight"] for p in SPIN_PRIZES]
+    prize = _random.choices(SPIN_PRIZES, weights=weights, k=1)[0]
+    amount = prize["amount"]
+    # Credit
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": amount}})
+    await db.wallet_transactions.insert_one({
+        "id": uuid.uuid4().hex, "user_id": user["user_id"], "type": "credit",
+        "amount": amount, "reason": "Daily spin · Telegram", "created_at": _now_iso(),
+    })
+    await db.spin_history.insert_one({"user_id": user["user_id"], "date": today, "amount": amount, "via": "telegram", "created_at": _now_iso()})
+    new_bal = float(user.get("balance") or 0) + amount
+    await _tg_send(bot_token, chat_id,
+        f"🎰 <b>SPIN RESULT</b>\n\n"
+        f"You won <b>{prize['label']}</b>!\n"
+        f"New balance: <b>₹{new_bal:.2f}</b>\n\n"
+        f"<i>Come back tomorrow for another spin.</i>",
+        {"inline_keyboard": [[{"text": "💰 Wallet", "callback_data": "menu_wallet"},
+                              {"text": "🔙 Menu",  "callback_data": "menu_main"}]]})
+
+# ---- /news -----------------------------------------------------------------
+async def _handle_news(bot_token: str, chat_id: int):
+    rows = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(3)
+    if not rows:
+        await _tg_send(bot_token, chat_id, "📣 No news yet — stay tuned!")
+        return
+    lines = ["📣 <b>LATEST UPDATES</b>\n"]
+    for a in rows:
+        lines.append(f"• <b>{a.get('title', '—')}</b>")
+        body = (a.get("body") or "")[:160]
+        lines.append(f"  {body}")
+        if a.get("link"):
+            lk = a["link"]
+            if not lk.startswith("http"):
+                lk = f"https://errorhacker.site{lk}"
+            lines.append(f"  🔗 {lk}")
+        lines.append("")
+    await _tg_send(bot_token, chat_id, "\n".join(lines),
+                   {"inline_keyboard": [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+
+# ---- /refer ----------------------------------------------------------------
+async def _handle_refer(bot_token: str, chat_id: int):
+    user = await db.users.find_one({"telegram_chat_id": chat_id})
+    if not user:
+        await _tg_send(bot_token, chat_id,
+                       "🔗 <b>Link your account first</b>\n\nVisit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → <i>Connect Telegram</i> to get your unique referral link.")
+        return
+    code = (user.get("referral_code") or user["user_id"][:8]).upper()
+    if not user.get("referral_code"):
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"referral_code": code}})
+    link = f"https://errorhacker.site/r/{code}"
+    referrals = await db.users.count_documents({"referred_by": code})
+    await _tg_send(bot_token, chat_id,
+        f"🎁 <b>REFER &amp; EARN</b>\n\n"
+        f"Share this link with anyone who needs account recovery:\n"
+        f"<code>{link}</code>\n\n"
+        f"<b>You earn:</b> ₹100 wallet credit per friend who completes a paid recovery.\n"
+        f"<b>They get:</b> ₹50 off their first order.\n\n"
+        f"<b>Your referrals so far:</b> {referrals}",
+        {"inline_keyboard": [[{"text": "📤 Share to a chat",
+                               "switch_inline_query": f"Get your social account recovered fast. Use my link → {link}"}],
+                             [{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+
+# ---- AI free-chat fallback (Claude Haiku, rate-limited) --------------------
+async def _handle_ai_chat(bot_token: str, chat_id: int, text: str):
+    remaining, _ = await _tg_ai_quota(chat_id)
+    if remaining <= 0:
+        await _tg_send(bot_token, chat_id,
+                       "⏳ You've used all your free AI questions for today (10/10). It resets at midnight UTC.\n\n"
+                       "Tip: use commands like /breach, /odds, /quote — they don't count against your AI quota.",
+                       {"inline_keyboard": [[{"text": "🔙 Main Menu", "callback_data": "menu_main"}]]})
+        return
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception:
+        await _tg_send(bot_token, chat_id, "⚠ AI assistant unavailable right now.")
+        return
+    key = os.environ.get("EMERGENT_LLM_KEY", "")
+    if not key:
+        await _tg_send(bot_token, chat_id, "⚠ AI key not configured.")
+        return
+    await _tg_ai_bump(chat_id)
+    sid = f"tg-{chat_id}"
+    try:
+        chat = LlmChat(api_key=key, session_id=sid, system_message=FAQ_SYSTEM_PROMPT).with_model("anthropic", "claude-haiku-4-5-20251001")
+        reply = await chat.send_message(UserMessage(text=text))
+    except Exception as e:
+        log.warning("tg ai chat failed: %s", e)
+        await _tg_send(bot_token, chat_id, "⚠ AI temporarily unavailable. Try again in a moment.")
+        return
+    quota_line = f"\n\n<i>· {remaining - 1}/10 AI questions left today</i>" if remaining - 1 > 0 else "\n\n<i>· last AI question today — use commands for more</i>"
+    await _tg_send(bot_token, chat_id, (reply or "—") + quota_line,
+                   {"inline_keyboard": [[{"text": "📋 Main Menu", "callback_data": "menu_main"}]]})
+
+
 async def _handle_callback(bot_token: str, chat_id: int, data: str):
-    if data == "menu_track":
+    if data == "menu_main":
+        await _send_main_menu(bot_token, chat_id)
+    elif data == "menu_track":
         await _tg_send(bot_token, chat_id,
                        "🆔 <b>Just paste your ID</b>\n\nLike <code>REC-AB12CD3456</code> or <code>ORD-XYZ123</code> — I'll fetch your live status instantly. No login needed.")
     elif data == "menu_orders":
@@ -709,6 +1156,45 @@ async def _handle_callback(bot_token: str, chat_id: int, data: str):
         await _handle_pay(bot_token, chat_id, "")
     elif data == "menu_help":
         await _send_help(bot_token, chat_id)
+    # --- new menu actions ---
+    elif data == "menu_breach":
+        await _handle_breach(bot_token, chat_id, "")
+    elif data == "menu_phishing":
+        await _handle_phishing_start(bot_token, chat_id)
+    elif data == "menu_odds_start":
+        await _handle_odds_start(bot_token, chat_id)
+    elif data == "menu_quote_start":
+        await _handle_quote_start(bot_token, chat_id)
+    elif data == "menu_wallet":
+        await _handle_wallet(bot_token, chat_id)
+    elif data == "menu_spin":
+        await _handle_spin(bot_token, chat_id)
+    elif data == "menu_news":
+        await _handle_news(bot_token, chat_id)
+    elif data == "menu_refer":
+        await _handle_refer(bot_token, chat_id)
+    elif data == "menu_ai":
+        await _tg_state_set(chat_id, "awaiting_ai", {})
+        rem, _ = await _tg_ai_quota(chat_id)
+        await _tg_send(bot_token, chat_id,
+                       f"🤖 <b>ASK AI ANYTHING</b>\n\n"
+                       f"Type your question — pricing, recovery time, what to do if hacked, anything.\n\n"
+                       f"<i>You have {rem}/10 AI questions left today.</i>")
+    # --- odds flow ---
+    elif data.startswith("odds_p_"):
+        await _handle_odds_pick_issue(bot_token, chat_id, data[7:])
+    elif data.startswith("odds_i_"):
+        await _handle_odds_pick_when(bot_token, chat_id, data[7:])
+    elif data.startswith("odds_w_"):
+        await _handle_odds_finish(bot_token, chat_id, data[7:])
+    # --- quote flow ---
+    elif data.startswith("q_p_"):
+        await _handle_quote_pick_issue(bot_token, chat_id, data[4:])
+    elif data.startswith("q_i_"):
+        await _handle_quote_pick_urgency(bot_token, chat_id, data[4:])
+    elif data.startswith("q_u_"):
+        await _handle_quote_finish(bot_token, chat_id, data[4:])
+    # --- legacy ---
     elif data.startswith("track_"):
         await _handle_track(bot_token, chat_id, data[6:])
     elif data.startswith("pay_"):
@@ -734,6 +1220,8 @@ async def _process_update(update: Dict[str, Any]):
         text = (msg.get("text") or "").strip()
         if chat_id is None or not text:
             return
+
+        # ---- /commands (parsed first) ----
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             payload = parts[1].strip() if len(parts) > 1 else ""
@@ -741,6 +1229,10 @@ async def _process_update(update: Dict[str, Any]):
                 await _handle_link(bot_token, chat_id, chat, payload[5:])
             else:
                 await _send_welcome(bot_token, chat_id)
+                await _send_main_menu(bot_token, chat_id, "📋 <b>Tap a button to begin</b>")
+            return
+        if text.startswith("/menu"):
+            await _send_main_menu(bot_token, chat_id)
             return
         if text.startswith("/track"):
             parts = text.split(maxsplit=1)
@@ -759,12 +1251,68 @@ async def _process_update(update: Dict[str, Any]):
         if text.startswith("/recover"):
             await _send_recover(bot_token, chat_id)
             return
-        # raw ID — treat as track
+        # ---- new commands ----
+        if text.startswith("/breach"):
+            parts = text.split(maxsplit=1)
+            await _handle_breach(bot_token, chat_id, parts[1] if len(parts) > 1 else "")
+            return
+        if text.startswith("/odds"):
+            await _handle_odds_start(bot_token, chat_id)
+            return
+        if text.startswith("/phishing") or text.startswith("/scam"):
+            await _handle_phishing_start(bot_token, chat_id)
+            return
+        if text.startswith("/quote"):
+            await _handle_quote_start(bot_token, chat_id)
+            return
+        if text.startswith("/wallet"):
+            await _handle_wallet(bot_token, chat_id)
+            return
+        if text.startswith("/spin"):
+            await _handle_spin(bot_token, chat_id)
+            return
+        if text.startswith("/news"):
+            await _handle_news(bot_token, chat_id)
+            return
+        if text.startswith("/refer"):
+            await _handle_refer(bot_token, chat_id)
+            return
+        if text.startswith("/ai") or text.startswith("/ask"):
+            parts = text.split(maxsplit=1)
+            if len(parts) > 1:
+                await _handle_ai_chat(bot_token, chat_id, parts[1])
+            else:
+                await _tg_state_set(chat_id, "awaiting_ai", {})
+                rem, _ = await _tg_ai_quota(chat_id)
+                await _tg_send(bot_token, chat_id, f"🤖 Ask me anything! <i>{rem}/10 questions left today.</i>")
+            return
+        if text.startswith("/cancel"):
+            await _tg_state_clear(chat_id)
+            await _send_main_menu(bot_token, chat_id, "🚫 cancelled.")
+            return
+
+        # ---- state-aware text (in the middle of a multi-step flow) ----
+        state_doc = await _tg_state_get(chat_id)
+        state_key = state_doc.get("key", "")
+        if state_key == "awaiting_breach_email":
+            await _handle_breach(bot_token, chat_id, text)
+            return
+        if state_key == "awaiting_phishing_text":
+            await _handle_phishing_analyse(bot_token, chat_id, text)
+            return
+        if state_key == "awaiting_ai":
+            await _tg_state_clear(chat_id)
+            await _handle_ai_chat(bot_token, chat_id, text)
+            return
+
+        # ---- raw ID auto-detect (legacy) ----
         upper = text.upper().split()[0]
         if upper.startswith("ORD-") or upper.startswith("REC-"):
             await _handle_track(bot_token, chat_id, upper)
             return
-        await _send_welcome(bot_token, chat_id)
+
+        # ---- catch-all → AI free-chat (rate-limited) ----
+        await _handle_ai_chat(bot_token, chat_id, text)
     except Exception as e:
         log.warning("telegram bot process_update failed: %s", e)
 
