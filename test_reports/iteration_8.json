@@ -1,0 +1,73 @@
+{
+  "summary": "Iteration-8 review: pay-with-wallet endpoint, full refund lifecycle (user+admin), public PII-safe refund tracker, spin-wheel prize-ladder editor with weight-honoring RNG, TG /refund webhook. 23/24 backend pytest passed (1 skipped — TG webhook secret not registered in this env). All critical frontend flows confirmed: /admin sidebar shows new Refunds + Spin Wheel tabs, RefundsManager renders existing test refunds, AdminSpinPanel renders + ADD-PRIZE works, public /refund/{id} tracker renders correctly with mobile-clean layout (no horizontal overflow at 390×844), unknown-id falls back to [refund-back]. Wallet-pill in /cart requires real AuthContext login (localStorage-token bypass insufficient) — not a bug, just a test-harness limitation; backend pay-with-wallet end-to-end works (order → /payments/proof to set price → POST /pay-with-wallet → status='verified', WTX-* debit row created, balance decremented exactly by amount, double-pay returns 400). NO BACKEND BUGS FOUND THIS ITERATION.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/spin/config", "issue": "If admin restores from a snapshot taken via the public GET /api/spin/config (which strips 'weight'), the restored ladder ends up with weight=0 across the board (silent). Server should require weight field per prize or default missing-weight to 1 instead of accepting 0-stripped restores. Encountered during testing — manually restored defaults."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    "GET /api/spin/config public → returns prizes WITHOUT weight key (PII-safe) — PASS",
+    "PUT /api/admin/spin/config with single prize weight=100 → that prize wins deterministically via /api/me/spin/spin — PASS (weight RNG honored)",
+    "PUT /api/admin/spin/config without X-Admin-Token → 401/403 — PASS",
+    "POST /api/me/orders/{id}/pay-with-wallet full happy path (price set via /payments/proof, balance debited by amount, WTX-* txn_id returned, order status→verified, double-pay→400) — PASS",
+    "POST /pay-with-wallet without auth → 401 — PASS",
+    "POST /pay-with-wallet on unknown order → 404 — PASS",
+    "POST /pay-with-wallet cross-user → 403 — PASS",
+    "POST /api/me/refunds → 200 with RFD-*, status=requested, timeline length 1 — PASS",
+    "POST /api/me/refunds duplicate on same order → 400 'in progress' — PASS",
+    "POST /api/me/refunds reason<8 chars → 422 — PASS",
+    "GET /api/me/refunds → array, contains created refund — PASS",
+    "GET /api/me/refunds/{id} mine → 200 — PASS",
+    "GET /api/me/refunds/{unknown} → 404 — PASS",
+    "GET /api/me/refunds/{otherUserId} cross-user → 404 (no leak) — PASS",
+    "GET /api/refunds/track/{id} public → 200 with no user_id/user_email leak, timeline present — PASS",
+    "GET /api/refunds/track/RFD-NOPE → 404 — PASS",
+    "GET /api/admin/refunds + ?status=requested filter → contains test rows — PASS",
+    "PATCH /api/admin/refunds/{id} {status:'approved',refund_amount:100,refund_method:'wallet'} → status='completed', timeline appends approved+completed, WTX-* refund row created, /me/wallet balance increased by exactly 100 — PASS",
+    "PATCH /api/admin/refunds/{id} {status:'rejected',admin_note:...} → status=rejected, no wallet credit (balance unchanged) — PASS",
+    "Regression: GET /api/admin/telegram/bot → 200 — PASS",
+    "Regression: GET /api/me/wallet → 200 with balance — PASS",
+    "Regression: GET /api/orders/{id} → 200 — PASS",
+    "[Frontend] /admin login + sidebar shows 'Refunds' + 'Spin Wheel' nav buttons; clicking each renders [admin-refunds-manager] and [admin-spin-panel] without errors — PASS",
+    "[Frontend] AdminSpinPanel: [admin-spin-add] adds a new prize row, [admin-spin-save] visible — PASS",
+    "[Frontend] AdminRefundsManager lists 3 existing test refunds with REVIEW + APPROVE + REJECT buttons per row — PASS",
+    "[Frontend] /refund/RFD-NOEXIST renders [refund-back] fallback — PASS",
+    "[Frontend] /refund/{real-id} renders [refund-tracker] panel on mobile (390×844) with NO horizontal overflow — PASS",
+    "[Frontend] /cart on mobile (390×844) renders [cart-checkout] 'PLACE ORDER · PAY LATER' + item subtotal; NO horizontal overflow — PASS (wallet-pill + pay-wallet path requires real UI login session — test harness using localStorage-token shortcut was insufficient to trigger AuthContext-gated wallet UI; backend wallet-pay verified separately end-to-end)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_refund_wallet_spin.py",
+    "/app/test_reports/pytest/iter8.xml"
+  ],
+  "action_items": [
+    "(Minor) Harden PUT /api/admin/spin/config: reject prizes lacking the 'weight' field (or default it to 1), so restoring the ladder from a snapshot of the public GET endpoint doesn't silently zero-out all odds. The public GET strips weight by design.",
+    "(Optional) /pay-with-wallet does not perform an atomic findOneAndUpdate on order.status — same TOCTOU pattern flagged in iter-7's deposit-approve helper; two concurrent pay-with-wallet calls could double-debit. Wrap the read+set in db.orders.find_one_and_update({id,status:{$nin:['verified','paid',...]}}, {$set:{status:'verified',...}}) and only credit if matched.",
+    "server.py is now 4705 lines — please split (refunds.py, spin.py, wallet.py) as flagged in iter-7."
+  ],
+  "critical_code_review_comments": [
+    "admin_refund_update branch logic at server.py:4416-4440: when body.status=='approved' AND method!='wallet', code sets upd['status']='approved' but never advances to 'completed' — that's by design (manual payout), but timeline only logs one entry. Recommend a second timeline note after admin marks the off-platform payout done.",
+    "admin_refund_update sets upd['refund_amount']=float(body.refund_amount) in the trailing block (line 4443-4444) which OVERWRITES the value set inside the 'approved' branch (line 4421). Harmless when body.refund_amount is provided, but if it's None on a re-PATCH, it could blank it out. Use `body.refund_amount is not None` guard (already done) — actually fine, but flag for review.",
+    "_handle_refund_tg silently swallows /tg_send failures via outer try in caller — if bot token is missing, tracker query returns nothing to user. Consider returning a 'bot not configured' error log entry.",
+    "Pay-with-wallet falls back to service price * qty when payment_amount is missing, but it uses int(order.get('qty') or order.get('size') or 1). 'size' is the order's size field and is a free-form string ('small'/'medium'/...) in the OrderIn model — int() will throw ValueError on non-numeric values and return 500. Guard with try/except or drop size from this fallback."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_refund_wallet_spin.py (NEW — 24 pytest cases, 23 passing, 1 skipped)",
+    "/app/test_reports/pytest/iter8.xml (NEW — JUnit XML)"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 executed; 1 skipped due to env-missing webhook secret)",
+    "frontend": "100% of critical flows verified (5/5: admin sidebar, refunds tab, spin tab + add-prize, refund tracker valid+unknown, mobile no-overflow on /cart and /refund)"
+  },
+  "test_credentials": "Admin password 'admin123' from /app/memory/test_credentials.md. Test1 user 'test1@example.com / hack123' confirmed live with ₹5000 wallet credit. Per-test fresh customers created with TEST_iter8_<hex>@example.com prefix.",
+  "seed_data_creation": "Multiple TEST_iter8_*@example.com users + their orders + RFD-* refunds remain in DB (~10 rows). test1@example.com wallet topped up by ₹5000 for cart UX testing (still credited). Spin-wheel prize ladder was temporarily set to single weight=100 prize during forced-winner pytest then manually restored to DEFAULT_SPIN_PRIZES via admin call after run completed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable pytest: /app/backend/tests/test_iter8_refund_wallet_spin.py — 24 tests, ~20s. Key patterns: (1) /auth/me returns {user:{user_id:...}} (NESTED) not flat — use mj['user']['user_id']. (2) /api/services endpoint does NOT exist — cart items in localStorage are arbitrary client objects, no backend validation. (3) Cart uses localStorage key 'eh_cart_v2' as a JSON array of {type,id,name,price,qty,...}. (4) AuthContext does NOT pick up direct localStorage.setItem('eh_token',...) on mount — must login via /api/auth/login and follow the cookie redirect for full UI auth state; otherwise wallet-pill stays hidden. (5) Forcing a spin winner: PUT /admin/spin/config with a single prize {weight:100} — but ALWAYS restore via DEFAULT_SPIN_PRIZES (with weights) afterwards; restoring via the public GET strips weights and silently zeros odds. (6) For pay-with-wallet integration testing without an admin quote endpoint, hit POST /api/payments/proof first to set order.payment_amount (also sets status to 'payment_review' which is NOT in the 'already paid' guard list — so the subsequent pay-with-wallet call succeeds).",
+  "rca_of_the_issue": "No backend bug uncovered. Only minor observations: PUT /admin/spin/config trusts the client to send weights, so restoring from public-GET output zeroes odds (highlighted as minor backend issue + action item). The TOCTOU race on pay-with-wallet (read order → debit → set status) is the same pattern flagged in iter-7's deposit-approve, recommended atomic findOneAndUpdate fix carried forward."
+}

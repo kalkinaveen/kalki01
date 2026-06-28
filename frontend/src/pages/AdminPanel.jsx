@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone, RotateCcw, Sparkles } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -11,6 +11,8 @@ import TeamManager from './admin/TeamManager';
 import TelegramBotPanel from './admin/TelegramBotPanel';
 import WorksWithManager from './admin/WorksWithManager';
 import AnnouncementsManager from './admin/AnnouncementsManager';
+import RefundsManager from './admin/RefundsManager';
+import AdminSpinPanel from './admin/AdminSpinPanel';
 
 const sections = [
   { to: 'overview',    label: 'Overview',     icon: LayoutDashboard, group: 'main' },
@@ -35,6 +37,8 @@ const sections = [
   { to: 'referrals',   label: 'Referrals',    icon: Gift,            group: 'main' },
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
+  { to: 'refunds',     label: 'Refunds',      icon: RotateCcw,       group: 'main' },
+  { to: 'spin',        label: 'Spin Wheel',   icon: Sparkles,        group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
   { to: 'announcements', label: 'Broadcast',    icon: Megaphone,       group: 'main' },
@@ -1600,6 +1604,8 @@ const AdminPanel = () => {
         {allowed('referrals') && active==='referrals'   && <ReferralsTab />}
         {allowed('feed') && active==='feed'        && <FeedManager />}
         {allowed('payments') && active==='payments'    && <PaymentSettingsTab />}
+        {allowed('refunds') && active==='refunds'     && <RefundsManager />}
+        {allowed('spin') && active==='spin'        && <AdminSpinPanel />}
         {allowed('coupons') && active==='coupons'     && <CouponsTab />}
         {allowed('notifications') && active==='notifications'&& <NotificationsTab />}
         {allowed('announcements') && active==='announcements'&& <AnnouncementsManager />}

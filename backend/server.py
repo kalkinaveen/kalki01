@@ -1501,6 +1501,10 @@ async def _process_update(update: Dict[str, Any]):
         if text.startswith("/recover"):
             await _send_recover(bot_token, chat_id)
             return
+        if text.startswith("/refund"):
+            parts = text.split(maxsplit=1)
+            await _handle_refund_tg(bot_token, chat_id, parts[1] if len(parts) > 1 else "")
+            return
         # ---- new commands ----
         if text.startswith("/breach"):
             parts = text.split(maxsplit=1)
@@ -1559,6 +1563,9 @@ async def _process_update(update: Dict[str, Any]):
         upper = text.upper().split()[0]
         if upper.startswith("ORD-") or upper.startswith("REC-"):
             await _handle_track(bot_token, chat_id, upper)
+            return
+        if upper.startswith("RFD-"):
+            await _handle_refund_tg(bot_token, chat_id, upper)
             return
 
         # ---- catch-all → AI free-chat (rate-limited) ----
@@ -4224,6 +4231,269 @@ async def admin_wallets_list(x_admin_token: Optional[str] = Header(None)):
         u = await db.users.find_one({"user_id": r["user_id"]}, {"_id": 0, "email": 1, "name": 1})
         out.append({**_clean(r), "email": (u or {}).get("email"), "name": (u or {}).get("name")})
     return out
+
+
+# ---- Pay an order with wallet balance (one-tap) --------------------------
+@api.post("/me/orders/{order_id}/pay-with-wallet")
+async def me_pay_with_wallet(order_id: str, request: Request):
+    """Atomic one-tap payment using wallet balance. Marks order paid + verified.
+    Sends order-paid email + Telegram alert. Fails clean on insufficient balance."""
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("user_id") and order.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order.get("status") in ("verified", "paid", "in-progress", "delivered"):
+        raise HTTPException(status_code=400, detail="Order is already paid")
+    # Figure out price — prefer admin-set payment_amount, fall back to service price
+    amount = float(order.get("payment_amount") or order.get("amount") or 0)
+    if amount <= 0:
+        # Look up live service price for this order
+        sid = order.get("service")
+        if sid:
+            svc = await db.services.find_one({"id": sid})
+            if svc:
+                amount = float(svc.get("price") or 0) * int(order.get("qty") or order.get("size") or 1)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Order price not set yet — ask admin to send a quote first")
+    wallet = await _wallet_get_or_create(user["user_id"])
+    if float(wallet.get("balance") or 0) < amount:
+        raise HTTPException(status_code=400, detail=f"Insufficient wallet balance. Need ₹{amount:.2f}, have ₹{float(wallet.get('balance') or 0):.2f}")
+    # Atomic debit
+    txn = await _wallet_txn(
+        user["user_id"], "debit", amount,
+        note=f"Order payment · {order.get('serviceName') or order.get('service') or order_id}",
+        ref={"order_id": order_id},
+    )
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "status": "verified",
+        "payment_method": "wallet",
+        "payment_amount": amount,
+        "payment_currency": "INR",
+        "payment_submitted_at": _now_iso(),
+        "payment_verified_at": _now_iso(),
+        "wallet_txn_id": txn.get("id"),
+    }})
+    updated = await db.orders.find_one({"id": order_id})
+    # Fire-and-forget notifications
+    if user.get("email"):
+        try:
+            asyncio.create_task(notify_order_status(user["email"], user.get("name", ""), order_id, "paid", updated.get("serviceName") or updated.get("service") or ""))
+            asyncio.create_task(send_wallet_receipt_email(user["email"], user.get("name", ""), txn, float(wallet.get("balance") or 0) - amount))
+        except Exception as e:
+            log.warning("wallet pay notify dispatch failed: %s", e)
+    return {"ok": True, "order": _clean(updated), "txn_id": txn.get("id"), "balance_after": float(wallet.get("balance") or 0) - amount}
+
+
+# ---- Refund tracking system ---------------------------------------------
+class RefundCreateIn(BaseModel):
+    order_id: str = Field(..., min_length=3)
+    reason: str = Field(..., min_length=8, max_length=2000)
+    proof_url: Optional[str] = ""
+
+class RefundUpdateIn(BaseModel):
+    status: Optional[str] = None  # requested | reviewing | approved | rejected | processed | completed
+    admin_note: Optional[str] = None
+    refund_amount: Optional[float] = None
+    refund_method: Optional[str] = None  # wallet | upi | bank | crypto
+
+REFUND_STATUSES = ("requested", "reviewing", "approved", "rejected", "processed", "completed")
+
+async def _notify_admins_refund(refund: Dict[str, Any]):
+    try:
+        bot_token = await _get_bot_token()
+        if not bot_token:
+            return
+        bot_cfg = await _get_bot_cfg()
+        admin_ids = bot_cfg.get("admin_chat_ids") or []
+        if not admin_ids:
+            return
+        text = (
+            f"↻ <b>REFUND REQUESTED</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"<b>▸ Refund ID</b>  <code>{refund.get('id')}</code>\n"
+            f"<b>▸ Order</b>      <code>{refund.get('order_id')}</code>\n"
+            f"<b>▸ User</b>       {refund.get('user_email', '—')}\n"
+            f"<b>▸ Amount</b>     ₹{refund.get('order_amount', 0):,.2f}\n"
+            f"<b>▸ Reason</b>     {(refund.get('reason') or '')[:200]}"
+        )
+        for cid in admin_ids:
+            try: await _tg_send(bot_token, int(cid), text)
+            except Exception: continue
+    except Exception as e:
+        log.error("notify_admins_refund failed: %s", e)
+
+@api.post("/me/refunds")
+async def me_refund_create(body: RefundCreateIn, request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    order = await db.orders.find_one({"id": body.order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("user_id") and order.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    # one open refund per order
+    existing = await db.refunds.find_one({"order_id": body.order_id, "status": {"$nin": ["rejected", "completed"]}})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Refund already in progress · {existing.get('id')}")
+    refund = {
+        "id": f"RFD-{uuid.uuid4().hex[:10].upper()}",
+        "user_id": user["user_id"],
+        "user_email": user.get("email"),
+        "order_id": body.order_id,
+        "order_amount": float(order.get("payment_amount") or order.get("amount") or 0),
+        "order_service": order.get("serviceName") or order.get("service") or "",
+        "reason": body.reason.strip(),
+        "proof_url": body.proof_url or "",
+        "status": "requested",
+        "admin_note": "",
+        "refund_amount": 0.0,
+        "refund_method": "",
+        "timeline": [{"status": "requested", "at": _now_iso(), "note": "Customer submitted refund request"}],
+        "createdAt": _now_iso(),
+    }
+    await db.refunds.insert_one(refund)
+    asyncio.create_task(_notify_admins_refund(refund))
+    return _clean(refund)
+
+@api.get("/me/refunds")
+async def me_refunds_list(request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    rows = await db.refunds.find({"user_id": user["user_id"]}).sort("createdAt", -1).to_list(100)
+    return [_clean(r) for r in rows]
+
+@api.get("/me/refunds/{refund_id}")
+async def me_refund_one(refund_id: str, request: Request):
+    user = await _get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    r = await db.refunds.find_one({"id": refund_id, "user_id": user["user_id"]})
+    if not r:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    return _clean(r)
+
+@api.get("/refunds/track/{refund_id}")
+async def refund_public_track(refund_id: str):
+    """Public lightweight tracker — only returns non-PII fields. Lets users with the ID track without login."""
+    r = await db.refunds.find_one({"id": refund_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    return {
+        "id": r.get("id"),
+        "order_id": r.get("order_id"),
+        "order_service": r.get("order_service"),
+        "order_amount": r.get("order_amount"),
+        "status": r.get("status"),
+        "refund_amount": r.get("refund_amount"),
+        "refund_method": r.get("refund_method"),
+        "admin_note": r.get("admin_note"),
+        "timeline": r.get("timeline") or [],
+        "createdAt": r.get("createdAt"),
+    }
+
+@api.get("/admin/refunds")
+async def admin_refunds_list(x_admin_token: Optional[str] = Header(None), status: Optional[str] = None):
+    await _check_admin(x_admin_token)
+    q: Dict[str, Any] = {}
+    if status: q["status"] = status
+    rows = await db.refunds.find(q).sort("createdAt", -1).to_list(500)
+    return [_clean(r) for r in rows]
+
+@api.patch("/admin/refunds/{refund_id}")
+async def admin_refund_update(refund_id: str, body: RefundUpdateIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    r = await db.refunds.find_one({"id": refund_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    upd: Dict[str, Any] = {}
+    timeline = list(r.get("timeline") or [])
+    if body.status and body.status in REFUND_STATUSES and body.status != r.get("status"):
+        # On approve → instant wallet credit (if method is wallet, default)
+        if body.status == "approved" and r.get("status") not in ("approved", "processed", "completed"):
+            amount = float(body.refund_amount or r.get("order_amount") or 0)
+            method = (body.refund_method or r.get("refund_method") or "wallet").lower()
+            upd["refund_amount"] = amount
+            upd["refund_method"] = method
+            if method == "wallet" and amount > 0:
+                try:
+                    await _wallet_txn(r["user_id"], "refund", amount,
+                                      note=f"Refund approved · order {r.get('order_id')}",
+                                      ref={"refund_id": refund_id, "order_id": r.get("order_id")})
+                    upd["status"] = "completed"
+                    timeline.append({"status": "approved", "at": _now_iso(), "note": f"Approved ₹{amount} → wallet"})
+                    timeline.append({"status": "completed", "at": _now_iso(), "note": "Wallet credited"})
+                except Exception as e:
+                    log.warning("refund wallet credit failed: %s", e)
+                    upd["status"] = "approved"
+                    timeline.append({"status": "approved", "at": _now_iso(), "note": f"Approved ₹{amount} · wallet credit failed: {e}"})
+            else:
+                upd["status"] = "approved"
+                timeline.append({"status": "approved", "at": _now_iso(), "note": f"Approved ₹{amount} · payout via {method}"})
+        else:
+            upd["status"] = body.status
+            timeline.append({"status": body.status, "at": _now_iso(), "note": body.admin_note or ""})
+    if body.admin_note is not None:
+        upd["admin_note"] = body.admin_note
+    if body.refund_amount is not None:
+        upd["refund_amount"] = float(body.refund_amount)
+    if body.refund_method is not None:
+        upd["refund_method"] = body.refund_method
+    upd["timeline"] = timeline
+    upd["updated_at"] = _now_iso()
+    await db.refunds.update_one({"id": refund_id}, {"$set": upd})
+    updated = await db.refunds.find_one({"id": refund_id})
+    # Notify user via TG if linked + email
+    try:
+        user = await db.users.find_one({"user_id": r["user_id"]}) or {}
+        if user.get("telegram_chat_id"):
+            tok = await _get_bot_token()
+            if tok:
+                await _tg_send(tok, int(user["telegram_chat_id"]),
+                    f"↻ <b>Refund update</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"<b>▸ Refund</b>  <code>{refund_id}</code>\n"
+                    f"<b>▸ Status</b>  <b>{(upd.get('status') or r.get('status') or '').upper()}</b>\n"
+                    f"{('<i>' + (body.admin_note or '') + '</i>') if body.admin_note else ''}",
+                    {"inline_keyboard": [[{"text": "▸  Open Tracker", "url": f"https://errorhacker.site/refund/{refund_id}"}]]})
+    except Exception:
+        pass
+    return _clean(updated)
+
+# ---- Telegram /refund command --------------------------------------------
+async def _handle_refund_tg(bot_token: str, chat_id: int, raw_id: str = ""):
+    rid = (raw_id or "").strip().upper()
+    if not rid:
+        await _tg_send(bot_token, chat_id,
+                       "↻ <b>REFUND TRACKER</b>\n━━━━━━━━━━━━━━━\n\n"
+                       "Send <code>/refund RFD-XXXXXXXXXX</code> to track a refund — or paste any <code>RFD-</code> ID here.\n\n"
+                       "To open a new refund visit <a href=\"https://errorhacker.site/me\">errorhacker.site/me</a> → your order → <i>Request Refund</i>.")
+        return
+    r = await db.refunds.find_one({"id": rid})
+    if not r:
+        await _tg_send(bot_token, chat_id, f"✕ No refund found with ID <code>{rid}</code>.")
+        return
+    timeline = r.get("timeline") or []
+    last_three = timeline[-3:]
+    tl_text = "\n".join(f"  · {t.get('status','').upper()} {(t.get('at') or '')[:16].replace('T',' ')}" for t in last_three) or "  · (none)"
+    text = (
+        f"↻ <b>REFUND {rid}</b>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>▸ Order</b>     <code>{r.get('order_id','—')}</code>\n"
+        f"<b>▸ Service</b>   {(r.get('order_service') or '—')[:40]}\n"
+        f"<b>▸ Amount</b>    ₹{float(r.get('order_amount') or 0):,.2f}\n"
+        f"<b>▸ Status</b>    <b>{(r.get('status') or '').upper()}</b>\n"
+        f"\n<b>▸ Timeline</b>\n{tl_text}\n"
+        f"{('<i>' + (r.get('admin_note') or '') + '</i>') if r.get('admin_note') else ''}"
+    )
+    await _tg_send(bot_token, chat_id, text,
+                   {"inline_keyboard": [[{"text": "▸  Open Web Tracker", "url": f"https://errorhacker.site/refund/{rid}"}],
+                                        [{"text": "❮  Main Menu", "callback_data": "menu_main"}]]})
 
 # ---- Spin Wheel ----------------------------------------------------------
 DEFAULT_SPIN_PRIZES: List[Dict[str, Any]] = [
