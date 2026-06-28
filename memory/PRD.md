@@ -11,7 +11,18 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
-- **Telegram Bot Cyber-Mono Refresh (Iter-8)** ⚡
+- **Iter-8 · Wallet Pay-with-One-Tap + Refund System + Spin Editor** 🎯
+  - **Spin Wheel Admin Editor** — full ladder editor in `/admin → Spin Wheel`: add/remove prizes, set label/type/amount/weight/color, live-odds % column, expected-payout calculator. Backed by hardened `PUT /admin/spin/config` (auto-defaults missing weights to 1).
+  - **Pay-with-Wallet One-Tap** — new `POST /api/me/orders/{id}/pay-with-wallet` (atomic debit → mark verified → email receipt → TG alert). Cart shows a wallet pill + `PAY ₹X INSTANTLY (WALLET)` primary CTA when balance covers total; otherwise prominent `TOP UP TO PAY INSTANTLY` button. OrderDetail page surfaces a large `WALLET CHECKOUT` panel for unpaid orders.
+  - **Refund Tracking System** end-to-end:
+    - Customer requests via "Request Refund" modal on any paid OrderDetail
+    - Live tracker at `/refund/{RFD-id}` with stage timeline (REQUESTED → REVIEWING → APPROVED → COMPLETED, or REJECTED branch)
+    - Admin manager at `/admin → Refunds` with status filter, detail drawer, one-click approve (instant wallet credit via `_wallet_txn` type='refund'), reject with reason
+    - Public PII-safe track endpoint for shareable links
+    - Telegram bot `/refund RFD-XXX` command + automatic admin-chat alert on new refund
+  - Mobile fits: cart, order detail, refund tracker, wallet pay panel all responsive (sm:/md: breakpoints, `min-w-0` truncation, mobile dual-row CTAs).
+  - 23/23 backend pytest + 5/5 critical frontend flows confirmed by testing agent (no bugs, 2 hardening tips applied).
+- **Telegram Bot Cyber-Mono Refresh (Iter-7)** ⚡
   - Replaced every emoji across welcome, /menu, /pay, /help, /track, /orders, /breach, /phishing, /odds, /quote, /wallet, /spin, /news, /refer, /ai, /cancel and all inline button labels with a tight cyber palette: `⚡ ◆ ▰ ▸ ❯ ❮ ⬢ ⬡ ◈ ✦ ✕ ✓ ⌬ ⟶ ↻ ▌ ⇡ ⇣ ● ◐ ○ ◉`.
   - Added a consistent `━━━━━━━━━━━━━━━` section divider + structured `<b>▸ field</b>` rows for a terminal/elite look.
   - Rewrote the deposit admin alert + user-DM (approved/declined) using the same palette.

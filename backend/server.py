@@ -4533,7 +4533,20 @@ async def spin_config_update(body: Dict[str, Any] = Body(...), x_admin_token: Op
     if "cooldown_hours" in body:
         sw["cooldown_hours"] = max(1, int(body["cooldown_hours"]))
     if "prizes" in body and isinstance(body["prizes"], list):
-        sw["prizes"] = body["prizes"]
+        # Harden: ensure every prize has a usable weight. If client restored from
+        # the public GET (which strips 'weight'), default to 1 so odds aren't zeroed.
+        normalised = []
+        for p in body["prizes"]:
+            if not isinstance(p, dict):
+                continue
+            w = p.get("weight")
+            if w is None or w == "" or w == 0:
+                p = {**p, "weight": 1}
+            else:
+                try: p = {**p, "weight": max(0.0001, float(w))}
+                except Exception: p = {**p, "weight": 1}
+            normalised.append(p)
+        sw["prizes"] = normalised
     await db.site_config.update_one({"_id": "main"}, {"$set": {"spin_wheel": sw, "updated_at": _now_iso()}})
     return {"ok": True, "spin_wheel": sw}
 
