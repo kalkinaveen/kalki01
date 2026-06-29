@@ -48,13 +48,23 @@ def _headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return h
 
 
-async def _request(method: str, path: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def _request(method: str, path: str, json_body: Optional[Dict[str, Any]] = None,
+                   idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+    """Issue a Cashfree REST call.
+
+    `idempotency_key` MUST be deterministic per-business-action (use the order_id
+    for create-order) so a network retry doesn't accidentally create twins.
+    Defaults to a random key when caller didn't supply one (safe for GETs).
+    """
     if not is_configured():
         raise RuntimeError("Cashfree is not configured — set CASHFREE_CLIENT_ID / CASHFREE_CLIENT_SECRET")
     async with httpx.AsyncClient(base_url=_BASE_URL, timeout=30) as client:
         resp = await client.request(
             method, path,
-            headers=_headers({"x-request-id": str(uuid.uuid4()), "x-idempotency-key": str(uuid.uuid4())}),
+            headers=_headers({
+                "x-request-id": str(uuid.uuid4()),
+                "x-idempotency-key": idempotency_key or str(uuid.uuid4()),
+            }),
             json=json_body,
         )
     if resp.status_code >= 400:
@@ -109,7 +119,9 @@ async def create_order(
             "notify_url": notify_url or f"{BACKEND_PUBLIC_URL}/api/payments/cashfree/webhook",
         },
     }
-    return await _request("POST", "/orders", payload)
+    # Deterministic idempotency key per app-side order — protects against
+    # network retries silently double-creating Cashfree orders.
+    return await _request("POST", "/orders", payload, idempotency_key=f"create:{order_id}")
 
 
 async def fetch_order(order_id: str) -> Dict[str, Any]:
@@ -118,13 +130,14 @@ async def fetch_order(order_id: str) -> Dict[str, Any]:
 
 async def refund_order(*, order_id: str, refund_amount: float, refund_id: Optional[str] = None,
                        refund_note: str = "Customer refund", speed: str = "STANDARD") -> Dict[str, Any]:
+    rid = refund_id or f"RF-{uuid.uuid4().hex[:18].upper()}"
     payload = {
         "refund_amount": round(float(refund_amount), 2),
-        "refund_id": refund_id or f"RF-{uuid.uuid4().hex[:18].upper()}",
+        "refund_id": rid,
         "refund_note": refund_note,
         "refund_speed": speed,
     }
-    return await _request("POST", f"/orders/{order_id}/refunds", payload)
+    return await _request("POST", f"/orders/{order_id}/refunds", payload, idempotency_key=f"refund:{rid}")
 
 
 def utc_now() -> datetime:

@@ -11,6 +11,19 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-9 · Cashfree LIVE PG + Tools Auto-TopUp + Public Refund Tracking** 🚀
+  - **Cashfree Payments PG v3 (LIVE production)** integrated end-to-end:
+    - Hosted checkout for wallet top-ups (`POST /api/me/wallet/topup/cashfree`) and direct order payments (`POST /api/me/orders/{id}/pay/cashfree`)
+    - Webhook signature verification (HMAC-SHA256, base64) + idempotent atomic reconcile
+    - Polling-based `/payments/return` page that auto-redirects on `PAID`
+    - Deterministic `x-idempotency-key` derived from order_id (network retries no longer double-create)
+    - Webhook returns 202 on transient reconcile failures so Cashfree redelivers
+    - LIVE keys stored in `backend/.env` · merchant must whitelist deployed domain at `merchant.cashfree.com → developers → whitelist` for the SDK redirect to render (purely a dashboard step, not a code task)
+  - **Embedded Cashfree top-up modal** (`<CashfreeTopupModal />`) — quick-amount chips + custom amount, opens hosted checkout in same tab. Used in:
+    - `/me/wallet` as a primary cyber-mono "Add Money" CTA above the manual UPI/Crypto fallback
+    - `LimitReachedDialog` when tools run out of balance — users top up inline and resume the tool without leaving the page
+  - **Public refund tracking** — `/track` page now accepts `RFD-XXXXXXXX` alongside `ORD-` / `REC-`. Refund view renders the same stage-dot timeline + glow style as the order/recovery tracker (the visual the user said he loves) — using the existing `TraceStageIcon` component for perfect parity.
+  - 16/16 backend pytest + 100% critical frontend flows verified by testing agent (iter-9). Only "issue" is merchant-dashboard domain whitelisting.
 - **Iter-8 · Wallet Pay-with-One-Tap + Refund System + Spin Editor** 🎯
   - **Spin Wheel Admin Editor** — full ladder editor in `/admin → Spin Wheel`: add/remove prizes, set label/type/amount/weight/color, live-odds % column, expected-payout calculator. Backed by hardened `PUT /admin/spin/config` (auto-defaults missing weights to 1).
   - **Pay-with-Wallet One-Tap** — new `POST /api/me/orders/{id}/pay-with-wallet` (atomic debit → mark verified → email receipt → TG alert). Cart shows a wallet pill + `PAY ₹X INSTANTLY (WALLET)` primary CTA when balance covers total; otherwise prominent `TOP UP TO PAY INSTANTLY` button. OrderDetail page surfaces a large `WALLET CHECKOUT` panel for unpaid orders.

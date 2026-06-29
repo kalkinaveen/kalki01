@@ -14,7 +14,7 @@ Endpoints:
   DELETE /api/orders            clear all orders (admin)
 """
 from fastapi import FastAPI, APIRouter, Header, HTTPException, status, UploadFile, File, Request, Response, Depends, Cookie, Body
-from fastapi.responses import Response as FastResponse, StreamingResponse
+from fastapi.responses import Response as FastResponse, StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
@@ -4449,6 +4449,13 @@ async def cashfree_webhook(request: Request):
             await _cashfree_reconcile(order_id, latest)
         except Exception as e:
             log.warning("Cashfree webhook reconcile failed for %s: %s", order_id, e)
+            # 202 tells Cashfree we received it but couldn't fully process; they
+            # will retry per their backoff. Returning 200 here would silently
+            # drop events on transient errors.
+            return JSONResponse({"ok": False, "error": "reconcile_failed"}, status_code=202)
+    else:
+        log.warning("Cashfree webhook missing order_id in payload: %s", str(payload)[:300])
+        return JSONResponse({"ok": False, "error": "no_order_id"}, status_code=202)
     return {"ok": True}
 
 
