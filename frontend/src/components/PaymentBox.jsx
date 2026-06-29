@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Copy, Check, Upload, Loader2, CreditCard, Bitcoin, Zap, ShieldCheck } from 'lucide-react';
+import { Copy, Check, Upload, Loader2, CreditCard, Bitcoin, Zap, ShieldCheck, Clock, Send as TgIcon, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { openCashfreeCheckout } from '../lib/cashfree';
@@ -15,18 +15,22 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [copied, setCopied] = useState('');
+  const [teamTgUrl, setTeamTgUrl] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const boxRef = React.useRef(null);
 
   useEffect(() => {
     Promise.all([
       api.getPaymentSettings().catch(() => null),
       api.cashfreeConfig().catch(() => ({ configured: false })),
-    ]).then(([s, c]) => {
+      api.recoveryConfig().catch(() => null),
+    ]).then(([s, c, rc]) => {
       if (s) {
         setSettings(s);
         if (s.crypto_wallets?.length) setCoin(s.crypto_wallets[0].coin);
       }
       setCf(c);
+      if (rc?.hero?.telegram_url) setTeamTgUrl(rc.hero.telegram_url);
       // Pick the default tab — prefer Cashfree if live, then manual, then crypto
       if (c.configured) setTab('cashfree');
       else if (s?.manual_enabled) setTab('manual');
@@ -51,6 +55,19 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
   if (!cf.configured && !anyManual) return null;
 
   const amount = Number(order.payment_amount || order.amount || 0);
+  const isAwaitingQuote = amount <= 0;
+
+  const refreshOrder = async () => {
+    setRefreshing(true);
+    try {
+      const fresh = await api.getOrder(order.id);
+      onUpdated?.(fresh);
+      const newAmt = Number(fresh?.payment_amount || fresh?.amount || 0);
+      if (newAmt > 0) toast.success(`Quote ready · ₹${newAmt.toLocaleString('en-IN')}`);
+      else toast.info('Still awaiting quote — try again shortly');
+    } catch (_e) { toast.error('Could not refresh'); }
+    finally { setRefreshing(false); }
+  };
 
   const copy = (text, key) => {
     navigator.clipboard.writeText(text);
@@ -65,7 +82,7 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
     try {
       const r = await api.cashfreePayOrder(order.id, {});
       if (!r?.payment_session_id) throw new Error('Could not open checkout');
-      try { sessionStorage.setItem('eh_payment_redirect', window.location.pathname); } catch {}
+      try { sessionStorage.setItem('eh_payment_redirect', window.location.pathname); } catch { /* noop */ }
       await openCashfreeCheckout(r.payment_session_id);
     } catch (e) { toast.error(e.message || 'Cashfree error'); }
     finally { setPaying(false); }
@@ -108,6 +125,7 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
   const activeWallet = (safeSettings.crypto_wallets || []).find(w => w.coin === coin);
 
+  // eslint-disable-next-line react/no-unstable-nested-components
   const TabBtn = ({ id, icon: Icon, label, recommended }) => (
     <button onClick={() => setTab(id)} data-testid={`pay-tab-${id}`} className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded eh-mono text-[11px] sm:text-xs tracking-widest transition-all ${tab === id ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)] hover:border-[rgba(0,255,157,.3)]'}`}>
       <Icon size={12} /> {label}
@@ -122,6 +140,78 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
         <div className="eh-kicker">// COMPLETE_PAYMENT {amount > 0 && <span className="eh-neon-soft ml-2">· ₹{amount.toLocaleString('en-IN')}</span>}</div>
       </div>
 
+      {isAwaitingQuote ? (
+        <div data-testid="pay-awaiting-quote" className="relative">
+          {/* Beautiful awaiting-quote panel — replaces the locked button entirely */}
+          <div className="relative overflow-hidden rounded-xl border border-[rgba(0,255,157,.3)] bg-[rgba(0,255,157,.04)]">
+            {/* Scanline overlay */}
+            <div className="absolute inset-0 pointer-events-none opacity-40" style={{ background: 'repeating-linear-gradient(0deg, rgba(0,255,157,.05) 0 1px, transparent 1px 3px)' }} />
+            {/* Top status strip */}
+            <div className="relative flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-[rgba(0,255,157,.08)] border-b border-[rgba(0,255,157,.25)]">
+              <span className="relative flex items-center justify-center w-2 h-2 shrink-0">
+                <span className="absolute inset-0 rounded-full bg-[var(--eh-green)] opacity-70 animate-ping" />
+                <span className="relative w-2 h-2 rounded-full bg-[var(--eh-green)]" />
+              </span>
+              <span className="eh-mono text-[10px] sm:text-[11px] tracking-[.25em] text-[var(--eh-green)] font-bold">// QUOTE_IN_REVIEW</span>
+              <span className="ml-auto eh-mono text-[9px] sm:text-[10px] opacity-50 tracking-widest">EST · UNDER 4 HRS</span>
+            </div>
+
+            <div className="relative p-5 sm:p-6">
+              {/* Hero icon + headline */}
+              <div className="flex items-start gap-3 sm:gap-4 mb-4">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-xl border border-[rgba(0,255,157,.5)] bg-[rgba(0,255,157,.1)] grid place-items-center relative">
+                  <Clock size={22} className="text-[var(--eh-green)] eh-spin-slow" strokeWidth={1.6} />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[var(--eh-green)] animate-pulse shadow-[0_0_8px_var(--eh-green)]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="eh-display font-black text-lg sm:text-xl leading-tight mb-1">Your operator is preparing the quote</h3>
+                  <p className="eh-mono text-[11px] sm:text-[12px] opacity-75 leading-5 sm:leading-6">
+                    We&apos;re scoping <span className="eh-neon-soft">{order.serviceName || order.service || 'your request'}</span> and locking in the final price. You&apos;ll get the amount + secure pay link on Telegram and email — usually within a few hours.
+                  </p>
+                </div>
+              </div>
+
+              {/* 3-step mini timeline */}
+              <div className="grid grid-cols-3 gap-2 mb-5">
+                {[
+                  { k: 'placed', label: 'PLACED', sub: 'done' },
+                  { k: 'review', label: 'PRICING', sub: 'live' },
+                  { k: 'pay',    label: 'PAY',     sub: 'next' },
+                ].map((s) => {
+                  const isDone = s.sub === 'done';
+                  const isLive = s.sub === 'live';
+                  return (
+                    <div key={s.k} className={`relative rounded-lg border p-2.5 sm:p-3 text-center ${isDone ? 'border-[rgba(0,255,157,.45)] bg-[rgba(0,255,157,.08)]' : isLive ? 'border-[rgba(0,255,157,.6)] bg-[rgba(0,255,157,.12)] shadow-[0_0_18px_rgba(0,255,157,.18)_inset]' : 'border-[var(--eh-border)] opacity-50'}`}>
+                      <div className={`eh-mono text-[9px] sm:text-[10px] tracking-widest mb-0.5 ${isDone || isLive ? 'text-[var(--eh-green)]' : 'opacity-70'}`}>{s.label}</div>
+                      <div className="eh-mono text-[9px] opacity-60">{isDone ? '✓' : isLive ? <span className="inline-flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-[var(--eh-green)] animate-pulse" /> NOW</span> : '—'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Action row — stacks on mobile */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                {teamTgUrl ? (
+                  <a href={teamTgUrl} target="_blank" rel="noreferrer" data-testid="pay-awaiting-ping" className="eh-btn-primary text-xs sm:text-sm justify-center inline-flex items-center gap-2 flex-1 py-3 sm:py-2.5">
+                    <TgIcon size={14} /> PING TEAM ON TELEGRAM
+                  </a>
+                ) : null}
+                <button onClick={refreshOrder} disabled={refreshing} data-testid="pay-awaiting-refresh" className="eh-btn-ghost text-xs sm:text-sm justify-center inline-flex items-center gap-2 flex-1 py-3 sm:py-2.5 disabled:opacity-50">
+                  <RefreshCcw size={13} className={refreshing ? 'animate-spin' : ''} />
+                  {refreshing ? 'CHECKING…' : 'CHECK FOR QUOTE'}
+                </button>
+              </div>
+
+              {/* Reassurance footer */}
+              <div className="mt-4 flex items-center gap-2 eh-mono text-[10px] opacity-55">
+                <ShieldCheck size={11} className="text-[var(--eh-green)]" />
+                <span>No charge will be made until you approve the quote. This page auto-updates.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="flex gap-2 mb-4 flex-wrap">
         {cf.configured && <TabBtn id="cashfree" icon={Zap} label="CARD / UPI" recommended />}
         {safeSettings.manual_enabled && <TabBtn id="manual" icon={CreditCard} label="MANUAL UPI" />}
@@ -227,6 +317,8 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
           {proof && <div className="relative"><img src={proof} alt="proof" className="max-h-40 w-full object-contain rounded border border-[var(--eh-green)]" onError={e => e.target.style.display = 'none'} /><span className="absolute top-1 right-1 eh-mono text-[9px] px-1.5 py-0.5 rounded bg-[var(--eh-green)] text-black font-bold">✓ UPLOADED</span></div>}
           <button onClick={submit} disabled={submitting || !proof || !txRef} data-testid="pay-submit" className="eh-btn-primary text-xs w-full justify-center mt-2 disabled:opacity-50">{submitting ? 'SUBMITTING...' : 'I HAVE PAID — SUBMIT'}</button>
         </div>
+      )}
+      </>
       )}
     </div>
   );

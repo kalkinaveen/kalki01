@@ -11,6 +11,18 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-17 · "Awaiting Quote" Lockout Fix + Beautiful Pending UX** ✨ (Feb 2026)
+  - **Root cause #1 (revenue blocker)**: Cart-created orders went into MongoDB with NO price field. `OrderIn` Pydantic model didn't even accept one, so `api.createOrder({...})` from `CartPage.jsx` dropped the cart total on the floor. `PaymentBox` then read `order.amount === 0` and rendered the Cashfree button as a permanently-disabled "AWAITING QUOTE" — every cart customer was locked out of paying.
+  - **Fix #1 (backend, `server.py`)**: `OrderIn` now accepts optional `amount` + `currency`. Cart-created orders flow these through `**body.dict()` into the order doc → `PaymentBox` reads the real total instantly.
+  - **Fix #2 (frontend, `CartPage.jsx`)**: Checkout now passes `amount: it.price * it.qty, currency: 'INR'` per line-item.
+  - **Fix #3 (PaymentBox redesign, `PaymentBox.jsx`)**: When `amount <= 0` (legit admin-quoted services like recovery/custom work), the locked-button is replaced with a beautiful mobile-first **awaiting-quote panel**:
+    - Pulsing neon dot + `// QUOTE_IN_REVIEW` status strip, `EST · UNDER 4 HRS` timing
+    - Spinning clock icon hero + headline "Your operator is preparing the quote"
+    - Contextual sub-line that references the customer's service name
+    - 3-step mini-timeline: PLACED ✓ → PRICING (LIVE NOW pulse) → PAY (—)
+    - Stacked CTAs on mobile: "PING TEAM ON TELEGRAM" (primary) + "CHECK FOR QUOTE" (ghost, hits `/api/orders/{id}` and updates inline + toasts the new amount)
+    - Reassurance footer: "No charge will be made until you approve the quote. This page auto-updates."
+  - **Verified end-to-end on preview**: `ORD-AWAIT-001` (no amount) → new pending panel renders cleanly; `ORD-READY-001` (amount=2499) → full Cashfree/UPI/Crypto payment UI with active "PAY ₹2,499 · OPEN CHECKOUT" button.
 - **Iter-16 · Real Blank-Screen Fix on /track (Email PAY NOW links)** 🔥 (Feb 2026)
   - **Root cause**: `OrderTracker.jsx` line 237 inside `RecoveryView` referenced `shouldAutoScroll` — a variable that only exists in the parent `OrderTracker` scope. `RecoveryView` only receives `autoScroll` as a prop. This threw `ReferenceError: shouldAutoScroll is not defined` at render time → entire tracker blanked out.
   - **Trigger condition**: Looking up a recovery case (`REC-XXX`) that has `linked_order_id` set (i.e., quote was sent and the customer received a "PAY NOW" email). Exactly the production email-link flow.

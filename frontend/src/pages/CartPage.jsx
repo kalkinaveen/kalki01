@@ -36,6 +36,8 @@ const CartPage = () => {
           size: String(it.qty || 1),
           target: it.type === 'book' ? `book:${it.id}` : (it.target || ''),
           notes: it.type === 'book' ? `Digital book purchase` : '',
+          amount: Number(it.price || 0) * Number(it.qty || 1),
+          currency: 'INR',
         });
         orderIds.push(o.id);
       }

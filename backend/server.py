@@ -112,6 +112,10 @@ class OrderIn(BaseModel):
     size: Optional[str] = ""
     target: Optional[str] = ""
     notes: Optional[str] = ""
+    # Optional pricing — cart sends these so PaymentBox doesn't lock as "awaiting quote".
+    # Admin-quoted services (recovery, custom work) omit them and the team sets the amount later.
+    amount: Optional[float] = None
+    currency: Optional[str] = "INR"
 
 class StatusIn(BaseModel):
     status: str
