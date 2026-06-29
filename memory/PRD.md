@@ -11,7 +11,12 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
-- **Iter-10 · Cashfree EVERYWHERE + Receipt Emails + Quote-Pay Deep-Link** 📧
+- **Iter-12/13 · FastAPI Lifespan + Try/Except Isolation + Cashfree Route Extraction** 🔧
+  - **Lifespan migration**: `@app.on_event` deprecation gone — replaced with proper `@asynccontextmanager` lifespan that re-creates all 13 MongoDB unique + perf indexes on every startup. Forward-references resolved lazily so the lifespan body can be defined before its callees.
+  - **Per-task try/except isolation** across all 8 email/Telegram dispatch sites — `me_pay_with_wallet`, both branches of `_cashfree_reconcile`, and PATCH /orders. A single Resend hiccup can no longer suppress the rest.
+  - **Cashfree extraction**: 5 routes moved out of `server.py` into `/app/backend/routes/cashfree.py` (APIRouter pattern, lazy `_srv()` resolver to dodge circular imports). server.py shrank from 4968 → 4837 lines. Pattern is proven and reusable — Refunds + Spin + Wallet splits can follow in a focused next iteration.
+  - **52/52 backend tests green** across iter-9/10/12/13 suites. 0 frontend changes, no regressions.
+- **Iter-10/11 · Cashfree EVERYWHERE + Receipt Emails + Quote-Pay Deep-Link** 📧
   - `PaymentBox` rewritten to default to **Cashfree (FAST badge)** with Manual UPI + Crypto as secondary tabs. Now used on `/me/orders/{id}`, public `/track`, AND inside recovery cases when a quote is sent (`linked_order_id` branch) — Cashfree available everywhere a customer can pay.
   - **`send_order_receipt_email`** — new printable receipt with Order ID + Service + Amount + Method + VERIFIED badge + "OPEN LIVE TRACKER" button. Dispatched on:
     - Cashfree service-payment reconcile
