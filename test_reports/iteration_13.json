@@ -1,0 +1,30 @@
+{
+  "summary": "Iter-13 retest verified BOTH iter-12 findings are fixed. (a) HIGH lifespan migration landed: `from contextlib import asynccontextmanager` (line 49) + `@asynccontextmanager async def lifespan(_app)` (lines 56-92) + `FastAPI(title='ERRORHACKER API', lifespan=lifespan)` (line 95). Lifespan body restores all unique + non-unique indexes (13 await db.*.create_index calls, exceeds the required ≥13) and logs 'ERRORHACKER API ready' on startup — confirmed in /var/log/supervisor/backend.err.log (2 recent reloads at 12:53:47 and 12:54:45 both show the INFO line). No `@app.on_event` decorators remain anywhere in server.py (only a docstring reference inside lifespan() itself). (b) MEDIUM PATCH /orders/{id} try/except isolation landed at lines 1823-1842: _notify_user_order, notify_order_status, and send_order_receipt_email each have their OWN `try: asyncio.create_task(...)` / `except Exception as e: log.warning('<fn> dispatch failed: %s', e)` block. Full regression suite: 52 PASS / 1 pre-existing iter-9 skip / 0 fail across iter-9, iter-10, iter-12 and the new iter-13 test file.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_lifespan_and_isolation.py",
+    "/app/backend/tests/test_iter12_refactor.py",
+    "/app/backend/tests/test_iter9_cashfree_refund_track.py",
+    "/app/backend/tests/test_iter10_cashfree_receipt.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Lifespan implementation is clean and idiomatic — forward-references _ensure_config / _ensure_admin / db / client are intentional (resolved lazily at call time) and the start-up index creation is wrapped in try/except so duplicate-index errors on hot reload do not crash the worker.",
+    "PATCH /orders/{id} now matches the per-task isolation pattern already used in me_pay_with_wallet and _cashfree_reconcile — 3 separate try/except blocks, each emitting log.warning with the failing dispatch's name (great for grep-based ops debugging).",
+    "Behavioural smoke (admin token → POST /api/orders → PATCH status='verified' payment_amount=499) returns 200 OK and no dispatch-failed warnings were observed in the log window — confirming none of the 3 async tasks raised during normal flow.",
+    "Minor follow-up (NOT blocking): the docstring inside lifespan() includes the literal text 'deprecated @app.on_event handlers'. iter-12's overly-loose substring assertion `\"on_event\" not in src` initially failed because of this docstring. I tightened that test to use a regex matching only the actual `@<x>.on_event(` decorator pattern + a positive check for `lifespan=lifespan`. No production code change needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter12_refactor.py (tightened test_no_on_event_decorator_in_server to regex-match decorator pattern instead of substring; also asserts FastAPI(...lifespan=lifespan))",
+    "/app/backend/tests/test_iter13_lifespan_and_isolation.py (NEW — 7 tests across 4 classes covering all iter-13 brief items: code-level lifespan checks, log-tail check, PATCH /orders isolation regex, behavioural smoke)"
+  ],
+  "success_rate": {"backend": "100% (52/52 executed, 1 pre-existing iter-9 skip)", "frontend": "not tested (backend only per brief)"},
+  "test_credentials": "Admin login per /app/memory/test_credentials.md → POST /api/admin/login {\"password\":\"admin123\"} returns {ok, token}. Token used with header X-Admin-Token for PATCH /api/orders/{id}. Test user test1@example.com / hack123 unused in iter-13.",
+  "seed_data_creation": "Behavioural smoke test creates one transient TEST order via POST /api/orders (admin), patches it to status='verified', then leaves it in the DB (no teardown — minimal noise, identifiable by name='Iter13 Smoke' and email pattern iter13_<8hex>@example.com).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both iter-12 findings (HIGH missing lifespan + MEDIUM partial try/except in PATCH /orders) are fully resolved as of iter-13. Lifespan is at server.py:49-95, all 13 await db.*.create_index calls are inside it (lines 68-80), and the 3-way per-task isolation in update_order is at lines 1823-1842. Regression suite (iter-9 + iter-10 + iter-12 + new iter-13) = 52 PASS / 1 known-skip / 0 FAIL. The new /app/backend/tests/test_iter13_lifespan_and_isolation.py is fully reusable — it does both code-level grep checks AND a live behavioural smoke (admin login → create order → patch to verified). No outstanding issues; iter-13 brief's success criterion ('If lifespan + isolation both pass, this iter is done') is satisfied.",
+  "rca_of_the_issue": "N/A — this iter found no new bugs. Iter-12's two findings are confirmed resolved."
+}

@@ -38,9 +38,20 @@ class TestLifespanStartup:
         assert data.get("mode") == "production"
 
     def test_no_on_event_decorator_in_server(self):
-        """on_event is deprecated. Refactor claim: migrated to lifespan."""
+        """on_event is deprecated. Refactor claim: migrated to lifespan.
+
+        Match the actual decorator pattern, not bare substring, so docstring
+        mentions of '@app.on_event' (as historical reference) don't trip us.
+        """
         src = SERVER_PY.read_text()
-        assert "on_event" not in src, "server.py still contains deprecated @app.on_event"
+        import re
+        # Strip docstrings / comments before checking for the decorator
+        # Simpler: regex for an actual decorator line `@<something>.on_event(`
+        bad = re.findall(r"^\s*@\w[\w\.]*\.on_event\s*\(", src, flags=re.MULTILINE)
+        assert not bad, f"server.py still contains deprecated on_event decorator(s): {bad}"
+        # Also ensure FastAPI is constructed with lifespan kwarg
+        assert "FastAPI(title=" in src and "lifespan=lifespan" in src, \
+            "FastAPI app must be constructed with lifespan=lifespan"
 
     def test_no_deprecation_warning_in_recent_logs(self):
         """Scan latest startup window for FastAPI on_event DeprecationWarning."""

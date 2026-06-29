@@ -46,11 +46,53 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="feed_media")
 
+from contextlib import asynccontextmanager
+
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
 JWT_ALGO = "HS256"
 ACCESS_TTL_MIN = 60 * 24 * 7  # 7 days
 
-app = FastAPI(title="ERRORHACKER API")
+
+@asynccontextmanager
+async def lifespan(_app):
+    """App startup / shutdown — replaces the deprecated @app.on_event handlers.
+
+    Body forward-references `_ensure_config`, `_ensure_admin`, `db`, `client`
+    which are defined later in this module; Python resolves them at call time,
+    by which point the module is fully loaded.
+    """
+    # ---- startup ----
+    try:
+        await _ensure_config()
+        await _ensure_admin()
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("user_id", unique=True)
+        await db.coupons.create_index("code", unique=True)
+        await db.orders.create_index("user_id")
+        await db.feed_posts.create_index("id", unique=True)
+        await db.feed_reels.create_index("id", unique=True)
+        await db.feed_comments.create_index("id", unique=True)
+        await db.feed_comments.create_index("post_id")
+        await db.feed_comments.create_index("reel_id")
+        await db.feed_likes.create_index([("post_id", 1), ("user_id", 1)])
+        await db.feed_likes.create_index([("reel_id", 1), ("user_id", 1)])
+        await db.feed_views.create_index([("post_id", 1), ("session_id", 1)], unique=False)
+        await db.feed_views.create_index([("reel_id", 1), ("session_id", 1)], unique=False)
+    except Exception as e:
+        # Log but don't block startup — duplicate-index errors are fine on hot reload.
+        logging.getLogger("eh").warning("startup init warn: %s", e)
+    logging.getLogger("eh").info("ERRORHACKER API ready")
+
+    yield  # ---- app runs ----
+
+    # ---- shutdown ----
+    try:
+        client.close()
+    except Exception:
+        pass
+
+
+app = FastAPI(title="ERRORHACKER API", lifespan=lifespan)
 api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1776,28 +1818,28 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
                 except ValueError:
                     # `closed`/`rejected` or unknown status — leave as is
                     pass
-    # Fire-and-forget Telegram DM to the customer if they linked their account
-    asyncio.create_task(_notify_user_order(row, event="status_change"))
-    # Email customer about order status change
-    asyncio.create_task(notify_order_status(
+    # Fire-and-forget Telegram DM + email — each in its own try/except so a
+    # single failure doesn't suppress the rest (iter-12 testing-agent feedback).
+    try: asyncio.create_task(_notify_user_order(row, event="status_change"))
+    except Exception as e: log.warning("_notify_user_order dispatch failed: %s", e)
+    try: asyncio.create_task(notify_order_status(
         row.get("email") or row.get("userEmail", ""),
         row.get("name", ""),
         order_id, body.status,
         row.get("serviceName") or row.get("service", "")
     ))
+    except Exception as e: log.warning("notify_order_status dispatch failed: %s", e)
     # When admin marks the order verified/paid via manual proof flow, also send a receipt
     if body.status in ("verified", "paid"):
-        try:
-            amt = float(row.get("payment_amount") or row.get("amount") or 0)
-            if amt > 0 and (row.get("email") or row.get("userEmail")):
-                asyncio.create_task(send_order_receipt_email(
-                    row.get("email") or row.get("userEmail", ""),
-                    row.get("name", ""),
-                    row, amt,
-                    method=row.get("payment_method") or "manual",
-                ))
-        except Exception as e:
-            log.warning("order receipt dispatch failed: %s", e)
+        amt = float(row.get("payment_amount") or row.get("amount") or 0)
+        if amt > 0 and (row.get("email") or row.get("userEmail")):
+            try: asyncio.create_task(send_order_receipt_email(
+                row.get("email") or row.get("userEmail", ""),
+                row.get("name", ""),
+                row, amt,
+                method=row.get("payment_method") or "manual",
+            ))
+            except Exception as e: log.warning("send_order_receipt_email dispatch failed: %s", e)
     return row
 
 @api.delete("/orders")
