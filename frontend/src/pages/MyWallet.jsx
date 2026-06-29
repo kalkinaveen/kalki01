@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, Plus, Loader2, Upload, Copy, Check, ArrowDownLeft, ArrowUpRight, Sparkles, Gift, RotateCcw } from 'lucide-react';
+import { Wallet, Plus, Loader2, Upload, Copy, Check, ArrowDownLeft, ArrowUpRight, Sparkles, Gift, RotateCcw, Zap, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import CashfreeTopupModal from '../components/CashfreeTopupModal';
 
 const QUICK = [100, 500, 1000, 2000];
 
@@ -27,6 +28,12 @@ const MyWallet = () => {
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState('amount'); // amount → pay → done
   const [copied, setCopied] = useState('');
+  const [cfOpen, setCfOpen] = useState(false);
+  const [cfConfig, setCfConfig] = useState({ configured: false, mode: 'sandbox' });
+
+  useEffect(() => {
+    api.cashfreeConfig().then(setCfConfig).catch(() => {});
+  }, []);
 
   const reload = async () => {
     try {
@@ -91,6 +98,33 @@ const MyWallet = () => {
           <div className="eh-mono text-xs tracking-widest opacity-70 flex items-center gap-2"><Plus size={12} className="text-[var(--eh-green)]" /> // ADD BALANCE</div>
           {step === 'done' && <button onClick={() => setStep('amount')} className="eh-btn-ghost text-xs">NEW DEPOSIT</button>}
         </div>
+
+        {/* INSTANT (Cashfree) — primary path */}
+        {cfConfig.configured && step !== 'done' && (
+          <button
+            onClick={() => setCfOpen(true)}
+            className="w-full mb-5 eh-panel p-4 border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)] hover:bg-[rgba(0,255,157,.1)] flex items-center gap-3 text-left transition-all"
+            data-testid="wallet-cashfree-cta"
+          >
+            <div className="w-11 h-11 rounded-xl grid place-items-center shrink-0 bg-[rgba(0,255,157,.12)] border border-[rgba(0,255,157,.5)]">
+              <Zap size={20} color="var(--eh-green)" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="eh-mono text-[10px] opacity-60 tracking-widest">// RECOMMENDED · INSTANT</div>
+              <div className="eh-display font-black text-base sm:text-lg">Pay with Card / UPI / Netbanking</div>
+              <div className="eh-mono text-[11px] opacity-70 mt-0.5 leading-5">Wallet credits in seconds · powered by Cashfree</div>
+            </div>
+            <CreditCard size={18} className="text-[var(--eh-green)] opacity-70 shrink-0" />
+          </button>
+        )}
+
+        {cfConfig.configured && step === 'amount' && (
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-[var(--eh-border)]" />
+            <div className="eh-mono text-[10px] tracking-widest opacity-50">OR PAY MANUALLY</div>
+            <div className="flex-1 h-px bg-[var(--eh-border)]" />
+          </div>
+        )}
 
         {step === 'amount' && (
           <div className="space-y-4">
@@ -159,7 +193,7 @@ const MyWallet = () => {
           <div className="text-center py-6">
             <div className="w-16 h-16 rounded-full grid place-items-center mx-auto mb-3 bg-[rgba(0,255,157,.12)]"><Check size={28} className="text-[var(--eh-green)]" /></div>
             <div className="eh-display font-black text-xl mb-1">Deposit submitted!</div>
-            <p className="eh-mono text-xs opacity-70 leading-6 max-w-md mx-auto">Our team verifies within 30 min and credits your wallet automatically. You'll get a Telegram DM the moment it's approved.</p>
+            <p className="eh-mono text-xs opacity-70 leading-6 max-w-md mx-auto">Our team verifies within 30 min and credits your wallet automatically. You&apos;ll get a Telegram DM the moment it&apos;s approved.</p>
           </div>
         )}
       </div>
@@ -191,6 +225,16 @@ const MyWallet = () => {
           </div>
         )}
       </div>
+
+      <CashfreeTopupModal
+        open={cfOpen}
+        onClose={() => { setCfOpen(false); reload(); }}
+        suggested={Number(amount) || 500}
+        minAmount={10}
+        title="ADD MONEY"
+        subtitle="Cashfree hosted checkout · Card, UPI, Netbanking, Wallets"
+        redirectBackTo="/me/wallet"
+      />
     </section>
   );
 };

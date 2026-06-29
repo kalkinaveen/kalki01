@@ -62,6 +62,11 @@ export const api = {
   walletTxn: (id) => req(`/me/wallet/transactions/${id}`, { auth: true }),
   walletDeposit: (data) => req('/me/wallet/deposit', { method: 'POST', body: data, auth: true }),
   payOrderWithWallet: (orderId) => req(`/me/orders/${orderId}/pay-with-wallet`, { method: 'POST', auth: true }),
+  // Cashfree payment gateway
+  cashfreeConfig: () => req('/payments/cashfree/config'),
+  cashfreeTopup: (data) => req('/me/wallet/topup/cashfree', { method: 'POST', body: data, auth: true }),
+  cashfreePayOrder: (orderId, data) => req(`/me/orders/${orderId}/pay/cashfree`, { method: 'POST', body: data || {}, auth: true }),
+  cashfreeStatus: (cfOrderId) => req(`/payments/cashfree/orders/${cfOrderId}/status`),
   // refunds
   refundCreate: (data) => req('/me/refunds', { method: 'POST', body: data, auth: true }),
   refundsMine: () => req('/me/refunds', { auth: true }),

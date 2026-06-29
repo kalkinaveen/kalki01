@@ -36,6 +36,7 @@ import MyAccount from './pages/MyAccount';
 import MyWallet from './pages/MyWallet';
 import Receipt from './pages/Receipt';
 import RefundTracker from './pages/RefundTracker';
+import PaymentReturn from './pages/PaymentReturn';
 import SpinWheel from './pages/SpinWheel';
 import OrderDetail from './pages/OrderDetail';
 import ReferralsPage from './pages/ReferralsPage';
@@ -80,6 +81,7 @@ function App() {
                 <Route path="/me/wallet" element={<SiteShell><MyWallet /></SiteShell>} />
                 <Route path="/receipt/:id" element={<SiteShell><Receipt /></SiteShell>} />
                 <Route path="/refund/:id" element={<SiteShell><RefundTracker /></SiteShell>} />
+                <Route path="/payments/return" element={<SiteShell><PaymentReturn /></SiteShell>} />
                 <Route path="/me/spin" element={<SiteShell><SpinWheel /></SiteShell>} />
                 <Route path="/me/orders/:id" element={<SiteShell><OrderDetail /></SiteShell>} />
                 <Route path="/me/referrals" element={<SiteShell><ReferralsPage /></SiteShell>} />

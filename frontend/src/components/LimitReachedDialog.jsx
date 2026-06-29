@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wallet, LogIn, X, Sparkles, Clock } from 'lucide-react';
+import { Wallet, LogIn, X, Sparkles, Clock, Zap } from 'lucide-react';
+import CashfreeTopupModal from './CashfreeTopupModal';
 
 /**
  * Modal shown when a tool returns 429. The `detail` shape is from backend:
@@ -21,12 +22,15 @@ const TOOL_LABEL = {
 };
 
 const LimitReachedDialog = ({ open, detail, onClose }) => {
+  const [topupOpen, setTopupOpen] = useState(false);
   if (!open || !detail) return null;
 
   const toolName = TOOL_LABEL[detail.tool] || 'this tool';
   const needTopUp = detail.top_up_required;
   const needAuth  = detail.auth_required;
   const need      = Math.ceil(detail.needed ?? (detail.wallet_cost ?? 0) - (detail.balance ?? 0));
+  // Sensible default top-up: enough for 10 more uses, rounded to ₹50
+  const suggested = Math.max(50, Math.ceil((Number(detail.wallet_cost || 5) * 10) / 50) * 50);
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3" onClick={onClose}>
@@ -69,7 +73,7 @@ const LimitReachedDialog = ({ open, detail, onClose }) => {
           {needAuth ? (
             <>Sign in to your ERRORHACKER account, top up your wallet, and keep using the tool with no daily cap.</>
           ) : needTopUp ? (
-            <>Top up <b>₹{need}</b> or more to your wallet — extra uses are then auto-debited at <b>₹{detail.wallet_cost}</b> each, no separate purchase needed. Or wait until midnight UTC for your free quota to reset.</>
+            <>Top up <b>₹{need}</b> or more to your wallet — extra uses are then auto-debited at <b>₹{detail.wallet_cost}</b> each, no separate purchase needed.</>
           ) : (
             <>Top up your wallet to continue, or wait until midnight UTC for your free quota to reset.</>
           )}
@@ -87,11 +91,14 @@ const LimitReachedDialog = ({ open, detail, onClose }) => {
             </>
           ) : (
             <>
-              <Link to="/me" onClick={onClose} className="eh-btn-primary w-full justify-center text-xs" data-testid="limit-topup">
-                <Wallet size={12} /> TOP UP WALLET
+              <button onClick={() => setTopupOpen(true)} className="eh-btn-primary w-full justify-center text-xs inline-flex items-center gap-1.5" data-testid="limit-topup">
+                <Zap size={12} /> ADD MONEY · CARD / UPI (INSTANT)
+              </button>
+              <Link to="/me/wallet" onClick={onClose} className="eh-btn-ghost w-full justify-center text-xs" data-testid="limit-topup-manual">
+                <Wallet size={12} /> OPEN WALLET PAGE
               </Link>
               <button onClick={onClose} className="eh-btn-ghost w-full justify-center text-xs" data-testid="limit-wait">
-                <Clock size={12} /> WAIT — I&apos;LL COME BACK TOMORROW
+                <Clock size={12} /> WAIT — RESETS AT MIDNIGHT UTC
               </button>
             </>
           )}
@@ -101,6 +108,15 @@ const LimitReachedDialog = ({ open, detail, onClose }) => {
           · daily free quota resets at midnight UTC · wallet balance never expires
         </p>
       </div>
+
+      <CashfreeTopupModal
+        open={topupOpen}
+        onClose={() => setTopupOpen(false)}
+        suggested={suggested}
+        title="QUICK TOP-UP"
+        subtitle={`Add ₹${suggested} → unlocks ~${Math.floor(suggested / (Number(detail.wallet_cost) || 5))} more uses of ${toolName}.`}
+        redirectBackTo={window.location.pathname}
+      />
     </div>
   );
 };
