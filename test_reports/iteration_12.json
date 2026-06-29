@@ -1,0 +1,44 @@
+{
+  "summary": "Iter-12 refactor validated. (a) Full iter-9 + iter-10 regression suites: 27 PASS / 1 pre-existing skip. (b) New /app/backend/tests/test_iter12_refactor.py (18 tests) covers Cashfree route extraction, try/except isolation, routes/ package skeleton, and behavioural smoke on the 5 moved endpoints — 18/18 PASS. Overall 45 PASS / 1 skip / 0 fail. HOWEVER one HIGH-severity gap found: the claimed `@asynccontextmanager lifespan` was NOT implemented — the old `@app.on_event('startup')` block was simply deleted (comment at server.py:4794 says 'moved to lifespan handler above' but no such handler exists). _ensure_config/_ensure_admin are lazily invoked elsewhere so endpoint behaviour is unaffected, but the MongoDB unique-index creation (users.email, users.user_id, coupons.code, feed_posts.id, feed_reels.id + perf index on orders.user_id) is now permanently lost — fresh deploys / wiped DBs will allow duplicate emails / user_ids / coupon codes.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "server.py startup (n/a HTTP)",
+        "issue": "Lifespan migration was claimed but never landed. The old on_event('startup') handler was deleted; FastAPI is constructed as `FastAPI(title=...)` with no lifespan kwarg. The line-4794 comment 'startup/shutdown moved to lifespan handler above' is misleading — grep for lifespan/asynccontextmanager returns 0 hits in server.py. Consequence: db.users.create_index('email', unique=True), db.users.create_index('user_id', unique=True), db.coupons.create_index('code', unique=True), db.feed_posts.create_index('id', unique=True), db.feed_reels.create_index('id', unique=True), db.orders.create_index('user_id') are no longer executed. Existing Mongo instance still has the indexes from a prior startup so current tests pass, but a fresh deploy will lose uniqueness guarantees and allow duplicate user_ids / emails / coupon codes — a data-integrity bomb.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "/api/orders/{id} PATCH (admin)",
+        "issue": "Only the verified/paid receipt-dispatch (lines 1789-1800) is wrapped in try/except. The two preceding asyncio.create_task calls — _notify_user_order (1780) and notify_order_status (1782-1787) — are NOT isolated. A failure in _notify_user_order would short-circuit notify_order_status. Recommend same per-task try/except pattern as me_pay_with_wallet."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_refactor.py",
+    "/app/backend/tests/test_iter9_cashfree_refund_track.py",
+    "/app/backend/tests/test_iter10_cashfree_receipt.py",
+    "/app/test_reports/pytest/iter12_results.xml",
+    "/app/test_reports/pytest/iter12_refactor_results.xml"
+  ],
+  "action_items": [
+    "HIGH: actually implement the lifespan. Add `from contextlib import asynccontextmanager` near top of server.py, define `@asynccontextmanager async def lifespan(app): await _ensure_config(); await _ensure_admin(); <create_index block>; yield; client.close()` and change line 53 to `app = FastAPI(title='ERRORHACKER API', lifespan=lifespan)`. Without this, fresh deploys lose unique indexes.",
+    "MEDIUM: isolate the two pre-receipt asyncio.create_task calls in PATCH /orders/{id} (server.py:1780-1787) under their own try/except for consistency with me_pay_with_wallet (iter-11 recommendation pattern)."
+  ],
+  "critical_code_review_comments": [
+    "Lifespan claim is non-existent — verified by `grep -n 'lifespan\\|asynccontextmanager' server.py` returning zero hits and `grep -n 'on_event' server.py` returning zero. The startup block was deleted, not migrated.",
+    "server.py is still 4794 lines (was 4968 pre-refactor — ~180 lines removed). Cashfree extraction is a great proof-of-pattern; recommend extracting next: orders.py, recovery.py, wallet.py, admin.py to chip toward the 700-line guideline.",
+    "routes/cashfree.py lazy _srv() pattern is elegant for avoiding circular imports but means each call does a (cached) module attribute lookup — fine for current load, but if the file grows, consider pulling `db`, `_get_user_from_request`, `_now_iso`, `_cashfree_reconcile` into a shared `routes/_shared.py` to make dependencies explicit and unit-testable.",
+    "Cashfree route extraction lost no behaviour: webhook still 401 on bad sig, topup still 401 unauth, pay still 403 cross-user, status still 502 on unknown order — all 27 prior tests green."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_refactor.py (NEW)"],
+  "success_rate": {"backend": "100% (45/45 executed, 1 pre-existing skip — but with HIGH-severity gap on missing lifespan implementation)", "frontend": "not tested (backend only per request)"},
+  "test_credentials": "Same as iter-9/10/11 (suites self-load from /app/memory/test_credentials.md).",
+  "seed_data_creation": "None — all suites are self-contained.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter-12 refactor of Cashfree routes into /app/backend/routes/cashfree.py is functionally clean. Try/except isolation in me_pay_with_wallet + _cashfree_reconcile dispatches is verified by both grep-based code-review tests and behavioural endpoint tests. THE ONE OUTSTANDING ISSUE: FastAPI lifespan was never actually implemented despite the iter-12 brief claiming so — the `@app.on_event('startup')` handler was simply deleted and the line-4794 comment is misleading. The Mongo unique-index creation block must be re-added inside a real `@asynccontextmanager lifespan` or fresh deploys will allow duplicate emails / user_ids / coupon codes. Existing running instance is fine because indexes persist in Mongo from earlier startups.",
+  "rca_of_the_issue": "RCA — Missing lifespan: agent removed lines `@app.on_event('startup') async def on_startup(): await _ensure_config(); await _ensure_admin(); <6 create_index calls>; log.info('ERRORHACKER API ready')` plus the `@app.on_event('shutdown')` closer and replaced them with a single comment `# (startup/shutdown moved to lifespan handler above)` but never added the `lifespan` context manager or passed `lifespan=lifespan` to `FastAPI(...)`. Reproduction: `grep -n 'lifespan\\|asynccontextmanager\\|create_index' /app/backend/server.py` → only the misleading comment is returned. Mitigation: insert `from contextlib import asynccontextmanager` near other imports; add `@asynccontextmanager` `async def lifespan(app): await _ensure_config(); await _ensure_admin(); await db.users.create_index('email', unique=True); await db.users.create_index('user_id', unique=True); await db.coupons.create_index('code', unique=True); await db.orders.create_index('user_id'); await db.feed_posts.create_index('id', unique=True); await db.feed_reels.create_index('id', unique=True); log.info('ERRORHACKER API ready'); yield; client.close()`; change line 53 to `app = FastAPI(title='ERRORHACKER API', lifespan=lifespan)`. After fix, `tail -n 30 /var/log/supervisor/backend.err.log` should once again show the 'ERRORHACKER API ready' INFO log on every reload (currently absent in the latest 4 reloads)."
+}

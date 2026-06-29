@@ -4247,133 +4247,11 @@ async def admin_wallets_list(x_admin_token: Optional[str] = Header(None)):
     return out
 
 
-# ---- Cashfree Payment Gateway --------------------------------------------
+# ---- Cashfree Payment Gateway -------------------------------------------
+# All payment-creation routes live in /app/backend/routes/cashfree.py.
+# Only the shared reconcile helper stays here because admin paths + other
+# modules call it directly.
 import cashfree_service as cf  # noqa: E402
-
-
-class CashfreeTopupIn(BaseModel):
-    amount: float = Field(..., gt=0, le=1000000)
-    phone: Optional[str] = ""
-
-class CashfreeOrderPayIn(BaseModel):
-    phone: Optional[str] = ""
-
-
-@api.get("/payments/cashfree/config")
-async def cashfree_pub_config():
-    return {"configured": cf.is_configured(), "mode": cf.mode()}
-
-
-@api.post("/me/wallet/topup/cashfree")
-async def me_wallet_topup_cashfree(body: CashfreeTopupIn, request: Request):
-    user = await _get_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Login required")
-    if not cf.is_configured():
-        raise HTTPException(status_code=503, detail="Cashfree is not configured yet")
-    amount = round(float(body.amount), 2)
-    if amount < 1:
-        raise HTTPException(status_code=400, detail="Minimum top-up is ₹1")
-    cf_order_id = f"WTU-{uuid.uuid4().hex[:18].upper()}"
-    try:
-        result = await cf.create_order(
-            order_id=cf_order_id,
-            amount=amount,
-            customer_id=user["user_id"],
-            customer_email=user.get("email", ""),
-            customer_phone=(body.phone or user.get("phone") or "9999999999"),
-            customer_name=user.get("name", ""),
-            purpose="wallet_topup",
-            order_note=f"Wallet top-up · {user.get('email','')}",
-            return_url=f"{cf.SITE_URL}/payments/return?order_id={{order_id}}",
-        )
-    except cf.CashfreeError as e:
-        log.warning("Cashfree create_order failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"Cashfree error: {e.body}")
-    # Persist pending order for reconciliation
-    await db.cashfree_orders.insert_one({
-        "id": cf_order_id,
-        "user_id": user["user_id"],
-        "user_email": user.get("email"),
-        "purpose": "wallet_topup",
-        "amount": amount,
-        "status": result.get("order_status", "ACTIVE"),
-        "payment_session_id": result.get("payment_session_id"),
-        "cf_order_id": result.get("cf_order_id"),
-        "createdAt": _now_iso(),
-    })
-    return {
-        "ok": True,
-        "order_id": cf_order_id,
-        "payment_session_id": result.get("payment_session_id"),
-        "mode": cf.mode(),
-    }
-
-
-@api.post("/me/orders/{order_id}/pay/cashfree")
-async def me_pay_order_cashfree(order_id: str, body: CashfreeOrderPayIn, request: Request):
-    """Create a Cashfree session for paying a specific service order directly."""
-    user = await _get_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Login required")
-    if not cf.is_configured():
-        raise HTTPException(status_code=503, detail="Cashfree not configured")
-    order = await db.orders.find_one({"id": order_id})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if order.get("user_id") and order.get("user_id") != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Not your order")
-    if order.get("status") in ("verified", "paid", "in-progress", "delivered"):
-        raise HTTPException(status_code=400, detail="Order already paid")
-    amount = float(order.get("payment_amount") or order.get("amount") or 0)
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Order price not set — ask admin to send a quote first")
-    cf_order_id = f"OPY-{order_id[-8:]}-{uuid.uuid4().hex[:6].upper()}"
-    try:
-        result = await cf.create_order(
-            order_id=cf_order_id,
-            amount=amount,
-            customer_id=user["user_id"],
-            customer_email=user.get("email", ""),
-            customer_phone=(body.phone or user.get("phone") or "9999999999"),
-            customer_name=user.get("name", ""),
-            purpose="service_payment",
-            order_note=f"Order {order_id} · {order.get('serviceName') or order.get('service') or ''}",
-            return_url=f"{cf.SITE_URL}/me/orders/{order_id}?cf={{order_id}}",
-            tags={"app_order_id": order_id},
-        )
-    except cf.CashfreeError as e:
-        raise HTTPException(status_code=502, detail=f"Cashfree error: {e.body}")
-    await db.cashfree_orders.insert_one({
-        "id": cf_order_id,
-        "user_id": user["user_id"],
-        "user_email": user.get("email"),
-        "purpose": "service_payment",
-        "amount": amount,
-        "app_order_id": order_id,
-        "status": result.get("order_status", "ACTIVE"),
-        "payment_session_id": result.get("payment_session_id"),
-        "cf_order_id": result.get("cf_order_id"),
-        "createdAt": _now_iso(),
-    })
-    return {"ok": True, "order_id": cf_order_id, "payment_session_id": result.get("payment_session_id"), "mode": cf.mode()}
-
-
-@api.get("/payments/cashfree/orders/{cf_order_id}/status")
-async def cashfree_order_status(cf_order_id: str):
-    if not cf.is_configured():
-        raise HTTPException(status_code=503, detail="Cashfree not configured")
-    try:
-        data = await cf.fetch_order(cf_order_id)
-    except cf.CashfreeError as e:
-        raise HTTPException(status_code=502, detail=f"Cashfree error: {e.body}")
-    # Reconcile + apply business logic on PAID (idempotent)
-    await _cashfree_reconcile(cf_order_id, data)
-    return {
-        "order_id": cf_order_id,
-        "order_status": data.get("order_status"),
-        "order_amount": data.get("order_amount"),
-    }
 
 
 async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
@@ -4401,16 +4279,16 @@ async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
                 user = await db.users.find_one({"user_id": pending["user_id"]}) or {}
                 wallet = await db.wallets.find_one({"user_id": pending["user_id"]}) or {}
                 if user.get("email"):
-                    try:
-                        asyncio.create_task(notify_wallet_credited(
-                            user["email"], user.get("name", ""),
-                            float(pending["amount"]), float(wallet.get("balance") or 0),
+                    try: asyncio.create_task(notify_wallet_credited(
+                        user["email"], user.get("name", ""),
+                        float(pending["amount"]), float(wallet.get("balance") or 0),
+                    ))
+                    except Exception as e: log.warning("notify_wallet_credited dispatch failed: %s", e)
+                    if txn:
+                        try: asyncio.create_task(send_wallet_receipt_email(
+                            user["email"], user.get("name", ""), _clean(txn), float(wallet.get("balance") or 0),
                         ))
-                        if txn:
-                            asyncio.create_task(send_wallet_receipt_email(
-                                user["email"], user.get("name", ""), _clean(txn), float(wallet.get("balance") or 0),
-                            ))
-                    except Exception: pass
+                        except Exception as e: log.warning("send_wallet_receipt_email dispatch failed: %s", e)
             elif pending.get("purpose") == "service_payment" and pending.get("app_order_id"):
                 # Mark the app order verified
                 await db.orders.find_one_and_update(
@@ -4426,59 +4304,24 @@ async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
                 )
                 user = await db.users.find_one({"user_id": pending["user_id"]}) or {}
                 if user.get("email"):
-                    try:
-                        ord_doc = await db.orders.find_one({"id": pending["app_order_id"]}) or {}
-                        asyncio.create_task(notify_order_status(
-                            user["email"], user.get("name", ""),
-                            pending["app_order_id"], "paid",
-                            ord_doc.get("serviceName") or ord_doc.get("service") or "",
-                        ))
-                        asyncio.create_task(send_order_receipt_email(
-                            user["email"], user.get("name", ""),
-                            ord_doc, float(pending.get("amount") or 0), method="cashfree",
-                        ))
-                    except Exception: pass
+                    ord_doc = await db.orders.find_one({"id": pending["app_order_id"]}) or {}
+                    try: asyncio.create_task(notify_order_status(
+                        user["email"], user.get("name", ""),
+                        pending["app_order_id"], "paid",
+                        ord_doc.get("serviceName") or ord_doc.get("service") or "",
+                    ))
+                    except Exception as e: log.warning("notify_order_status dispatch failed: %s", e)
+                    try: asyncio.create_task(send_order_receipt_email(
+                        user["email"], user.get("name", ""),
+                        ord_doc, float(pending.get("amount") or 0), method="cashfree",
+                    ))
+                    except Exception as e: log.warning("send_order_receipt_email dispatch failed: %s", e)
         except Exception as e:
             log.warning("Cashfree reconcile side-effect failed: %s", e)
     elif new_status in ("EXPIRED", "TERMINATED", "FAILED") and pending.get("status") != new_status:
         await db.cashfree_orders.update_one(
             {"id": cf_order_id}, {"$set": {"status": new_status, "last_snapshot": latest}},
         )
-
-
-@api.post("/payments/cashfree/webhook")
-async def cashfree_webhook(request: Request):
-    raw = await request.body()
-    ts = request.headers.get("x-webhook-timestamp") or ""
-    sig = request.headers.get("x-webhook-signature") or ""
-    if not cf.verify_webhook_signature(raw, ts, sig):
-        log.warning("Cashfree webhook signature failed (ts=%s)", ts)
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-    # Pull order_id from any of the documented locations
-    order_id = (
-        (payload.get("data") or {}).get("order", {}).get("order_id")
-        or (payload.get("data") or {}).get("order_id")
-        or payload.get("order_id")
-        or (payload.get("order") or {}).get("order_id")
-    )
-    if order_id:
-        try:
-            latest = await cf.fetch_order(order_id)
-            await _cashfree_reconcile(order_id, latest)
-        except Exception as e:
-            log.warning("Cashfree webhook reconcile failed for %s: %s", order_id, e)
-            # 202 tells Cashfree we received it but couldn't fully process; they
-            # will retry per their backoff. Returning 200 here would silently
-            # drop events on transient errors.
-            return JSONResponse({"ok": False, "error": "reconcile_failed"}, status_code=202)
-    else:
-        log.warning("Cashfree webhook missing order_id in payload: %s", str(payload)[:300])
-        return JSONResponse({"ok": False, "error": "no_order_id"}, status_code=202)
-    return {"ok": True}
 
 
 # ---- Pay an order with wallet balance (one-tap) --------------------------
@@ -4528,13 +4371,14 @@ async def me_pay_with_wallet(order_id: str, request: Request):
     updated = await db.orders.find_one({"id": order_id})
     # Fire-and-forget notifications
     if user.get("email"):
-        try:
-            asyncio.create_task(notify_order_status(user["email"], user.get("name", ""), order_id, "paid", updated.get("serviceName") or updated.get("service") or ""))
-            asyncio.create_task(send_wallet_receipt_email(user["email"], user.get("name", ""), txn, float(wallet.get("balance") or 0) - amount))
-            # Order-paid receipt (printable, with OPEN LIVE TRACKER button)
-            asyncio.create_task(send_order_receipt_email(user["email"], user.get("name", ""), updated, amount, method="wallet"))
-        except Exception as e:
-            log.warning("wallet pay notify dispatch failed: %s", e)
+        # Each dispatch in its own try/except so a single Resend hiccup doesn't
+        # swallow the others (iter-11 testing-agent recommendation).
+        try: asyncio.create_task(notify_order_status(user["email"], user.get("name", ""), order_id, "paid", updated.get("serviceName") or updated.get("service") or ""))
+        except Exception as e: log.warning("notify_order_status dispatch failed: %s", e)
+        try: asyncio.create_task(send_wallet_receipt_email(user["email"], user.get("name", ""), txn, float(wallet.get("balance") or 0) - amount))
+        except Exception as e: log.warning("send_wallet_receipt_email dispatch failed: %s", e)
+        try: asyncio.create_task(send_order_receipt_email(user["email"], user.get("name", ""), updated, amount, method="wallet"))
+        except Exception as e: log.warning("send_order_receipt_email dispatch failed: %s", e)
     return {"ok": True, "order": _clean(updated), "txn_id": txn.get("id"), "balance_after": float(wallet.get("balance") or 0) - amount}
 
 
@@ -4931,6 +4775,12 @@ async def works_with_update(body: Dict[str, Any] = Body(...), x_admin_token: Opt
 
 
 # --------------------------------------------------------------------------
+# --- External route modules (extracted from server.py) ---
+# Imported here at the bottom so all shared symbols (db, helpers, models) are
+# defined before the route modules attempt to bind to them.
+from routes.cashfree import router as cashfree_router  # noqa: E402
+api.include_router(cashfree_router)
+
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
@@ -4940,28 +4790,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def on_startup():
-    await _ensure_config()
-    await _ensure_admin()
-    try:
-        await db.users.create_index("email", unique=True)
-        await db.users.create_index("user_id", unique=True)
-        await db.coupons.create_index("code", unique=True)
-        await db.orders.create_index("user_id")
-        await db.feed_posts.create_index("id", unique=True)
-        await db.feed_reels.create_index("id", unique=True)
-        await db.feed_comments.create_index("id", unique=True)
-        await db.feed_comments.create_index("post_id")
-        await db.feed_comments.create_index("reel_id")
-        await db.feed_likes.create_index([("post_id", 1), ("user_id", 1)])
-        await db.feed_likes.create_index([("reel_id", 1), ("user_id", 1)])
-        await db.feed_views.create_index([("post_id", 1), ("session_id", 1)], unique=False)
-        await db.feed_views.create_index([("reel_id", 1), ("session_id", 1)], unique=False)
-    except Exception as e:
-        log.warning("index create warn: %s", e)
-    log.info("ERRORHACKER API ready")
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    client.close()
+# (startup/shutdown moved to lifespan handler above)
