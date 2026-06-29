@@ -4531,6 +4531,8 @@ async def me_pay_with_wallet(order_id: str, request: Request):
         try:
             asyncio.create_task(notify_order_status(user["email"], user.get("name", ""), order_id, "paid", updated.get("serviceName") or updated.get("service") or ""))
             asyncio.create_task(send_wallet_receipt_email(user["email"], user.get("name", ""), txn, float(wallet.get("balance") or 0) - amount))
+            # Order-paid receipt (printable, with OPEN LIVE TRACKER button)
+            asyncio.create_task(send_order_receipt_email(user["email"], user.get("name", ""), updated, amount, method="wallet"))
         except Exception as e:
             log.warning("wallet pay notify dispatch failed: %s", e)
     return {"ok": True, "order": _clean(updated), "txn_id": txn.get("id"), "balance_after": float(wallet.get("balance") or 0) - amount}
