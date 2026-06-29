@@ -11,6 +11,16 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-10 · Cashfree EVERYWHERE + Receipt Emails + Quote-Pay Deep-Link** 📧
+  - `PaymentBox` rewritten to default to **Cashfree (FAST badge)** with Manual UPI + Crypto as secondary tabs. Now used on `/me/orders/{id}`, public `/track`, AND inside recovery cases when a quote is sent (`linked_order_id` branch) — Cashfree available everywhere a customer can pay.
+  - **`send_order_receipt_email`** — new printable receipt with Order ID + Service + Amount + Method + VERIFIED badge + "OPEN LIVE TRACKER" button. Dispatched on:
+    - Cashfree service-payment reconcile
+    - Wallet pay-with-balance (iter-11 fix)
+    - Admin marks manual UPI/Crypto payment verified
+    - Side-by-side with existing wallet receipt for completeness
+  - **Quote email upgrade** (`notify_quote_sent`) — now lists Cashfree as the instant option, CTA reads "PAY NOW · OPEN CASE" and links to `/track?id={case}&pay=1`.
+  - **`?pay=1` deep-link** — `OrderTracker` reads the flag and threads `autoScroll` through `RecoveryView`/`OrderView` to `PaymentBox`, which scrolls into view + flashes a 2-cycle neon pulse (`.eh-pulse-once` keyframe) drawing the eye straight to the Pay button.
+  - Final iter-11 retest: **27/27 backend tests green**, frontend 100% critical paths from iter-10. Domain whitelisting on Cashfree dashboard is the only remaining customer-side step.
 - **Iter-9 · Cashfree LIVE PG + Tools Auto-TopUp + Public Refund Tracking** 🚀
   - **Cashfree Payments PG v3 (LIVE production)** integrated end-to-end:
     - Hosted checkout for wallet top-ups (`POST /api/me/wallet/topup/cashfree`) and direct order payments (`POST /api/me/orders/{id}/pay/cashfree`)
