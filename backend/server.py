@@ -34,6 +34,7 @@ from email_service import (
     notify_order_status,
     notify_wallet_credited,
     send_wallet_receipt_email,
+    send_order_receipt_email,
 )
 
 # --------------------------------------------------------------------------
@@ -1784,6 +1785,19 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
         order_id, body.status,
         row.get("serviceName") or row.get("service", "")
     ))
+    # When admin marks the order verified/paid via manual proof flow, also send a receipt
+    if body.status in ("verified", "paid"):
+        try:
+            amt = float(row.get("payment_amount") or row.get("amount") or 0)
+            if amt > 0 and (row.get("email") or row.get("userEmail")):
+                asyncio.create_task(send_order_receipt_email(
+                    row.get("email") or row.get("userEmail", ""),
+                    row.get("name", ""),
+                    row, amt,
+                    method=row.get("payment_method") or "manual",
+                ))
+        except Exception as e:
+            log.warning("order receipt dispatch failed: %s", e)
     return row
 
 @api.delete("/orders")
@@ -4378,7 +4392,7 @@ async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
             return  # someone else got here first
         try:
             if pending.get("purpose") == "wallet_topup":
-                await _wallet_txn(
+                txn = await _wallet_txn(
                     pending["user_id"], "credit", float(pending.get("amount") or 0),
                     note=f"Cashfree top-up · {cf_order_id}",
                     ref={"cf_order_id": cf_order_id, "method": "cashfree"},
@@ -4392,6 +4406,10 @@ async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
                             user["email"], user.get("name", ""),
                             float(pending["amount"]), float(wallet.get("balance") or 0),
                         ))
+                        if txn:
+                            asyncio.create_task(send_wallet_receipt_email(
+                                user["email"], user.get("name", ""), _clean(txn), float(wallet.get("balance") or 0),
+                            ))
                     except Exception: pass
             elif pending.get("purpose") == "service_payment" and pending.get("app_order_id"):
                 # Mark the app order verified
@@ -4414,6 +4432,10 @@ async def _cashfree_reconcile(cf_order_id: str, latest: Dict[str, Any]):
                             user["email"], user.get("name", ""),
                             pending["app_order_id"], "paid",
                             ord_doc.get("serviceName") or ord_doc.get("service") or "",
+                        ))
+                        asyncio.create_task(send_order_receipt_email(
+                            user["email"], user.get("name", ""),
+                            ord_doc, float(pending.get("amount") or 0), method="cashfree",
                         ))
                     except Exception: pass
         except Exception as e:

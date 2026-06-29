@@ -1,0 +1,78 @@
+{
+  "summary": "Iter-10 review of Cashfree-everywhere + receipt-email + quote-CTA fix scope. 10/11 backend tests PASS, 1 FAIL (real bug — me_pay_with_wallet does NOT dispatch send_order_receipt_email, only send_wallet_receipt_email; review request explicitly required BOTH). Regression iter-9 still 16/16 + 1 skip (100% green). Frontend: PaymentBox renders Cashfree as default tab with FAST badge + big PAY ₹X · OPEN CHECKOUT button on /me/orders/{id}; clicking it fires POST /api/me/orders/{id}/pay/cashfree → 200. /track?id=ORD-...&pay=1 — payment-box class includes eh-pulse-once; without &pay=1 the class is absent. /me/wallet — wallet-cashfree-cta opens cashfree-topup-modal cleanly. Manual UPI tab still functional. Code-review confirmed: notify_quote_sent mentions Cashfree as instant option and CTA url is /track?id={case_id}&pay=1; send_order_receipt_email has Order ID/Amount/VERIFIED/OPEN LIVE TRACKER block; PATCH /orders/{id} fires send_order_receipt_email when status in ('verified','paid') and payment_amount>0 (verified end-to-end — backend log shows 'resend ok' for the dispatched receipt); _cashfree_reconcile correctly fans out send_wallet_receipt_email for wallet_topup and send_order_receipt_email for service_payment.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/me/orders/{id}/pay-with-wallet",
+        "issue": "Only dispatches send_wallet_receipt_email — does NOT also dispatch send_order_receipt_email. Per iter-10 fix scope: 'POST /api/me/orders/{id}/pay-with-wallet now dispatches BOTH send_wallet_receipt_email AND send_order_receipt_email after a successful debit.' Currently /app/backend/server.py:4530-4535 fires only notify_order_status + send_wallet_receipt_email. Customer paying-from-wallet therefore receives a wallet-debit receipt but no service-order receipt with VERIFIED/OPEN LIVE TRACKER block.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Cashfree hosted checkout (post-200)",
+        "issue": "INFO ONLY — same as iter-9. POST returns valid payment_session_id but Cashfree's JS-SDK redirect view still shows 'domain not whitelisted' because functionality-139.preview.emergentagent.com is not yet added in the merchant dashboard. NOT a code bug.",
+        "affected_selectors": ["pay-cashfree-btn", "cashfree-topup-modal"]
+      }
+    ],
+    "design_issues": []
+  },
+  "tests_executed": [
+    "GET /api/payments/cashfree/config → {configured:true, mode:'production'} — PASS",
+    "POST /api/me/orders/{id}/pay/cashfree unauth → 401/403 — PASS",
+    "POST /api/me/orders/{id}/pay/cashfree cross-user → 403 — PASS",
+    "POST /api/me/orders/{id}/pay/cashfree no price → 400 'Order price not set' — PASS",
+    "POST /api/me/orders/{id}/pay/cashfree priced order → 200 with valid payment_session_id (LIVE Cashfree call) — PASS",
+    "PATCH /api/orders/{id} status='verified' on order with payment_amount=499 → 200 + asyncio.create_task(send_order_receipt_email) — backend log confirms 'resend ok id=… to=TEST_iter10a_*@example.com' — PASS",
+    "Code-review: email_service.notify_quote_sent contains 'Cashfree' AND CTA url '/track?id={case_id}&pay=1' — PASS",
+    "Code-review: email_service.send_order_receipt_email exists with Order ID + Amount Paid + VERIFIED + OPEN LIVE TRACKER + /track?id= — PASS",
+    "Code-review: server.py PATCH /orders/{id} wired to send_order_receipt_email for status in ('verified','paid') — PASS",
+    "Code-review: server.py _cashfree_reconcile wallet_topup → send_wallet_receipt_email, service_payment → send_order_receipt_email — PASS",
+    "Code-review: server.py me_pay_with_wallet dispatches send_wallet_receipt_email BUT NOT send_order_receipt_email — FAIL (real bug per fix scope)",
+    "[Frontend] /me/orders/{ORD-…} — PaymentBox renders with Cashfree tab default + FAST badge — PASS",
+    "[Frontend] PaymentBox button [data-testid=pay-cashfree-btn] text 'PAY ₹499 · OPEN CHECKOUT' renders, click → POST /api/me/orders/.../pay/cashfree returns 200 — PASS",
+    "[Frontend] Click [data-testid=pay-tab-manual] → [data-testid=pay-manual-pane] visible (regression) — PASS",
+    "[Frontend] /track?id=ORD-…&pay=1 — payment-box class contains 'eh-pulse-once' — PASS",
+    "[Frontend] /track?id=ORD-… (no pay=1) — payment-box does NOT have 'eh-pulse-once' — PASS",
+    "[Frontend] /me/wallet — [wallet-cashfree-cta] opens [cashfree-topup-modal] (regression) — PASS",
+    "Regression: iter-9 full suite — 16 passed, 1 skipped (admin-orders status patch endpoint) — PASS"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_cashfree_receipt.py",
+    "/app/backend/tests/test_iter9_cashfree_refund_track.py",
+    "/app/test_reports/pytest/iter10.xml",
+    "/app/test_reports/pytest/iter9_regress.xml"
+  ],
+  "action_items": [
+    "HIGH — In /app/backend/server.py inside me_pay_with_wallet (around line 4530-4535), add `asyncio.create_task(send_order_receipt_email(user['email'], user.get('name',''), updated, amount, method='wallet'))` alongside the existing send_wallet_receipt_email call. The review request explicitly states BOTH receipts must be sent on pay-with-wallet success.",
+    "INFO (carry-over) — User must whitelist the deployed domain on https://merchant.cashfree.com → developers (https://bit.ly/3Xkt3RJ). Backend integration is correct; hosted-checkout view rejects preview hostname.",
+    "(carry-over) — cashfree_service._request uses uuid4() x-idempotency-key, defeating retry idempotency on create_order.",
+    "(carry-over) — server.py is 4966 lines; split into wallet/refund/spin/cashfree routers."
+  ],
+  "critical_code_review_comments": [
+    "BUG — me_pay_with_wallet at server.py:4530-4535 misses send_order_receipt_email. The doc-string says 'Sends order-paid email + Telegram alert' but only sends notify_order_status (status update email) + send_wallet_receipt_email (wallet receipt). The new printable order receipt with OPEN LIVE TRACKER button never goes out for wallet payments — only for Cashfree (_cashfree_reconcile) and manual (PATCH /orders).",
+    "GOOD — _cashfree_reconcile correctly branches: wallet_topup → wallet receipt + notify_wallet_credited; service_payment → order receipt + notify_order_status. Both fire-and-forget via asyncio.create_task.",
+    "GOOD — notify_quote_sent now lists 'Instant — Card / UPI / Netbanking (Cashfree, secured)' as the first payment option and the CTA button is 'PAY NOW · OPEN CASE' pointing to /track?id={case_id}&pay=1. The frontend then auto-scrolls + flashes the payment box (verified visually).",
+    "GOOD — PaymentBox component is well-structured: cf.configured drives the default tab; amount<=0 disables the Cashfree button with a clean 'AWAITING QUOTE' label; manual + crypto panes remain isolated.",
+    "MINOR — PaymentBox.payWithCashfree (line 59-69) doesn't disable the button via aria-disabled during the async POST; only the `disabled` HTML attribute is used. Double-click race is mitigated but `paying` state could be exposed via aria-busy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_cashfree_receipt.py (NEW — 11 cases, 10 pass + 1 fail uncovering me_pay_with_wallet receipt bug)",
+    "/app/test_reports/pytest/iter10.xml (NEW — JUnit XML)",
+    "/app/test_reports/pytest/iter9_regress.xml (NEW — iter-9 regression rerun)"
+  ],
+  "success_rate": {
+    "backend": "91% (10/11; 1 real bug uncovered) + 16/16 iter-9 regression",
+    "frontend": "100% of iter-10 critical flows (Cashfree tab default, pay-cashfree-btn fires POST 200, /track?id=…&pay=1 pulse class, /me/wallet modal regression)"
+  },
+  "test_credentials": "Admin admin123. Customer test1@example.com / hack123. Per-test users TEST_iter10*_@example.com (+ TEST_iter10b_*).",
+  "seed_data_creation": "Several TEST_iter10*_@example.com users + ORD-* + new cashfree_orders rows (live ACTIVE, never paid). test1@example.com wallet ₹5,000 preserved.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "(1) The ONE real bug from iter-10: me_pay_with_wallet at server.py:4530-4535 needs send_order_receipt_email added next to the existing send_wallet_receipt_email. The test that asserts this is test_iter10_cashfree_receipt.py::TestEmailServiceIntrospection::test_me_pay_with_wallet_dispatches_both_receipts — once fixed, it will pass. (2) POST /orders does NOT accept payment_amount/amount fields; price must be seeded via POST /api/payments/proof (which sets status=payment_review — that's still fine because pay/cashfree only blocks verified/paid/in-progress/delivered). (3) PATCH /api/orders/{id} accepts only {status: …} (no payment_amount field). (4) Backend already prints `resend ok id=… to=…` confirming receipt emails ship via Resend API in production. (5) Iter-9 suite still 100% green — use it as regression for refund/spin/wallet flows. (6) Recovery linked_order_id branch was NOT exercised in browser due to setup overhead but PaymentBox component is the same component used in RecoveryView (OrderTracker.jsx line 237) → behaviour is verified by code review + standalone OrderView test.",
+  "rca_of_the_issue": "Backend dev added send_order_receipt_email + wired it into PATCH /orders + _cashfree_reconcile, but missed adding it to me_pay_with_wallet. The function still only fires send_wallet_receipt_email + notify_order_status. Two-line fix: insert `asyncio.create_task(send_order_receipt_email(user['email'], user.get('name',''), updated, amount, method='wallet'))` next to the existing send_wallet_receipt_email call."
+}

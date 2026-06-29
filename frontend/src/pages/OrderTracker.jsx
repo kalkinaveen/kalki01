@@ -147,7 +147,7 @@ const RefundView = ({ refund, onRefresh, refreshing }) => {
   );
 };
 
-const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
+const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll }) => {
   const status = recCase.status || 'new';
   const [linkedOrder, setLinkedOrder] = useState(null);
 
@@ -234,7 +234,7 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
           {recCase.payment_note && <div className="eh-mono text-[11px] opacity-80 leading-5 mt-1">// {recCase.payment_note}</div>}
         </div>
       )}
-      {linkedOrder && <PaymentBox order={linkedOrder} onUpdated={setLinkedOrder} />}
+      {linkedOrder && <PaymentBox order={linkedOrder} onUpdated={setLinkedOrder} autoScroll={shouldAutoScroll} />}
 
       <div className="mt-6 pt-5 border-t border-[var(--eh-border)] flex flex-wrap gap-3 items-center justify-between">
         <div className="eh-mono text-[10px] opacity-50">// AUTO-REFRESH EVERY 30s · CASE OPENED {recCase.createdAt ? new Date(recCase.createdAt).toLocaleString() : ''}</div>
@@ -244,7 +244,7 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl }) => {
   );
 };
 
-const OrderView = ({ order, setOrder }) => {
+const OrderView = ({ order, setOrder, autoScroll }) => {
   const idx = ORDER_STAGES.findIndex(s => s.key === order.status);
   return (
     <div className="eh-panel eh-brackets p-5 sm:p-7">
@@ -282,7 +282,7 @@ const OrderView = ({ order, setOrder }) => {
           );
         })}
       </div>
-      <PaymentBox order={order} onUpdated={setOrder} />
+      <PaymentBox order={order} onUpdated={setOrder} autoScroll={autoScroll} />
     </div>
   );
 };
@@ -290,6 +290,7 @@ const OrderView = ({ order, setOrder }) => {
 const OrderTracker = () => {
   const [params, setParams] = useSearchParams();
   const [id, setId] = useState(params.get('id') || '');
+  const shouldAutoScroll = params.get('pay') === '1';
   const [order, setOrder] = useState(null);
   const [recCase, setRecCase] = useState(null);
   const [refund, setRefund] = useState(null);
@@ -387,9 +388,9 @@ const OrderTracker = () => {
             <AlertCircle size={16} color="var(--eh-red)" /><span className="text-sm">{err}</span>
           </div>
         )}
-        {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} teamTgUrl={teamTgUrl} />}
+        {recCase && <RecoveryView recCase={recCase} onRefresh={refreshRec} refreshing={refreshing} teamTgUrl={teamTgUrl} autoScroll={shouldAutoScroll} />}
         {recCase && ['recovered', 'closed'].includes(recCase.status) && <RecoveryReviewForm caseId={recCase.id} />}
-        {order && <OrderView order={order} setOrder={setOrder} />}
+        {order && <OrderView order={order} setOrder={setOrder} autoScroll={shouldAutoScroll} />}
         {refund && <RefundView refund={refund} onRefresh={async () => { setRefreshing(true); try { const r = await api.refundPublic(refund.id); setRefund(r); } catch (_e) { /* noop */ } finally { setRefreshing(false); } }} refreshing={refreshing} />}
         {(recCase || order || refund) && <TrackConnectTelegramCTA />}
         {!recCase && !order && !refund && !err && id === '' && (
