@@ -11,6 +11,22 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-20 · Mobile-First Redesign · OrderTracker + PaymentBox + Login + Signup** 📱 (Feb 2026)
+  - **User pain** (verbatim): "ui interface is not good and its not fit properly to mobile ios & android please fix this properly... in payment section change some theme like tools section... in login section also its like desktop version i want priority to mobile version please do the best version for me recovery section everything"
+  - **Fixes shipped**:
+    1. **OrderView / RecoveryView / RefundView headers** (`OrderTracker.jsx`): the right-aligned `PACKAGE` / `SERVICE` / `FOR ORDER` label was wrapping awkwardly on phones (the long "CLOUD 50 Top Speed, Performance, And Resources Available" service name spilled across an unreadable right column). Now stacks vertically on mobile, side-by-side on desktop, with tighter typography (text-[13.5px] on mobile, text-sm on desktop).
+    2. **OrderView info grid**: replaced `grid-cols-1 sm:grid-cols-3` (3 full-width rows on mobile, too tall) with `grid-cols-2 sm:grid-cols-3` — CLIENT + SIZE side-by-side, TARGET below them full-width. Compact `p-2.5` mobile / `p-3` desktop.
+    3. **PaymentBox Cashfree panel — tools-tile theme**: replaced the cramped icon-beside-text layout (which forced "Pay & start work — right now" to wrap to 3 lines) with a tools-page-inspired card:
+       - Top accent strip with pulsing green dot + `RECOMMENDED` badge on the left + `INSTANT · PCI-DSS L1` chip on the right
+       - Tighter icon (9×9 mobile, 11×11 desktop) on a soft neon background
+       - Compact headline (text-[15px] mobile, text-lg desktop) with `leading-snug` so it never breaks past 2 lines
+       - One-line sub-text and a button with responsive label (mobile shows `PAY ₹X →`, desktop shows `PAY ₹X · OPEN CHECKOUT`)
+    4. **PaymentBox top header**: replaced single-line `// COMPLETE_PAYMENT · ₹5,747` (which wrapped on small screens) with a flex split — `// COMPLETE_PAYMENT` label on the left, big `₹5,747` neon display number on the right, ellipsis-truncated.
+    5. **Login.jsx + Signup.jsx mobile-first hero**: stacked logo + heading vertically on mobile (centered) and horizontally on desktop, added two ambient green radial halos as background depth, tall thumb-friendly inputs (`text-base py-3.5`), bigger CTA button (`py-3.5 font-bold`), `backdrop-filter: blur(8px)` glassmorphism on the panel.
+  - **Verified on 390×844 (iPhone-size) viewport**:
+    - `/track?id=ORD-MOBTEST-001` → OrderView header stacks cleanly, CLIENT + SIZE side-by-side, TARGET below ✓
+    - PaymentBox renders the new tools-tile Cashfree card with pulsing RECOMMENDED badge ✓
+    - `/login` shows centered hero with floating halos and big tap targets ✓
 - **Iter-19 · Direct Refund by Any Tracking ID** 💸 (Feb 2026)
   - **Pain solved**: Admin previously could only act on customer-filed refund requests. No way to issue a refund proactively for any order/case from the webpanel — every refund required the customer to file first. The user explicitly asked: "in webpanel refund section all tracking id should be available so i can refund there everything what i want".
   - **New backend endpoints** (`server.py`):

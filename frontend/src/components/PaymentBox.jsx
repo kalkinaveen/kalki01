@@ -134,10 +134,11 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
   );
 
   return (
-    <div ref={boxRef} className={`eh-panel eh-brackets p-5 sm:p-6 mt-6 ${autoScroll ? 'eh-pulse-once' : ''}`} data-testid="payment-box">
+    <div ref={boxRef} className={`eh-panel eh-brackets p-4 sm:p-6 mt-5 sm:mt-6 ${autoScroll ? 'eh-pulse-once' : ''}`} data-testid="payment-box">
       <span className="br-bl" /><span className="br-br" />
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-        <div className="eh-kicker">// COMPLETE_PAYMENT {amount > 0 && <span className="eh-neon-soft ml-2">· ₹{amount.toLocaleString('en-IN')}</span>}</div>
+      <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div className="eh-kicker truncate">// COMPLETE_PAYMENT</div>
+        {amount > 0 && <div className="eh-display font-black text-xl sm:text-2xl eh-neon shrink-0">₹{amount.toLocaleString('en-IN')}</div>}
       </div>
 
       {isAwaitingQuote ? (
@@ -220,22 +221,41 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
       {tab === 'cashfree' && (
         <div className="space-y-3" data-testid="pay-cashfree-pane">
-          <div className="eh-panel p-4 border border-[rgba(0,255,157,.35)] bg-[rgba(0,255,157,.04)]">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-xl grid place-items-center shrink-0 bg-[rgba(0,255,157,.12)] border border-[rgba(0,255,157,.5)]"><Zap size={20} color="var(--eh-green)" /></div>
-              <div className="min-w-0">
-                <div className="eh-mono text-[10px] opacity-60 tracking-widest">// RECOMMENDED · INSTANT</div>
-                <div className="eh-display font-black text-base sm:text-lg leading-tight">Pay & start work — right now</div>
-                <div className="eh-mono text-[11px] opacity-70 mt-0.5 leading-5">Card · UPI · Netbanking · Wallets. Order auto-marked <b className="text-[var(--eh-green)]">VERIFIED</b> on payment.</div>
+          {/* Tools-tile inspired card — colored top accent, compact mobile-first layout */}
+          <div className="relative overflow-hidden rounded-xl border border-[rgba(0,255,157,.45)] bg-[rgba(0,255,157,.05)]">
+            {/* Top accent strip (badge-style like tools tile) */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-2.5">
+              <div className="inline-flex items-center gap-1.5">
+                <span className="relative inline-flex w-2 h-2">
+                  <span className="absolute inset-0 rounded-full bg-[var(--eh-green)] opacity-70 animate-ping" />
+                  <span className="relative w-2 h-2 rounded-full bg-[var(--eh-green)]" />
+                </span>
+                <span className="eh-mono text-[10px] tracking-[.22em] text-[var(--eh-green)] font-bold">RECOMMENDED</span>
               </div>
+              <span className="eh-mono text-[9px] tracking-widest opacity-50">INSTANT · PCI-DSS L1</span>
             </div>
-            <button onClick={payWithCashfree} disabled={paying || amount <= 0} className="eh-btn-primary w-full justify-center py-3 text-sm inline-flex items-center gap-2 disabled:opacity-50" data-testid="pay-cashfree-btn">
-              {paying ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-              {paying ? 'OPENING SECURE CHECKOUT…' : amount > 0 ? `PAY ₹${amount.toLocaleString('en-IN')} · OPEN CHECKOUT` : 'AWAITING QUOTE'}
-            </button>
-            <div className="mt-3 flex items-center gap-2 eh-mono text-[10px] opacity-60">
-              <ShieldCheck size={11} className="text-[var(--eh-green)]" />
-              <span>Powered by <b>Cashfree</b> · PCI-DSS L1 secured · {cf.mode === 'production' ? 'live mode' : 'sandbox'}</span>
+            <div className="px-4 pb-4">
+              {/* Tighter mobile layout: icon + headline on one row, smaller text */}
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg grid place-items-center shrink-0 bg-[rgba(0,255,157,.12)] border border-[rgba(0,255,157,.5)]">
+                  <Zap size={16} className="sm:hidden" color="var(--eh-green)" strokeWidth={2} />
+                  <Zap size={20} className="hidden sm:block" color="var(--eh-green)" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="eh-display font-black text-[15px] sm:text-lg leading-snug">Pay &amp; start work · right now</div>
+                  <div className="eh-mono text-[10.5px] sm:text-[11px] opacity-70 mt-1 leading-[1.55]">Card · UPI · Netbanking · Wallets — auto-verifies your order on payment.</div>
+                </div>
+              </div>
+              <button onClick={payWithCashfree} disabled={paying || amount <= 0} className="eh-btn-primary w-full justify-center py-3 sm:py-3 text-sm inline-flex items-center gap-2 disabled:opacity-50" data-testid="pay-cashfree-btn">
+                {paying ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {paying ? <span>OPENING…</span> : amount > 0 ? (
+                  <span>PAY ₹{amount.toLocaleString('en-IN')} <span className="hidden sm:inline opacity-80">· OPEN CHECKOUT</span><span className="sm:hidden opacity-80"> →</span></span>
+                ) : <span>AWAITING QUOTE</span>}
+              </button>
+              <div className="mt-2.5 flex items-center justify-center gap-1.5 eh-mono text-[9.5px] sm:text-[10px] opacity-55">
+                <ShieldCheck size={10} className="text-[var(--eh-green)]" />
+                <span>Powered by Cashfree · {cf.mode === 'production' ? 'live mode' : 'sandbox'}</span>
+              </div>
             </div>
           </div>
           {anyManual && (

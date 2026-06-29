@@ -83,27 +83,27 @@ const RefundView = ({ refund, onRefresh, refreshing }) => {
   const terminal = isRejected ? REFUND_REJECTED : null;
 
   return (
-    <div className="eh-panel eh-brackets p-5 sm:p-7" data-testid="refund-track-card">
+    <div className="eh-panel eh-brackets p-4 sm:p-7" data-testid="refund-track-card">
       <span className="br-bl" /><span className="br-br" />
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <div className="eh-mono text-xs opacity-60">REFUND_ID</div>
+      <div className="mb-4 space-y-2 sm:space-y-0 sm:flex sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">REFUND_ID</div>
           <div className="eh-neon-soft eh-mono text-sm break-all">{refund.id}</div>
         </div>
-        <div className="text-right min-w-0 max-w-full sm:max-w-[60%]">
-          <div className="eh-mono text-xs opacity-60">FOR ORDER</div>
-          <div className="text-sm font-semibold break-words" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <div className="min-w-0 sm:text-right sm:max-w-[55%]">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">FOR ORDER</div>
+          <div className="text-[13.5px] sm:text-sm font-semibold leading-snug break-words" style={{ fontFamily: 'Inter,sans-serif' }}>
             {refund.order_id} {refund.order_service ? <span className="opacity-60">· {refund.order_service}</span> : null}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-sm">
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">ORDER AMOUNT</div><div>₹{Number(refund.order_amount || 0).toLocaleString('en-IN')}</div></div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5 sm:mb-6 text-sm">
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">AMOUNT</div><div className="text-[12.5px] sm:text-sm">₹{Number(refund.order_amount || 0).toLocaleString('en-IN')}</div></div>
         {refund.refund_amount > 0
-          ? <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">REFUND</div><div className="eh-neon font-bold">+₹{Number(refund.refund_amount).toLocaleString('en-IN')}</div><div className="eh-mono text-[10px] opacity-50">via {refund.refund_method || 'wallet'}</div></div>
-          : <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">REFUND</div><div className="opacity-60">awaiting decision</div></div>}
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">OPENED</div><div className="eh-mono text-xs">{(refund.createdAt || '').slice(0, 10)}</div></div>
+          ? <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">REFUND</div><div className="eh-neon font-bold text-[12.5px] sm:text-sm">+₹{Number(refund.refund_amount).toLocaleString('en-IN')}</div><div className="eh-mono text-[9px] sm:text-[10px] opacity-50">via {refund.refund_method || 'wallet'}</div></div>
+          : <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">REFUND</div><div className="opacity-60 text-[12.5px] sm:text-sm">awaiting</div></div>}
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">OPENED</div><div className="eh-mono text-[11px] sm:text-xs">{(refund.createdAt || '').slice(0, 10)}</div></div>
       </div>
 
       {/* Status hero — mirrors recovery/order */}
@@ -163,22 +163,22 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
   const terminal = RECOVERY_TERMINAL[status];
   const stageIdx = RECOVERY_STAGES.findIndex(s => s.key === status);
   return (
-    <div className="eh-panel eh-brackets p-5 sm:p-7" data-testid="recovery-track-card">
+    <div className="eh-panel eh-brackets p-4 sm:p-7" data-testid="recovery-track-card">
       <span className="br-bl" /><span className="br-br" />
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <div className="eh-mono text-xs opacity-60">CASE_ID</div>
+      <div className="mb-4 space-y-2 sm:space-y-0 sm:flex sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">CASE_ID</div>
           <div className="eh-neon-soft eh-mono text-sm break-all">{recCase.id}</div>
         </div>
-        <div className="text-right min-w-0 max-w-full sm:max-w-[60%]">
-          <div className="eh-mono text-xs opacity-60">SERVICE</div>
-          <div className="text-sm font-semibold break-words" style={{ fontFamily: 'Inter,sans-serif' }}>{recCase.service_name || '—'}</div>
+        <div className="min-w-0 sm:text-right sm:max-w-[55%]">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">SERVICE</div>
+          <div className="text-[13.5px] sm:text-sm font-semibold leading-snug" style={{ fontFamily: 'Inter,sans-serif' }}>{recCase.service_name || '—'}</div>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-sm">
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">PLATFORM</div><div className="capitalize">{recCase.platform || '—'}</div></div>
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">URGENCY</div><div className="capitalize">{recCase.urgency || '—'}</div></div>
-        <div className="eh-panel p-3 min-w-0 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">QUOTE</div><div className="eh-neon">₹{Number(recCase.estimated_price || 0).toLocaleString('en-IN')}</div></div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5 sm:mb-6 text-sm">
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">PLATFORM</div><div className="capitalize text-[12.5px] sm:text-sm">{recCase.platform || '—'}</div></div>
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">URGENCY</div><div className="capitalize text-[12.5px] sm:text-sm">{recCase.urgency || '—'}</div></div>
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">QUOTE</div><div className="eh-neon text-[12.5px] sm:text-sm font-bold">{paySym}{Number(recCase.estimated_price || 0).toLocaleString('en-IN')}</div></div>
       </div>
 
       {/* Hacker-style status hero */}
@@ -247,22 +247,24 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
 const OrderView = ({ order, setOrder, autoScroll }) => {
   const idx = ORDER_STAGES.findIndex(s => s.key === order.status);
   return (
-    <div className="eh-panel eh-brackets p-5 sm:p-7">
+    <div className="eh-panel eh-brackets p-4 sm:p-7">
       <span className="br-bl" /><span className="br-br" />
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <div className="eh-mono text-xs opacity-60">ORDER_ID</div>
+      {/* Mobile-first stacked header — PACKAGE no longer right-aligns and wraps badly */}
+      <div className="mb-4 sm:mb-5 space-y-2 sm:space-y-0 sm:flex sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">ORDER_ID</div>
           <div className="eh-neon-soft eh-mono text-sm break-all">{order.id}</div>
         </div>
-        <div className="text-right min-w-0 max-w-full sm:max-w-[60%]">
-          <div className="eh-mono text-xs opacity-60">PACKAGE</div>
-          <div className="text-sm font-semibold break-words" style={{ fontFamily: 'Inter,sans-serif' }}>{order.serviceName}</div>
+        <div className="min-w-0 sm:text-right sm:max-w-[55%]">
+          <div className="eh-mono text-[10px] sm:text-xs opacity-60 tracking-widest">PACKAGE</div>
+          <div className="text-[13.5px] sm:text-sm font-semibold leading-snug" style={{ fontFamily: 'Inter,sans-serif' }}>{order.serviceName}</div>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-sm">
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">CLIENT</div><div className="break-words">{order.name}</div></div>
-        <div className="eh-panel p-3 min-w-0"><div className="eh-mono text-[10px] opacity-60">SIZE</div><div className="break-words">{order.size}</div></div>
-        <div className="eh-panel p-3 min-w-0 overflow-hidden"><div className="eh-mono text-[10px] opacity-60">TARGET</div><div className="truncate" title={order.target}>{order.target}</div></div>
+      {/* Compact 3-up info grid that survives 360px screens */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-5 sm:mb-6 text-sm">
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">CLIENT</div><div className="break-words truncate text-[12.5px] sm:text-sm">{order.name}</div></div>
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">SIZE</div><div className="break-words text-[12.5px] sm:text-sm">{order.size}</div></div>
+        <div className="eh-panel p-2.5 sm:p-3 min-w-0 overflow-hidden col-span-2 sm:col-span-1"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">TARGET</div><div className="truncate text-[12.5px] sm:text-sm" title={order.target}>{order.target || '—'}</div></div>
       </div>
       <div className="relative" data-testid="order-trace-timeline">
         {ORDER_STAGES.map((s, i) => {
