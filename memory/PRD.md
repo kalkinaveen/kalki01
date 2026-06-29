@@ -11,6 +11,29 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-21 · Premium Multi-Color Theme · Tracker Stages + Payment Methods** 🎨 (Feb 2026)
+  - **User pain** (verbatim): "operation tracker theme is not good complete green is not good and payment info theme is also not friendly user i want premium icons which you created in tools section same theme i want in that change entire theme of track section payment section users should feel good and pleasant with animation"
+  - **Fixes shipped**:
+    1. **New CSS module** in `index.css`: `.eh-stage-tile` (premium colored stage card) + `.eh-pay-tile` (payment-method tile) + `.eh-status-hero` (animated data-stream backdrop). All driven by a per-tile `--tile-color` CSS variable, mirroring the existing `.tools-tile` DNA — float, glow, shine, hover lift, badge styling.
+    2. **Stage color palette** added to `ORDER_STAGES`, `RECOVERY_STAGES`, `REFUND_STAGES`:
+       - received/new → `#4de0ff` (cyan)
+       - reviewing → `#ff8a3a` (orange)
+       - verified/engaged → `#00ff9d` (neon green) / `#ffd34d` (yellow)
+       - in-progress/recovering → `#ffd34d` / `#00ff9d`
+       - delivered/recovered/completed → `#c084fc` (purple)
+       - rejected/closed → `#ff3148` (red) / `#c084fc`
+    3. **`<StageTile>` shared component** replaces the flat connector-line timeline in OrderView, RecoveryView, RefundView. Each step is a full premium card with:
+       - Colored left accent strip (intensifies on done/current)
+       - Animated icon-wrap (subtle float, pulse-ring glow on current step)
+       - Color-tinted label + chip (`● LIVE` pulse on current, `✓ COMPLETED` on done)
+       - Staggered entrance animation (`70ms * index` delay) so stages cascade in
+    4. **Animated Status Hero** in RecoveryView + RefundView: data-stream backdrop (CSS keyframe), pulsing colored dot, colored heading + soft tinted note block — all driven by the current stage's color (no more monotone green).
+    5. **PaymentBox tab picker → 3 premium `<PayTile>` cards**: replaced the tiny TabBtn pills with full tools-tile-styled cards:
+       - **Card / UPI** — green (#00ff9d) icon, **FAST** badge, "Instant · auto-verify"
+       - **Manual UPI** — cyan (#4de0ff) icon, "Pay & upload proof"
+       - **Crypto** — yellow (#ffd34d) icon, "USDT · BTC · ETH"
+       - Hover/active state: lift + glow + animated shine sweep, icon-wrap gets the pulse-glow ring. Active card shows `▸ SELECTED`, others show `CHOOSE →`
+  - **Verified on 390×844 (iPhone-size) viewport**: tracker shows the 4-color stage cards with cyan-current/yellow/green/purple-pending palette, current step has pulsing LIVE chip + animated icon-wrap ring. PaymentBox renders the 3 color-coded payment-method tiles stacked on mobile. Brand-consistent — pure black + colored neon accents + Space Grotesk.
 - **Iter-20 · Mobile-First Redesign · OrderTracker + PaymentBox + Login + Signup** 📱 (Feb 2026)
   - **User pain** (verbatim): "ui interface is not good and its not fit properly to mobile ios & android please fix this properly... in payment section change some theme like tools section... in login section also its like desktop version i want priority to mobile version please do the best version for me recovery section everything"
   - **Fixes shipped**:

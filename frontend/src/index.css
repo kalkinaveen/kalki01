@@ -1095,5 +1095,196 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
 .score-ring-num.is-okay { color: #ffd34d; text-shadow: 0 0 12px rgba(255,211,77,.45); }
 .score-ring-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: .2em; opacity: .65; margin-top: 4px; }
 
+/* ===========================================================
+   PREMIUM TRACE-STAGE & PAYMENT-METHOD TILES
+   Extends the tools-tile look (colored accent, float, glow,
+   shine, hover lift) to every Operation Tracker stage and
+   payment method card. Driven by a per-tile --tile-color.
+   =========================================================== */
+@keyframes eh-stage-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes eh-pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tile-color, var(--eh-green)) 35%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--tile-color, var(--eh-green)) 10%, transparent); }
+}
+@keyframes eh-data-stream {
+  from { background-position: 0 0; }
+  to   { background-position: 0 40px; }
+}
+
+/* Stage tile — one per status step (received, verified, in-progress, delivered) */
+.eh-stage-tile {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 14px 14px 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--eh-border);
+  background: linear-gradient(160deg, #0a0d10 0%, #050608 100%);
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease, opacity .28s ease;
+  animation: eh-stage-enter .42s ease both;
+}
+.eh-stage-tile::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--tile-color, var(--eh-green));
+  opacity: .25;
+  transition: opacity .3s ease;
+}
+.eh-stage-tile.is-done   { border-color: color-mix(in srgb, var(--tile-color, var(--eh-green)) 38%, transparent); }
+.eh-stage-tile.is-done::before { opacity: .8; }
+.eh-stage-tile.is-current {
+  border-color: color-mix(in srgb, var(--tile-color, var(--eh-green)) 60%, transparent);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--tile-color, var(--eh-green)) 12%, transparent);
+}
+.eh-stage-tile.is-current::before { opacity: 1; }
+.eh-stage-tile.is-pending { opacity: .55; }
+.eh-stage-tile .stage-icon {
+  width: 44px; height: 44px; border-radius: 11px;
+  display: grid; place-items: center; flex-shrink: 0;
+  background: #0d1115;
+  border: 1px solid var(--eh-border);
+  transition: border-color .3s ease, box-shadow .3s ease;
+}
+.eh-stage-tile.is-done .stage-icon,
+.eh-stage-tile.is-current .stage-icon {
+  border-color: color-mix(in srgb, var(--tile-color, var(--eh-green)) 70%, transparent);
+}
+.eh-stage-tile.is-current .stage-icon {
+  animation: eh-pulse-ring 2.4s ease-in-out infinite;
+}
+.eh-stage-tile .stage-icon > svg {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tile-color, var(--eh-green)) 60%, transparent));
+}
+.eh-stage-tile.is-pending .stage-icon > svg { filter: none; opacity: .55; }
+.eh-stage-tile .stage-body { min-width: 0; flex: 1; }
+.eh-stage-tile .stage-label {
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-weight: 700; font-size: 14px; line-height: 1.25;
+  color: var(--eh-text);
+}
+.eh-stage-tile.is-done .stage-label,
+.eh-stage-tile.is-current .stage-label {
+  color: var(--tile-color, var(--eh-green));
+}
+.eh-stage-tile .stage-desc {
+  font-size: 12.5px; line-height: 1.55; opacity: .72; margin-top: 3px;
+  font-family: Inter, sans-serif;
+}
+.eh-stage-tile .stage-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9.5px; letter-spacing: .18em; font-weight: 700;
+  padding: 3px 7px; border-radius: 999px;
+  margin-top: 6px;
+  color: var(--tile-color, var(--eh-green));
+  border: 1px solid color-mix(in srgb, var(--tile-color, var(--eh-green)) 45%, transparent);
+  background: color-mix(in srgb, var(--tile-color, var(--eh-green)) 8%, transparent);
+}
+.eh-stage-tile .stage-chip .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--tile-color, var(--eh-green));
+  box-shadow: 0 0 6px var(--tile-color, var(--eh-green));
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.eh-stage-tile + .eh-stage-tile { margin-top: 10px; }
+
+/* Payment-method tile — same DNA as tools-tile but for the three pay paths */
+.eh-pay-tile {
+  position: relative;
+  display: block;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--eh-border);
+  background: linear-gradient(160deg, #0a0d10 0%, #050608 100%);
+  padding: 16px 16px 18px;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: pointer;
+  width: 100%;
+  transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease;
+  animation: eh-stage-enter .5s ease both;
+}
+.eh-pay-tile:hover,
+.eh-pay-tile.is-active {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--tile-color, var(--eh-green)) 65%, transparent);
+  box-shadow: 0 12px 32px rgba(0,0,0,.4), 0 0 0 1px color-mix(in srgb, var(--tile-color, var(--eh-green)) 35%, transparent);
+}
+.eh-pay-tile::before {
+  content: ''; position: absolute; left: 0; top: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--tile-color, var(--eh-green)), transparent);
+  opacity: .6;
+}
+.eh-pay-tile .shine { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .35s ease; }
+.eh-pay-tile:hover .shine, .eh-pay-tile.is-active .shine { opacity: 1; }
+.eh-pay-tile .shine::before {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.05) 50%, transparent 70%);
+  animation: tools-tile-shine 1.4s ease-in-out;
+}
+.eh-pay-tile .badge {
+  position: absolute; top: 10px; right: 10px;
+  padding: 3px 8px;
+  font-size: 9px; font-weight: 800; letter-spacing: .14em;
+  font-family: 'Share Tech Mono', monospace;
+  border-radius: 999px;
+  background: var(--tile-color, var(--eh-green));
+  color: #001a10;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--tile-color, var(--eh-green)) 55%, transparent);
+}
+.eh-pay-tile .pay-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: #0d1115;
+  border: 1px solid var(--eh-border);
+  margin-bottom: 10px;
+  transition: border-color .3s ease;
+  animation: tools-tile-float 4s ease-in-out infinite;
+}
+.eh-pay-tile:hover .pay-icon, .eh-pay-tile.is-active .pay-icon {
+  border-color: var(--tile-color, var(--eh-green));
+  animation: tools-tile-float 4s ease-in-out infinite, tools-tile-glow 2.4s ease-in-out infinite;
+}
+.eh-pay-tile .pay-icon > svg { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tile-color, var(--eh-green)) 60%, transparent)); }
+.eh-pay-tile h4 {
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-size: 15px; font-weight: 800; line-height: 1.2; margin: 0 0 3px;
+  color: var(--eh-text);
+}
+.eh-pay-tile p {
+  font-size: 11.5px; line-height: 1.5; opacity: .65; margin: 0;
+  font-family: 'Share Tech Mono', monospace;
+}
+.eh-pay-tile .pay-arrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; letter-spacing: .14em; font-weight: 700; text-transform: uppercase;
+  margin-top: 10px;
+  color: var(--tile-color, var(--eh-green));
+}
+
+/* Animated data-stream backdrop for the status hero */
+.eh-status-hero {
+  position: relative; overflow: hidden;
+}
+.eh-status-hero::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: linear-gradient(180deg, transparent 0, transparent 38px, color-mix(in srgb, var(--tile-color, var(--eh-green)) 8%, transparent) 39px, transparent 40px);
+  background-size: 100% 40px;
+  pointer-events: none;
+  animation: eh-data-stream 4s linear infinite;
+  opacity: .35;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .6; transform: scale(1.25); }
+}
+
 @layer base { :root { --background:0 0% 3%; --foreground:0 0% 95%; --card:0 0% 5%; --card-foreground:0 0% 95%; --popover:0 0% 5%; --popover-foreground:0 0% 95%; --primary:152 100% 50%; --primary-foreground:0 0% 5%; --secondary:0 0% 10%; --secondary-foreground:0 0% 95%; --muted:0 0% 12%; --muted-foreground:0 0% 65%; --accent:0 0% 12%; --accent-foreground:0 0% 95%; --destructive:0 84% 60%; --destructive-foreground:0 0% 95%; --border:0 0% 14%; --input:0 0% 14%; --ring:152 100% 50%; --radius:.5rem; } }
 @layer base { * { @apply border-border; } }

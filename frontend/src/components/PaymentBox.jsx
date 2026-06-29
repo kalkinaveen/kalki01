@@ -125,11 +125,22 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
   const activeWallet = (safeSettings.crypto_wallets || []).find(w => w.coin === coin);
 
+  // Premium payment-method tile (extends tools-tile aesthetic)
   // eslint-disable-next-line react/no-unstable-nested-components
-  const TabBtn = ({ id, icon: Icon, label, recommended }) => (
-    <button onClick={() => setTab(id)} data-testid={`pay-tab-${id}`} className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded eh-mono text-[11px] sm:text-xs tracking-widest transition-all ${tab === id ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)] hover:border-[rgba(0,255,157,.3)]'}`}>
-      <Icon size={12} /> {label}
-      {recommended && <span className="absolute -top-2 -right-1 eh-mono text-[8px] tracking-widest bg-[var(--eh-green)] text-black px-1.5 py-0.5 rounded-full font-bold">FAST</span>}
+  const PayTile = ({ id, icon: Icon, color, title, sub, badge }) => (
+    <button
+      type="button"
+      onClick={() => setTab(id)}
+      data-testid={`pay-tab-${id}`}
+      className={`eh-pay-tile ${tab === id ? 'is-active' : ''}`}
+      style={{ '--tile-color': color }}
+    >
+      <span className="shine" />
+      {badge && <span className="badge">{badge}</span>}
+      <div className="pay-icon"><Icon size={20} color={color} strokeWidth={1.8} /></div>
+      <h4>{title}</h4>
+      <p>{sub}</p>
+      <span className="pay-arrow">{tab === id ? '▸ SELECTED' : 'CHOOSE →'}</span>
     </button>
   );
 
@@ -213,10 +224,17 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
         </div>
       ) : (
       <>
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {cf.configured && <TabBtn id="cashfree" icon={Zap} label="CARD / UPI" recommended />}
-        {safeSettings.manual_enabled && <TabBtn id="manual" icon={CreditCard} label="MANUAL UPI" />}
-        {safeSettings.crypto_enabled && <TabBtn id="crypto" icon={Bitcoin} label="CRYPTO" />}
+      {/* Premium payment-method tile picker — picks the active path */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        {cf.configured && (
+          <PayTile id="cashfree" icon={Zap} color="#00ff9d" title="Card / UPI" sub="Instant · auto-verify" badge="FAST" />
+        )}
+        {safeSettings.manual_enabled && (
+          <PayTile id="manual" icon={CreditCard} color="#4de0ff" title="Manual UPI" sub="Pay & upload proof" />
+        )}
+        {safeSettings.crypto_enabled && (
+          <PayTile id="crypto" icon={Bitcoin} color="#ffd34d" title="Crypto" sub="USDT · BTC · ETH" />
+        )}
       </div>
 
       {tab === 'cashfree' && (

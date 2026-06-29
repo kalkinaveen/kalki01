@@ -47,34 +47,60 @@ const TrackConnectTelegramCTA = () => {
 };
 
 const ORDER_STAGES = [
-  { key: 'received', icon: Package, label: 'Order Received', desc: 'Encrypted handshake complete. Order queued.' },
-  { key: 'verified', icon: ShieldCheck, label: 'Target Verified', desc: 'Operator confirmed target link & package size.' },
-  { key: 'in-progress', icon: Clock, label: 'In Progress', desc: 'Manual delivery in motion. Drip-feed enabled.' },
-  { key: 'delivered', icon: CheckCircle2, label: 'Delivered', desc: 'Package fully delivered. Refill window active for 30-60 days.' },
+  { key: 'received',    icon: Package,      label: 'Order Received',  desc: 'Encrypted handshake complete. Order queued.', color: '#4de0ff' },
+  { key: 'verified',    icon: ShieldCheck,  label: 'Target Verified', desc: 'Operator confirmed target link & package size.', color: '#00ff9d' },
+  { key: 'in-progress', icon: Clock,        label: 'In Progress',     desc: 'Manual delivery in motion. Drip-feed enabled.',   color: '#ffd34d' },
+  { key: 'delivered',   icon: CheckCircle2, label: 'Delivered',       desc: 'Package fully delivered. Refill window active for 30-60 days.', color: '#c084fc' },
 ];
 
 const RECOVERY_STAGES = [
-  { key: 'new', icon: Package, label: 'Case Received', desc: 'Encrypted intake complete. Reviewer assigned within 24 hours.' },
-  { key: 'reviewing', icon: FileSearch, label: 'Under Review', desc: 'Specialist analysing your case, proofs, and platform history.' },
-  { key: 'engaged', icon: Handshake, label: 'Engagement Confirmed', desc: 'Quote accepted. Secure channel opened for recovery ops.' },
-  { key: 'recovering', icon: Clock, label: 'Recovery In Progress', desc: 'Active recovery ops running. Updates posted here daily.' },
-  { key: 'recovered', icon: CheckCircle2, label: 'Recovered', desc: 'Account back in your control. Verify access and confirm closure.' },
+  { key: 'new',        icon: Package,      label: 'Case Received',        desc: 'Encrypted intake complete. Reviewer assigned within 24 hours.', color: '#4de0ff' },
+  { key: 'reviewing',  icon: FileSearch,   label: 'Under Review',         desc: 'Specialist analysing your case, proofs, and platform history.', color: '#ff8a3a' },
+  { key: 'engaged',    icon: Handshake,    label: 'Engagement Confirmed', desc: 'Quote accepted. Secure channel opened for recovery ops.',       color: '#ffd34d' },
+  { key: 'recovering', icon: Clock,        label: 'Recovery In Progress', desc: 'Active recovery ops running. Updates posted here daily.',        color: '#00ff9d' },
+  { key: 'recovered',  icon: CheckCircle2, label: 'Recovered',            desc: 'Account back in your control. Verify access and confirm closure.', color: '#c084fc' },
 ];
-const RECOVERY_TERMINAL = { rejected: { label: 'Case Rejected', color: '#ff6b6b', desc: 'Case did not pass review. Reach out on Telegram for clarification.' }, closed: { label: 'Case Closed', color: 'var(--eh-green)', desc: 'Case finalised. Thanks for trusting ERRORHACKER.' } };
+const RECOVERY_TERMINAL = { rejected: { label: 'Case Rejected', color: '#ff3148', desc: 'Case did not pass review. Reach out on Telegram for clarification.' }, closed: { label: 'Case Closed', color: '#c084fc', desc: 'Case finalised. Thanks for trusting ERRORHACKER.' } };
 
 const REFUND_STAGES = [
-  { key: 'requested', icon: RotateCcw, label: 'Refund Requested', desc: 'Customer submitted refund. Sit tight — our team is on it.' },
-  { key: 'reviewing', icon: FileSearch, label: 'Under Review', desc: 'Specialist checking the order, payment trail and reason given.' },
-  { key: 'approved',  icon: ShieldCheck, label: 'Approved', desc: 'Approved by the team — money is being moved.' },
-  { key: 'completed', icon: CheckCircle2, label: 'Completed', desc: 'Refund applied to wallet (or original method). All done.' },
+  { key: 'requested', icon: RotateCcw,    label: 'Refund Requested', desc: 'Customer submitted refund. Sit tight — our team is on it.',  color: '#4de0ff' },
+  { key: 'reviewing', icon: FileSearch,   label: 'Under Review',     desc: 'Specialist checking the order, payment trail and reason given.', color: '#ff8a3a' },
+  { key: 'approved',  icon: ShieldCheck,  label: 'Approved',         desc: 'Approved by the team — money is being moved.',                color: '#00ff9d' },
+  { key: 'completed', icon: CheckCircle2, label: 'Completed',        desc: 'Refund applied to wallet (or original method). All done.',    color: '#c084fc' },
 ];
-const REFUND_REJECTED = { label: 'Refund Rejected', color: '#ff6b6b', desc: 'Couldn\'t approve this refund. See note from the team below.' };
+const REFUND_REJECTED = { label: 'Refund Rejected', color: '#ff3148', desc: 'Couldn\'t approve this refund. See note from the team below.' };
 
 const inferKind = (id) => {
   const u = (id || '').trim().toUpperCase();
   if (u.startsWith('REC-')) return 'recovery';
   if (u.startsWith('RFD-')) return 'refund';
   return 'order';
+};
+
+/**
+ * Premium stage tile — one per status step on the tracker.
+ * Drives its accent color from `--tile-color` (matches tools-tile aesthetic).
+ * State: `done` · `current` · `pending`.
+ */
+const StageTile = ({ stage, state, index }) => {
+  const Icon = stage.icon;
+  return (
+    <div
+      className={`eh-stage-tile is-${state}`}
+      style={{ '--tile-color': stage.color, animationDelay: `${index * 70}ms` }}
+      data-testid={`trace-stage-${stage.key}-${state}`}
+    >
+      <div className="stage-icon">
+        <Icon size={20} color={state === 'pending' ? 'var(--eh-text)' : stage.color} strokeWidth={1.8} />
+      </div>
+      <div className="stage-body">
+        <div className="stage-label">{stage.label}</div>
+        <div className="stage-desc">{stage.desc}</div>
+        {state === 'current' && <span className="stage-chip"><span className="dot" /> LIVE</span>}
+        {state === 'done'    && <span className="stage-chip">✓ COMPLETED</span>}
+      </div>
+    </div>
+  );
 };
 
 const RefundView = ({ refund, onRefresh, refreshing }) => {
@@ -106,38 +132,37 @@ const RefundView = ({ refund, onRefresh, refreshing }) => {
         <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">OPENED</div><div className="eh-mono text-[11px] sm:text-xs">{(refund.createdAt || '').slice(0, 10)}</div></div>
       </div>
 
-      {/* Status hero — mirrors recovery/order */}
-      <div className="eh-panel p-4 mb-5 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: terminal ? `${terminal.color}66` : 'rgba(0,255,157,.4)' }}>
-        <div className="min-w-0 flex-1">
-          <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-1">// CURRENT STATUS</div>
-          <div className="eh-display text-xl font-black" style={{ color: terminal?.color || 'var(--eh-green)' }}>{terminal ? terminal.label : (REFUND_STAGES[stageIdx]?.label || 'Pending')}</div>
-          <div className="text-sm opacity-80 leading-6 mt-1">{terminal ? terminal.desc : (REFUND_STAGES[stageIdx]?.desc || 'Awaiting review.')}</div>
-          {refund.admin_note && <div className="mt-2 eh-mono text-[11px] opacity-90 bg-[rgba(0,255,157,.06)] border border-[rgba(0,255,157,.2)] rounded p-2.5">// NOTE FROM TEAM: {refund.admin_note}</div>}
-        </div>
-        {onRefresh && <button onClick={onRefresh} disabled={refreshing} data-testid="refund-refresh-btn" className="text-xs eh-mono px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5 disabled:opacity-50"><RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'SYNCING' : 'REFRESH'}</button>}
-      </div>
+      {/* Premium animated status hero — color follows the current stage */}
+      {(() => {
+        const heroColor = terminal?.color || REFUND_STAGES[stageIdx]?.color || '#00ff9d';
+        return (
+          <div className="eh-panel eh-status-hero p-4 mb-5 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: `${heroColor}66`, '--tile-color': heroColor, background: `linear-gradient(135deg, color-mix(in srgb, ${heroColor} 6%, transparent) 0%, transparent 70%)` }}>
+            <div className="min-w-0 flex-1 relative z-10">
+              <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 flex items-center gap-2">
+                <span className="inline-flex relative w-2 h-2">
+                  <span className="absolute inset-0 rounded-full opacity-70 animate-ping" style={{ background: heroColor }} />
+                  <span className="relative w-2 h-2 rounded-full" style={{ background: heroColor }} />
+                </span>
+                // CURRENT STATUS
+              </div>
+              <div className="eh-display text-xl font-black" style={{ color: heroColor }}>{terminal ? terminal.label : (REFUND_STAGES[stageIdx]?.label || 'Pending')}</div>
+              <div className="text-sm opacity-80 leading-6 mt-1">{terminal ? terminal.desc : (REFUND_STAGES[stageIdx]?.desc || 'Awaiting review.')}</div>
+              {refund.admin_note && <div className="mt-2 eh-mono text-[11px] opacity-90 rounded p-2.5" style={{ background: `color-mix(in srgb, ${heroColor} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${heroColor} 25%, transparent)` }}>// NOTE FROM TEAM: {refund.admin_note}</div>}
+            </div>
+            {onRefresh && <button onClick={onRefresh} disabled={refreshing} data-testid="refund-refresh-btn" className="relative z-10 text-xs eh-mono px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5 disabled:opacity-50"><RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'SYNCING' : 'REFRESH'}</button>}
+          </div>
+        );
+      })()}
 
       {!terminal ? (
-        <div className="relative" data-testid="refund-trace-timeline">
+        <div data-testid="refund-trace-timeline">
           {REFUND_STAGES.map((s, i) => {
             const state = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'pending';
-            const connectorClass = i < stageIdx ? 'done' : i === stageIdx ? 'live' : '';
-            return (
-              <div key={s.key} className="flex gap-4 pb-7 relative">
-                {i < REFUND_STAGES.length - 1 && <div className={`trace-connector ${connectorClass}`} />}
-                <TraceStageIcon stageKey={s.key} icon={s.icon} state={state} />
-                <div className="flex-1 pt-1 min-w-0">
-                  <div className={`font-semibold ${state !== 'pending' ? '' : 'opacity-55'}`} style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.label}</div>
-                  <div className={`text-sm leading-6 ${state === 'pending' ? 'opacity-55' : 'opacity-80'}`}>{s.desc}</div>
-                  {state === 'current' && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)]"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> LIVE</div>}
-                  {state === 'done' && <div className="mt-2 eh-mono text-[10px] tracking-widest text-[var(--eh-green)] opacity-80">✓ COMPLETED</div>}
-                </div>
-              </div>
-            );
+            return <StageTile key={s.key} stage={s} state={state} index={i} />;
           })}
         </div>
       ) : (
-        <div className="eh-panel p-5 text-center" style={{ borderColor: `${terminal.color}66`, background: 'rgba(255,107,107,.04)' }}>
+        <div className="eh-panel p-5 text-center" style={{ borderColor: `${terminal.color}66`, background: 'rgba(255,49,72,.05)' }}>
           <XCircle size={36} className="mx-auto mb-2" color={terminal.color} />
           <div className="eh-display font-black mb-1" style={{ color: terminal.color }}>{terminal.label}</div>
           <div className="text-sm opacity-80 leading-6">{terminal.desc}</div>
@@ -181,38 +206,37 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
         <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">QUOTE</div><div className="eh-neon text-[12.5px] sm:text-sm font-bold">{paySym}{Number(recCase.estimated_price || 0).toLocaleString('en-IN')}</div></div>
       </div>
 
-      {/* Hacker-style status hero */}
-      <div className="eh-panel p-4 mb-5 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: terminal ? `${terminal.color}66` : 'rgba(0,255,157,.4)' }}>
-        <div className="min-w-0 flex-1">
-          <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-1">// CURRENT STATUS</div>
-          <div className="eh-display text-xl font-black" style={{ color: terminal?.color || 'var(--eh-green)' }}>{terminal ? terminal.label : (RECOVERY_STAGES[stageIdx]?.label || 'Pending')}</div>
-          <div className="text-sm opacity-80 leading-6 mt-1">{terminal ? terminal.desc : (RECOVERY_STAGES[stageIdx]?.desc || 'Awaiting first review.')}</div>
-          {recCase.admin_note && <div className="mt-2 eh-mono text-[11px] opacity-90 bg-[rgba(0,255,157,.06)] border border-[rgba(0,255,157,.2)] rounded p-2.5">// NOTE FROM TEAM: {recCase.admin_note}</div>}
-        </div>
-        <button onClick={onRefresh} disabled={refreshing} data-testid="recovery-refresh-btn" className="text-xs eh-mono px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5 disabled:opacity-50"><RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'SYNCING' : 'REFRESH'}</button>
-      </div>
+      {/* Premium animated status hero — color follows the current stage */}
+      {(() => {
+        const heroColor = terminal?.color || RECOVERY_STAGES[stageIdx]?.color || '#00ff9d';
+        return (
+          <div className="eh-panel eh-status-hero p-4 mb-5 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: `${heroColor}66`, '--tile-color': heroColor, background: `linear-gradient(135deg, color-mix(in srgb, ${heroColor} 6%, transparent) 0%, transparent 70%)` }}>
+            <div className="min-w-0 flex-1 relative z-10">
+              <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 flex items-center gap-2">
+                <span className="inline-flex relative w-2 h-2">
+                  <span className="absolute inset-0 rounded-full opacity-70 animate-ping" style={{ background: heroColor }} />
+                  <span className="relative w-2 h-2 rounded-full" style={{ background: heroColor }} />
+                </span>
+                // CURRENT STATUS
+              </div>
+              <div className="eh-display text-xl font-black" style={{ color: heroColor }}>{terminal ? terminal.label : (RECOVERY_STAGES[stageIdx]?.label || 'Pending')}</div>
+              <div className="text-sm opacity-80 leading-6 mt-1">{terminal ? terminal.desc : (RECOVERY_STAGES[stageIdx]?.desc || 'Awaiting first review.')}</div>
+              {recCase.admin_note && <div className="mt-2 eh-mono text-[11px] opacity-90 rounded p-2.5" style={{ background: `color-mix(in srgb, ${heroColor} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${heroColor} 25%, transparent)` }}>// NOTE FROM TEAM: {recCase.admin_note}</div>}
+            </div>
+            <button onClick={onRefresh} disabled={refreshing} data-testid="recovery-refresh-btn" className="relative z-10 text-xs eh-mono px-3 py-2 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5 disabled:opacity-50"><RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'SYNCING' : 'REFRESH'}</button>
+          </div>
+        );
+      })()}
 
       {!terminal ? (
-        <div className="relative" data-testid="recovery-trace-timeline">
+        <div data-testid="recovery-trace-timeline">
           {RECOVERY_STAGES.map((s, i) => {
             const state = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'pending';
-            const connectorClass = i < stageIdx ? 'done' : i === stageIdx ? 'live' : '';
-            return (
-              <div key={s.key} className="flex gap-4 pb-7 relative">
-                {i < RECOVERY_STAGES.length - 1 && <div className={`trace-connector ${connectorClass}`} />}
-                <TraceStageIcon stageKey={s.key} icon={s.icon} state={state} />
-                <div className="flex-1 pt-1 min-w-0">
-                  <div className={`font-semibold ${state !== 'pending' ? '' : 'opacity-55'}`} style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.label}</div>
-                  <div className={`text-sm leading-6 ${state === 'pending' ? 'opacity-55' : 'opacity-80'}`}>{s.desc}</div>
-                  {state === 'current' && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)]"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> LIVE</div>}
-                  {state === 'done' && <div className="mt-2 eh-mono text-[10px] tracking-widest text-[var(--eh-green)] opacity-80">✓ COMPLETED</div>}
-                </div>
-              </div>
-            );
+            return <StageTile key={s.key} stage={s} state={state} index={i} />;
           })}
         </div>
       ) : (
-        <div className="eh-panel p-5 text-center" style={{ borderColor: `${terminal.color}66`, background: status === 'closed' ? 'rgba(0,255,157,.04)' : 'rgba(255,107,107,.04)' }}>
+        <div className="eh-panel p-5 text-center" style={{ borderColor: `${terminal.color}66`, background: status === 'closed' ? 'rgba(192,132,252,.06)' : 'rgba(255,49,72,.05)' }}>
           {status === 'closed' ? <CheckCircle2 size={36} className="mx-auto mb-2" color={terminal.color} /> : <ShieldAlert size={36} className="mx-auto mb-2" color={terminal.color} />}
           <div className="eh-display font-black mb-1" style={{ color: terminal.color }}>{terminal.label}</div>
           <div className="text-sm opacity-80 leading-6">{terminal.desc}</div>
@@ -266,22 +290,10 @@ const OrderView = ({ order, setOrder, autoScroll }) => {
         <div className="eh-panel p-2.5 sm:p-3 min-w-0"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">SIZE</div><div className="break-words text-[12.5px] sm:text-sm">{order.size}</div></div>
         <div className="eh-panel p-2.5 sm:p-3 min-w-0 overflow-hidden col-span-2 sm:col-span-1"><div className="eh-mono text-[9.5px] sm:text-[10px] opacity-60 tracking-widest">TARGET</div><div className="truncate text-[12.5px] sm:text-sm" title={order.target}>{order.target || '—'}</div></div>
       </div>
-      <div className="relative" data-testid="order-trace-timeline">
+      <div data-testid="order-trace-timeline">
         {ORDER_STAGES.map((s, i) => {
           const state = i < idx ? 'done' : i === idx ? 'current' : 'pending';
-          const connectorClass = i < idx ? 'done' : i === idx ? 'live' : '';
-          return (
-            <div key={s.key} className="flex gap-4 pb-7 relative">
-              {i < ORDER_STAGES.length - 1 && <div className={`trace-connector ${connectorClass}`} />}
-              <TraceStageIcon stageKey={s.key} icon={s.icon} state={state} />
-              <div className="flex-1 pt-1 min-w-0">
-                <div className={`font-semibold ${state !== 'pending' ? '' : 'opacity-55'}`} style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{s.label}</div>
-                <div className={`text-sm leading-6 ${state === 'pending' ? 'opacity-55' : 'opacity-80'}`}>{s.desc}</div>
-                {state === 'current' && <div className="mt-2 eh-mono text-[11px] eh-neon-soft inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-[rgba(0,255,157,.4)] bg-[rgba(0,255,157,.06)]"><span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> LIVE</div>}
-                {state === 'done' && <div className="mt-2 eh-mono text-[10px] tracking-widest text-[var(--eh-green)] opacity-80">✓ COMPLETED</div>}
-              </div>
-            </div>
-          );
+          return <StageTile key={s.key} stage={s} state={state} index={i} />;
         })}
       </div>
       <PaymentBox order={order} onUpdated={setOrder} autoScroll={autoScroll} />
