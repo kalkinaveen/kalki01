@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Check, X, Clock, Wallet as WalletIcon, RotateCcw, ExternalLink, FileText } from 'lucide-react';
+import { Loader2, RefreshCw, Check, X, Clock, Wallet as WalletIcon, RotateCcw, ExternalLink, FileText, Search, Zap, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 
@@ -10,6 +10,142 @@ const STATUS_BADGE = {
   rejected: 'border-red-400/40 text-red-300 bg-red-400/10',
   processed: 'border-purple-400/40 text-purple-300 bg-purple-400/10',
   completed: 'border-[rgba(0,255,157,.4)] text-[var(--eh-green)] bg-[rgba(0,255,157,.12)]',
+};
+
+const IssueByTrackingPanel = ({ onIssued }) => {
+  const [tid, setTid] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const [target, setTarget] = useState(null);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [method, setMethod] = useState('wallet');
+  const [issuing, setIssuing] = useState(false);
+
+  const lookup = async () => {
+    const id = tid.trim();
+    if (!id) { toast.error('Enter a tracking ID'); return; }
+    setLookingUp(true); setTarget(null);
+    try {
+      const r = await api.adminRefundLookup(id);
+      setTarget(r);
+      setAmount(r.suggested_amount ? String(r.suggested_amount) : '');
+      toast.success(`Found · ${r.kind.replace('_', ' ')}`);
+    } catch (e) { toast.error(e.message || 'Lookup failed'); }
+    finally { setLookingUp(false); }
+  };
+
+  const issue = async () => {
+    const amt = parseFloat(amount);
+    if (!(amt > 0)) { toast.error('Enter a valid refund amount'); return; }
+    if (method === 'wallet' && !target?.user?.user_id) {
+      if (!window.confirm('No linked user account — wallet credit will be skipped. Continue anyway?')) return;
+    }
+    if (!window.confirm(`Issue refund of ₹${amt} via ${method.toUpperCase()} for ${tid}?`)) return;
+    setIssuing(true);
+    try {
+      const r = await api.adminRefundIssue({ tracking_id: tid.trim(), amount: amt, reason, method });
+      toast.success('Refund issued · customer notified', { description: `Refund ID: ${r.refund?.id}` });
+      setTid(''); setTarget(null); setAmount(''); setReason(''); setMethod('wallet');
+      onIssued?.(r.refund);
+    } catch (e) { toast.error(e.message || 'Issue failed'); }
+    finally { setIssuing(false); }
+  };
+
+  const order = target?.order;
+  const usr = target?.user;
+  const sym = '₹';
+
+  return (
+    <div className="eh-panel p-5 border border-[rgba(0,255,157,.3)] bg-[rgba(0,255,157,.04)]" data-testid="admin-issue-refund-panel">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded border border-[var(--eh-green)] grid place-items-center"><Zap size={14} className="text-[var(--eh-green)]" /></div>
+        <div>
+          <div className="eh-mono text-[10px] tracking-widest opacity-60">// DIRECT REFUND</div>
+          <div className="eh-display text-lg font-black">Issue refund by tracking ID</div>
+        </div>
+      </div>
+      <div className="eh-mono text-[11px] opacity-70 leading-5 mb-3">Paste any ORD-, REC- or RFD- ID. We&apos;ll resolve the order + user, then credit the wallet (or queue a manual payout) and ping the customer on Telegram + email.</div>
+
+      <div className="flex gap-2 mb-3">
+        <input value={tid} onChange={e => setTid(e.target.value)} onKeyDown={e => e.key === 'Enter' && lookup()} placeholder="> ORD-XXXX  /  REC-XXXX  /  RFD-XXXX" className="eh-input text-sm flex-1" data-testid="admin-issue-refund-tid" />
+        <button onClick={lookup} disabled={lookingUp || !tid.trim()} data-testid="admin-issue-refund-lookup" className="eh-btn-primary text-xs inline-flex items-center gap-1.5 disabled:opacity-50 px-4">
+          {lookingUp ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {lookingUp ? 'LOOKING…' : 'LOOKUP'}
+        </button>
+      </div>
+
+      {target && (
+        <div className="space-y-3" data-testid="admin-issue-refund-target">
+          <div className="grid grid-cols-2 gap-3 p-3 rounded border border-[var(--eh-border)] bg-black/30">
+            <div>
+              <div className="eh-mono text-[9px] tracking-widest opacity-60">KIND</div>
+              <div className="eh-mono text-xs eh-neon-soft">{(target.kind || '—').replace('_', ' ').toUpperCase()}</div>
+            </div>
+            <div>
+              <div className="eh-mono text-[9px] tracking-widest opacity-60">SUGGESTED</div>
+              <div className="eh-mono text-xs eh-neon">{sym}{Number(target.suggested_amount || 0).toLocaleString('en-IN')}</div>
+            </div>
+            {order && (
+              <>
+                <div>
+                  <div className="eh-mono text-[9px] tracking-widest opacity-60">SERVICE</div>
+                  <div className="text-xs">{order.serviceName || order.service_name || order.service || '—'}</div>
+                </div>
+                <div>
+                  <div className="eh-mono text-[9px] tracking-widest opacity-60">ORDER STATUS</div>
+                  <div className="eh-mono text-xs">{(order.status || '—').toUpperCase()}</div>
+                </div>
+              </>
+            )}
+            <div>
+              <div className="eh-mono text-[9px] tracking-widest opacity-60">CUSTOMER</div>
+              <div className="text-xs break-all">{usr ? `${usr.name || ''} · ${usr.email}` : order ? (order.name || order.email || '—') : '—'}</div>
+            </div>
+            <div>
+              <div className="eh-mono text-[9px] tracking-widest opacity-60">WALLET BALANCE</div>
+              <div className="eh-mono text-xs">{usr ? `${sym}${Number(usr.balance || 0).toLocaleString('en-IN')}` : <span className="opacity-50">— no linked account</span>}</div>
+            </div>
+          </div>
+
+          {target.existing_refunds?.length > 0 && (
+            <div className="rounded border border-amber-400/40 bg-amber-400/5 p-3 text-xs eh-mono flex items-start gap-2">
+              <AlertTriangle size={12} className="text-amber-300 mt-0.5 shrink-0" />
+              <div>
+                <span className="text-amber-200">{target.existing_refunds.length} existing refund record(s)</span> for this order — re-issuing will <b>update</b> the latest record instead of duplicating.
+                <div className="opacity-70 mt-1">{target.existing_refunds.map(r => `${r.id}·${r.status}·${sym}${r.refund_amount || r.order_amount}`).join('  ·  ')}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">REFUND AMOUNT (₹)</label>
+              <input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} className="eh-input text-sm w-full" data-testid="admin-issue-refund-amount" />
+            </div>
+            <div>
+              <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">METHOD</label>
+              <select value={method} onChange={e => setMethod(e.target.value)} className="eh-input text-sm w-full" data-testid="admin-issue-refund-method">
+                <option value="wallet">WALLET (instant)</option>
+                <option value="upi">UPI (manual)</option>
+                <option value="crypto">CRYPTO (manual)</option>
+                <option value="manual">MANUAL / OTHER</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">REASON / NOTE</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Shown to customer · e.g. service unavailable, customer request" className="eh-input text-sm w-full resize-none" data-testid="admin-issue-refund-reason" />
+          </div>
+
+          <button onClick={issue} disabled={issuing || !amount} data-testid="admin-issue-refund-submit" className="eh-btn-primary text-sm w-full justify-center inline-flex items-center gap-2 disabled:opacity-50">
+            {issuing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+            {issuing ? 'PROCESSING…' : `ISSUE ${sym}${Number(amount || 0).toLocaleString('en-IN')} REFUND`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const RefundsManager = () => {
@@ -66,6 +202,7 @@ const RefundsManager = () => {
 
   return (
     <div className="space-y-5" data-testid="admin-refunds-manager">
+      <IssueByTrackingPanel onIssued={() => load()} />
       <div className="eh-panel p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <div>

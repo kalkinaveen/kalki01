@@ -74,6 +74,8 @@ export const api = {
   refundPublic: (id) => req(`/refunds/track/${id}`),
   adminRefunds: (status) => req(`/admin/refunds${status ? `?status=${status}` : ''}`, { admin: true }),
   adminRefundUpdate: (id, data) => req(`/admin/refunds/${id}`, { method: 'PATCH', body: data, admin: true }),
+  adminRefundLookup: (trackingId) => req(`/admin/refunds/lookup/${encodeURIComponent(trackingId)}`, { admin: true }),
+  adminRefundIssue: (data) => req('/admin/refunds/issue', { method: 'POST', body: data, admin: true }),
   adminWalletDeposits: (status) => req(`/admin/wallet/deposits${status ? `?status=${status}` : ''}`, { admin: true }),
   adminWalletApprove: (id) => req(`/admin/wallet/deposits/${id}/approve`, { method: 'POST', admin: true }),
   adminWalletReject: (id, reason = '') => req(`/admin/wallet/deposits/${id}/reject${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`, { method: 'POST', admin: true }),

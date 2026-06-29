@@ -11,6 +11,24 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-19 · Direct Refund by Any Tracking ID** 💸 (Feb 2026)
+  - **Pain solved**: Admin previously could only act on customer-filed refund requests. No way to issue a refund proactively for any order/case from the webpanel — every refund required the customer to file first. The user explicitly asked: "in webpanel refund section all tracking id should be available so i can refund there everything what i want".
+  - **New backend endpoints** (`server.py`):
+    - `GET /api/admin/refunds/lookup/{tracking_id}` — resolves ORD-, REC-, or RFD- IDs into a refundable target. Returns `{ kind, order, user (incl. balance + tg link), suggested_amount, existing_refunds }`. Falls back from order → linked recovery case → existing refund record.
+    - `POST /api/admin/refunds/issue` — body `{ tracking_id, amount, reason, method }`. Idempotent — if a refund already exists for the target it updates the latest record instead of duplicating. Wallet path credits instantly via `_wallet_txn`; UPI/Crypto/Manual stay `approved` for offline payout. Fires Telegram DM to customer (when linked) with refund ref + track link. Full timeline audit trail preserved.
+  - **Frontend redesign** (`RefundsManager.jsx`): new `IssueByTrackingPanel` at top of the Refunds page:
+    - Sticky lookup box (Enter key triggers search)
+    - Resolved target preview grid: KIND · SUGGESTED · SERVICE · ORDER STATUS · CUSTOMER · WALLET BALANCE
+    - Yellow warning chip listing pre-existing refunds for this order with their statuses (prevents accidental duplication)
+    - Amount auto-fills from suggested; currency dropdown; method picker (WALLET instant / UPI / CRYPTO / MANUAL); customer-visible reason textarea
+    - Single big "⚡ ISSUE ₹X REFUND" CTA — confirms via `window.confirm`, then toasts the new RFD-ID
+    - Existing Refund Requests list rebuilds via `onIssued` callback
+  - **Verified end-to-end**:
+    - Seeded ORD-RFTEST-001 (₹999, user with `user_id`, balance ₹0)
+    - `lookup` → returned kind=order, suggested=999, user balance ₹0
+    - `issue {amount:500, method:'wallet'}` → wallet credit instant, status `completed`, timeline `requested → approved → completed`
+    - Re-issue on same order → correctly updated existing record (yellow warning chip rendered with "RFD-XXX·completed·₹500")
+    - All visual elements (lookup grid, warning, form, CTA) verified on 1440px desktop with screenshot
 - **Iter-18 · Admin Orders Inbox v2 + Quote Editor** 🎛️ (Feb 2026)
   - **New backend endpoint** `POST /api/orders/{order_id}/set-quote` (`server.py`): admin-only, takes `{ amount, currency, note }`, persists `payment_amount/currency/notes/quote_sent_at`, fires customer email (`notify_quote_sent`) + Telegram DM (`_notify_user_order(event='quote_sent')`). Idempotent — re-sending updates the price and re-pings the customer.
   - **Frontend admin redesign** (`AdminPanel.jsx`): replaced the flat orders table with a polished inbox matching the Recovery/Payments style:

@@ -165,6 +165,12 @@ class OrderQuoteIn(BaseModel):
     currency: str = "INR"
     note: Optional[str] = ""
 
+class DirectRefundIn(BaseModel):
+    tracking_id: str  # ORD-, REC-, RFD-, or wallet TXN-
+    amount: float = Field(gt=0)
+    reason: Optional[str] = ""
+    method: Optional[str] = "wallet"  # wallet | upi | crypto | manual
+
 class RecoveryServiceIn(BaseModel):
     name: str
     issue_key: str
@@ -4581,6 +4587,176 @@ async def admin_refunds_list(x_admin_token: Optional[str] = Header(None), status
     if status: q["status"] = status
     rows = await db.refunds.find(q).sort("createdAt", -1).to_list(500)
     return [_clean(r) for r in rows]
+
+@api.get("/admin/refunds/lookup/{tracking_id}")
+async def admin_refunds_lookup(tracking_id: str, x_admin_token: Optional[str] = Header(None)):
+    """Admin-only: resolve any tracking ID (ORD-, REC-, RFD-) into a refundable target.
+    Returns { kind, order, user, suggested_amount, existing_refunds }."""
+    await _check_admin(x_admin_token)
+    tid = (tracking_id or "").strip()
+    if not tid:
+        raise HTTPException(status_code=400, detail="Missing tracking_id")
+    out: Dict[str, Any] = {"tracking_id": tid, "kind": None, "order": None, "user": None, "suggested_amount": 0.0, "existing_refunds": []}
+
+    # 1) Try as refund
+    rfd = await db.refunds.find_one({"id": tid})
+    if rfd:
+        out["kind"] = "refund"
+        out["existing_refunds"] = [_clean(rfd)]
+        ord_id = rfd.get("order_id")
+        if ord_id:
+            o = await db.orders.find_one({"id": ord_id})
+            if o: out["order"] = _clean(o)
+        out["suggested_amount"] = float(rfd.get("refund_amount") or rfd.get("order_amount") or 0)
+    else:
+        # 2) Try as order
+        order = await db.orders.find_one({"id": tid})
+        if not order:
+            # 3) Try as recovery case → resolve to linked order
+            case = await db.recovery_cases.find_one({"id": tid})
+            if case and case.get("linked_order_id"):
+                order = await db.orders.find_one({"id": case["linked_order_id"]})
+                out["kind"] = "recovery_case"
+            elif case:
+                out["kind"] = "recovery_case_no_order"
+                out["order"] = _clean(case)
+                out["suggested_amount"] = float(case.get("final_amount") or case.get("estimated_price") or 0)
+        if order:
+            out["kind"] = out["kind"] or "order"
+            out["order"] = _clean(order)
+            out["suggested_amount"] = float(order.get("payment_amount") or order.get("amount") or 0)
+            rl = await db.refunds.find({"order_id": order["id"]}).sort("createdAt", -1).to_list(20)
+            out["existing_refunds"] = [_clean(r) for r in rl]
+
+    # Resolve user
+    target = out["order"] or {}
+    user = None
+    if target.get("user_id"):
+        user = await db.users.find_one({"user_id": target["user_id"]})
+    if not user:
+        email = target.get("email") or target.get("userEmail") or target.get("contact_email")
+        if email:
+            user = await db.users.find_one({"email": email})
+    if user:
+        out["user"] = {
+            "user_id": user.get("user_id"),
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "balance": float(user.get("balance") or 0),
+            "telegram_chat_id": user.get("telegram_chat_id"),
+        }
+
+    if not out["kind"]:
+        raise HTTPException(status_code=404, detail=f"No order, recovery case, or refund found for {tid}")
+    return out
+
+
+@api.post("/admin/refunds/issue")
+async def admin_refunds_issue(body: DirectRefundIn, x_admin_token: Optional[str] = Header(None)):
+    """Admin-only: issue a refund directly for ANY tracking ID without waiting for a customer request."""
+    await _check_admin(x_admin_token)
+    tid = (body.tracking_id or "").strip()
+    rfd_existing = await db.refunds.find_one({"id": tid})
+    order: Dict[str, Any] = {}
+    case: Dict[str, Any] = {}
+    if rfd_existing:
+        ord_id = rfd_existing.get("order_id")
+        if ord_id:
+            order = await db.orders.find_one({"id": ord_id}) or {}
+    else:
+        order = await db.orders.find_one({"id": tid}) or {}
+        if not order:
+            case = await db.recovery_cases.find_one({"id": tid}) or {}
+            if case and case.get("linked_order_id"):
+                order = await db.orders.find_one({"id": case["linked_order_id"]}) or {}
+
+    if not (order or case or rfd_existing):
+        raise HTTPException(status_code=404, detail=f"No refundable target for {tid}")
+
+    user = None
+    target = order or case or rfd_existing or {}
+    if target.get("user_id"):
+        user = await db.users.find_one({"user_id": target["user_id"]})
+    if not user:
+        email = target.get("email") or target.get("userEmail") or target.get("contact_email") or target.get("user_email")
+        if email:
+            user = await db.users.find_one({"email": email})
+
+    method = (body.method or "wallet").lower()
+    amount = float(body.amount)
+
+    if rfd_existing:
+        refund_id = rfd_existing["id"]
+        timeline = list(rfd_existing.get("timeline") or [])
+        timeline.append({"status": "approved", "at": _now_iso(), "note": f"Admin direct-issue ₹{amount} via {method}"})
+        upd = {
+            "refund_amount": amount,
+            "refund_method": method,
+            "admin_note": body.reason or rfd_existing.get("admin_note", ""),
+            "timeline": timeline,
+            "updated_at": _now_iso(),
+        }
+    else:
+        refund_id = f"RFD-{uuid.uuid4().hex[:10].upper()}"
+        record = {
+            "id": refund_id,
+            "user_id": (user or {}).get("user_id"),
+            "user_email": (user or {}).get("email") or target.get("email") or target.get("contact_email") or "",
+            "order_id": (order or {}).get("id") or (case or {}).get("linked_order_id") or "",
+            "case_id": (case or {}).get("id") or "",
+            "order_amount": float((order or {}).get("payment_amount") or (order or {}).get("amount") or (case or {}).get("final_amount") or 0),
+            "order_service": (order or {}).get("serviceName") or (order or {}).get("service") or (case or {}).get("service_name") or "",
+            "reason": body.reason or "Direct refund issued by admin",
+            "proof_url": "",
+            "status": "approved",
+            "admin_note": body.reason or "Direct refund issued by admin",
+            "refund_amount": amount,
+            "refund_method": method,
+            "timeline": [
+                {"status": "requested", "at": _now_iso(), "note": "Direct issue by admin"},
+                {"status": "approved", "at": _now_iso(), "note": f"Admin approved ₹{amount} via {method}"},
+            ],
+            "createdAt": _now_iso(),
+            "direct_issue": True,
+        }
+        await db.refunds.insert_one(record)
+        upd = {"timeline": list(record["timeline"])}  # carry forward so completed-append doesn't clobber audit trail
+
+    final_status = "approved"
+    if method == "wallet" and (user or {}).get("user_id"):
+        try:
+            await _wallet_txn(user["user_id"], "refund", amount,
+                              note=f"Refund issued · {tid}",
+                              ref={"refund_id": refund_id, "order_id": (order or {}).get("id"), "tracking_id": tid})
+            final_status = "completed"
+        except Exception as e:
+            log.warning("direct refund wallet credit failed: %s", e)
+            final_status = "approved"
+    upd["status"] = final_status
+    if final_status == "completed":
+        upd["timeline"] = (upd.get("timeline") or []) + [{"status": "completed", "at": _now_iso(), "note": "Wallet credited"}]
+
+    if upd:
+        await db.refunds.update_one({"id": refund_id}, {"$set": upd})
+
+    fresh = await db.refunds.find_one({"id": refund_id})
+
+    try:
+        if user and user.get("telegram_chat_id"):
+            tok = await _get_bot_token()
+            if tok:
+                await _tg_send(tok, int(user["telegram_chat_id"]),
+                    f"↻ <b>Refund processed</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"<b>▸ Amount</b>  ₹{amount:,.2f}\n"
+                    f"<b>▸ Method</b>  {method.upper()}\n"
+                    f"<b>▸ Ref</b>     <code>{refund_id}</code>\n"
+                    f"<b>▸ Note</b>    {body.reason or '—'}",
+                    {"inline_keyboard": [[{"text": "▸  Track Refund", "url": f"https://errorhacker.site/track?id={refund_id}"}]]})
+    except Exception as e:
+        log.warning("direct refund TG notify failed: %s", e)
+
+    return {"ok": True, "refund": _clean(fresh), "user": ({"email": user.get("email")} if user else None)}
 
 @api.patch("/admin/refunds/{refund_id}")
 async def admin_refund_update(refund_id: str, body: RefundUpdateIn, x_admin_token: Optional[str] = Header(None)):
