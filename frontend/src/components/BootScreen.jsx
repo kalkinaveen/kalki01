@@ -47,13 +47,17 @@ const BootScreen = ({ onDone }) => {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     let i = 0;
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearInterval(id); clearTimeout(safety); onDone && onDone(); };
     const id = setInterval(() => {
       i += 1;
       setLines(prev => prev.length < BOOT_LINES.length ? [...prev, BOOT_LINES[prev.length]] : prev);
       setProgress(Math.min(100, Math.round((i / BOOT_LINES.length) * 100)));
-      if (i >= BOOT_LINES.length) { clearInterval(id); setTimeout(() => onDone && onDone(), 700); }
+      if (i >= BOOT_LINES.length) { clearInterval(id); setTimeout(finish, 700); }
     }, 380);
-    return () => clearInterval(id);
+    // Hard safety net: dismiss after 4s even if interval stalls (mobile background-tab throttling, iOS low-power mode, etc.)
+    const safety = setTimeout(finish, 4000);
+    return () => { done = true; clearInterval(id); clearTimeout(safety); };
   }, [onDone]);
 
   return (

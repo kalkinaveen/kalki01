@@ -11,6 +11,11 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-15 · BootScreen Deep-Link Fix** 🐛 (Feb 2026)
+  - **Root cause**: `BootGate` in `App.js` only auto-skipped boot for `/admin`, `/login`, `/signup`, `/me`, `/fonts`. Email "PAY NOW" links land on `/track?id=X&pay=1` (NOT in the skip list), so the 2.6s boot animation played. On mobile (background tab throttling, iOS low-power mode, Safari private mode with sessionStorage failures) the `setInterval` could stall — leaving users frozen on "INITIALIZING SYSTEM..." forever, unable to pay.
+  - **Fix in `BootGate`** (`/app/frontend/src/App.js`): Auto-skip boot for ANY non-home route OR any URL with query params (email deep-links always carry `?pay=1`, `?id=`, etc.). `sessionStorage` calls wrapped in try/catch for iOS private mode.
+  - **Fix in `BootScreen.jsx`**: Added a hard 4s safety-net `setTimeout` that calls `onDone()` even if the interval stalls. Idempotent via `done` flag — interval-completion path and safety path are mutually exclusive.
+  - **Verified**: `/` plays + unmounts boot cleanly (~3s); `/track?id=test&pay=1` skips boot entirely and renders Operation Tracker immediately.
 - **Iter-12/13 · FastAPI Lifespan + Try/Except Isolation + Cashfree Route Extraction** 🔧
   - **Lifespan migration**: `@app.on_event` deprecation gone — replaced with proper `@asynccontextmanager` lifespan that re-creates all 13 MongoDB unique + perf indexes on every startup. Forward-references resolved lazily so the lifespan body can be defined before its callees.
   - **Per-task try/except isolation** across all 8 email/Telegram dispatch sites — `me_pay_with_wallet`, both branches of `_cashfree_reconcile`, and PATCH /orders. A single Resend hiccup can no longer suppress the rest.

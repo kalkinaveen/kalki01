@@ -47,18 +47,25 @@ import Analytics from './components/Analytics';
 
 const SiteShell = ({ children }) => <Layout>{children}</Layout>;
 
+// Safe sessionStorage helpers (iOS Safari private mode silently throws)
+const safeGetSession = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const safeSetSession = (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* noop */ } };
+
 const BootGate = () => {
   const location = useLocation();
-  const [booted, setBooted] = useState(() => sessionStorage.getItem('eh_booted') === '1');
-  // Auto-skip boot for admin route
+  const [booted, setBooted] = useState(() => safeGetSession('eh_booted') === '1');
+  // Auto-skip boot for any route that isn't the marketing home, OR when the URL has query params (email deep-links always carry ?pay=1, ?id=, etc.)
   useEffect(() => {
-    if ((location.pathname.startsWith('/admin') || location.pathname.startsWith('/fonts') || location.pathname.startsWith('/login') || location.pathname.startsWith('/signup') || location.pathname.startsWith('/me')) && !booted) {
-      sessionStorage.setItem('eh_booted', '1');
+    if (booted) return;
+    const isHome = location.pathname === '/' || location.pathname === '';
+    const hasQuery = !!location.search && location.search.length > 1;
+    if (!isHome || hasQuery) {
+      safeSetSession('eh_booted', '1');
       setBooted(true);
     }
-  }, [location.pathname, booted]);
+  }, [location.pathname, location.search, booted]);
   if (booted) return null;
-  return <BootScreen onDone={() => { sessionStorage.setItem('eh_booted', '1'); setBooted(true); }} />;
+  return <BootScreen onDone={() => { safeSetSession('eh_booted', '1'); setBooted(true); }} />;
 };
 
 function App() {
