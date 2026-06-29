@@ -11,6 +11,12 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-16 · Real Blank-Screen Fix on /track (Email PAY NOW links)** 🔥 (Feb 2026)
+  - **Root cause**: `OrderTracker.jsx` line 237 inside `RecoveryView` referenced `shouldAutoScroll` — a variable that only exists in the parent `OrderTracker` scope. `RecoveryView` only receives `autoScroll` as a prop. This threw `ReferenceError: shouldAutoScroll is not defined` at render time → entire tracker blanked out.
+  - **Trigger condition**: Looking up a recovery case (`REC-XXX`) that has `linked_order_id` set (i.e., quote was sent and the customer received a "PAY NOW" email). Exactly the production email-link flow.
+  - **Why DEMO/non-existent IDs worked**: They never set `linkedOrder`, so the broken `<PaymentBox>` line was guarded out by `{linkedOrder && ...}` and never executed.
+  - **Fix**: Changed `autoScroll={shouldAutoScroll}` → `autoScroll={autoScroll}` (use the in-scope prop).
+  - **Verified**: Seeded a real `REC-FIXTEST-001` with `linked_order_id` in preview MongoDB and visited `/track?id=REC-FIXTEST-001&pay=1` — full QUOTE READY card + PaymentBox renders with zero JS errors.
 - **Iter-15 · BootScreen Deep-Link Fix** 🐛 (Feb 2026)
   - **Root cause**: `BootGate` in `App.js` only auto-skipped boot for `/admin`, `/login`, `/signup`, `/me`, `/fonts`. Email "PAY NOW" links land on `/track?id=X&pay=1` (NOT in the skip list), so the 2.6s boot animation played. On mobile (background tab throttling, iOS low-power mode, Safari private mode with sessionStorage failures) the `setInterval` could stall — leaving users frozen on "INITIALIZING SYSTEM..." forever, unable to pay.
   - **Fix in `BootGate`** (`/app/frontend/src/App.js`): Auto-skip boot for ANY non-home route OR any URL with query params (email deep-links always carry `?pay=1`, `?id=`, etc.). `sessionStorage` calls wrapped in try/catch for iOS private mode.

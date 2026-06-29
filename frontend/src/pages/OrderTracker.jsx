@@ -234,7 +234,7 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
           {recCase.payment_note && <div className="eh-mono text-[11px] opacity-80 leading-5 mt-1">// {recCase.payment_note}</div>}
         </div>
       )}
-      {linkedOrder && <PaymentBox order={linkedOrder} onUpdated={setLinkedOrder} autoScroll={shouldAutoScroll} />}
+      {linkedOrder && <PaymentBox order={linkedOrder} onUpdated={setLinkedOrder} autoScroll={autoScroll} />}
 
       <div className="mt-6 pt-5 border-t border-[var(--eh-border)] flex flex-wrap gap-3 items-center justify-between">
         <div className="eh-mono text-[10px] opacity-50">// AUTO-REFRESH EVERY 30s · CASE OPENED {recCase.createdAt ? new Date(recCase.createdAt).toLocaleString() : ''}</div>
