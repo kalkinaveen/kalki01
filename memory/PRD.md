@@ -11,6 +11,21 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-18 · Admin Orders Inbox v2 + Quote Editor** 🎛️ (Feb 2026)
+  - **New backend endpoint** `POST /api/orders/{order_id}/set-quote` (`server.py`): admin-only, takes `{ amount, currency, note }`, persists `payment_amount/currency/notes/quote_sent_at`, fires customer email (`notify_quote_sent`) + Telegram DM (`_notify_user_order(event='quote_sent')`). Idempotent — re-sending updates the price and re-pings the customer.
+  - **Frontend admin redesign** (`AdminPanel.jsx`): replaced the flat orders table with a polished inbox matching the Recovery/Payments style:
+    - **4 stat tiles**: TOTAL ORDERS · AWAITING QUOTE (yellow when >0, "needs price") · PAYMENT REVIEW (cyan, "verify proof") · REVENUE LOCKED (₹ verified+)
+    - **Filter chips**: ALL · RECEIVED · PAYMENT REVIEW · VERIFIED · IN PROGRESS · DELIVERED · PAID with live counts
+    - **Search**: by ID, email, name, or service name
+    - **Row+detail-modal** pattern (clickable rows open a full-context modal)
+    - **`SetOrderQuotePanel`** inside modal: edit/set quote amount + currency (INR/USD/EUR/GBP) + customer note, with primary "SEND QUOTE TO CUSTOMER" CTA. When a quote already exists, it shows the locked summary with an "UPDATE & RESEND" button → toggle back to edit form.
+    - **Customer payment block**: shows method, amount paid, TX ref, screenshot when a customer has submitted proof
+    - **Status updater** row with all status chips
+    - **Footer actions**: OPEN PUBLIC TRACKER (deep-link with `?pay=1` when amount set) + CONTACT ON TELEGRAM
+  - **Verified end-to-end on preview**:
+    - `POST /api/orders/ORD-QTEST-001/set-quote {amount:1499}` → 200, persists `payment_amount=1499`
+    - `/track?id=ORD-QTEST-001&pay=1` → customer sees active "PAY ₹1,499 · OPEN CHECKOUT" Cashfree button
+    - Admin Orders panel on desktop (1440px) and mobile (390px) both render the new UI cleanly
 - **Iter-17 · "Awaiting Quote" Lockout Fix + Beautiful Pending UX** ✨ (Feb 2026)
   - **Root cause #1 (revenue blocker)**: Cart-created orders went into MongoDB with NO price field. `OrderIn` Pydantic model didn't even accept one, so `api.createOrder({...})` from `CartPage.jsx` dropped the cart total on the floor. `PaymentBox` then read `order.amount === 0` and rendered the Cashfree button as a permanently-disabled "AWAITING QUOTE" — every cart customer was locked out of paying.
   - **Fix #1 (backend, `server.py`)**: `OrderIn` now accepts optional `amount` + `currency`. Cart-created orders flow these through `**body.dict()` into the order doc → `PaymentBox` reads the real total instantly.

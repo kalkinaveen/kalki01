@@ -160,6 +160,11 @@ class RecoveryPaymentIn(BaseModel):
     currency: str = "INR"
     note: Optional[str] = ""
 
+class OrderQuoteIn(BaseModel):
+    amount: float = Field(gt=0)
+    currency: str = "INR"
+    note: Optional[str] = ""
+
 class RecoveryServiceIn(BaseModel):
     name: str
     issue_key: str
@@ -1851,6 +1856,38 @@ async def clear_orders(x_admin_token: Optional[str] = Header(None)):
     await _check_admin(x_admin_token)
     res = await db.orders.delete_many({})
     return {"deleted": res.deleted_count}
+
+@api.post("/orders/{order_id}/set-quote")
+async def order_set_quote(order_id: str, body: OrderQuoteIn, x_admin_token: Optional[str] = Header(None)):
+    """Admin-only: set or update the quote amount on any order (cart-placed or admin-created).
+    Persists payment_amount/currency/notes, fires a Telegram alert to the linked customer
+    (when available) and an email with the secure pay link. Idempotent — re-sending updates
+    the amount and re-pings the customer."""
+    await _check_admin(x_admin_token)
+    row = await db.orders.find_one({"id": order_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    update = {
+        "payment_amount": float(body.amount),
+        "amount": float(body.amount),
+        "payment_currency": body.currency or "INR",
+        "currency": body.currency or "INR",
+        "notes": body.note or row.get("notes", ""),
+        "quote_sent_at": _now_iso(),
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": update})
+    row = await db.orders.find_one({"id": order_id})
+    row.pop("_id", None)
+    # Fire customer notifications (each isolated so a single failure doesn't kill the rest)
+    try: asyncio.create_task(_notify_user_order(row, event="quote_sent"))
+    except Exception as e: log.warning("_notify_user_order(quote_sent) dispatch failed: %s", e)
+    try: asyncio.create_task(notify_quote_sent(
+        row.get("email") or row.get("userEmail", ""),
+        row.get("name", ""),
+        order_id, float(body.amount), body.currency or "INR", body.note or ""
+    ))
+    except Exception as e: log.warning("notify_quote_sent dispatch failed: %s", e)
+    return {"ok": True, "order": row}
 
 # ---- Recovery: services (config-stored) -----------------------------------
 @api.get("/recovery/config")

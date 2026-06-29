@@ -114,6 +114,7 @@ export const api = {
   listOrders: () => req('/orders', { admin: true }),
   getOrder: (id) => req(`/orders/${id}`),
   updateOrder: (id, status) => req(`/orders/${id}`, { method: 'PATCH', body: { status }, admin: true }),
+  setOrderQuote: (id, data) => req(`/orders/${id}/set-quote`, { method: 'POST', body: data, admin: true }),
   clearOrders: () => req('/orders', { method: 'DELETE', admin: true }),
   myOrders: () => req('/me/orders', { auth: true }),
   // auth (customer)

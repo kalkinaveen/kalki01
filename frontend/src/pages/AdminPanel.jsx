@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone, RotateCcw, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone, RotateCcw, Sparkles, Send } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -566,45 +566,281 @@ const ComparisonEditor = () => {
   );
 };
 
+const ORDER_STATUSES = [
+  { v: 'received',        label: 'RECEIVED',        cls: 'text-[#4de0ff]' },
+  { v: 'payment_review',  label: 'PAYMENT REVIEW',  cls: 'text-[#ffd34d]' },
+  { v: 'verified',        label: 'VERIFIED',        cls: 'text-[var(--eh-green)]' },
+  { v: 'in-progress',     label: 'IN PROGRESS',     cls: 'text-[#ffd34d]' },
+  { v: 'delivered',       label: 'DELIVERED',       cls: 'text-[var(--eh-green)]' },
+  { v: 'paid',            label: 'PAID',            cls: 'text-[var(--eh-green)]' },
+];
+
+const OrderField = ({ l, v, link, mono }) => (
+  <div className="min-w-0">
+    <div className="eh-mono text-[10px] opacity-60 tracking-widest">{l}</div>
+    {link ? (
+      <a href={link} target="_blank" rel="noreferrer" className={`text-sm text-[var(--eh-green)] hover:underline break-all ${mono ? 'eh-mono' : ''}`}>{v || '—'}</a>
+    ) : (
+      <div className={`text-sm break-all ${mono ? 'eh-mono' : ''}`}>{v || '—'}</div>
+    )}
+  </div>
+);
+
+const SetOrderQuotePanel = ({ order, onUpdated }) => {
+  const hasQuote = Number(order.payment_amount || order.amount || 0) > 0;
+  const [amount, setAmount] = useState(Number(order.payment_amount || order.amount || 0) || '');
+  const [currency, setCurrency] = useState(order.payment_currency || order.currency || 'INR');
+  const [note, setNote] = useState(order.notes || '');
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(!hasQuote);
+
+  useEffect(() => {
+    setAmount(Number(order.payment_amount || order.amount || 0) || '');
+    setCurrency(order.payment_currency || order.currency || 'INR');
+    setNote(order.notes || '');
+    setEditing(!(Number(order.payment_amount || order.amount || 0) > 0));
+  }, [order.id, order.payment_amount, order.amount, order.payment_currency, order.currency, order.notes]);
+
+  const send = async () => {
+    if (!amount || Number(amount) <= 0) { toast.error('Enter a valid amount'); return; }
+    setBusy(true);
+    try {
+      const res = await api.setOrderQuote(order.id, { amount: Number(amount), currency, note });
+      toast.success(hasQuote ? 'Quote updated · customer pinged' : 'Quote sent · customer notified', { description: `Pay link: /track?id=${order.id}&pay=1` });
+      setEditing(false);
+      onUpdated?.(res.order);
+    } catch (e) { toast.error(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const sym = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }[currency] || '';
+
+  return (
+    <div className="eh-panel p-4 bg-[rgba(0,255,157,.04)] border border-[rgba(0,255,157,.25)]" data-testid="order-quote-panel">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="eh-mono text-[10px] opacity-70 tracking-widest flex items-center gap-2"><CreditCard size={11} className="text-[var(--eh-green)]" /> // QUOTE / PAYMENT REQUEST</div>
+        {hasQuote && <a href={`/track?id=${order.id}&pay=1`} target="_blank" rel="noreferrer" className="eh-mono text-[10px] text-[var(--eh-green)] hover:underline flex items-center gap-1">↗ PAY LINK</a>}
+      </div>
+      {hasQuote && !editing ? (
+        <div className="space-y-2">
+          <div className="flex items-baseline gap-2">
+            <div className="eh-display text-2xl font-black eh-neon">{sym}{Number(order.payment_amount || order.amount || 0).toLocaleString('en-IN')}</div>
+            <div className="eh-mono text-[10px] opacity-60">{currency}</div>
+          </div>
+          {order.notes && <div className="eh-mono text-[11px] opacity-70 leading-5">{order.notes}</div>}
+          {order.quote_sent_at && <div className="eh-mono text-[10px] opacity-50">// SENT {new Date(order.quote_sent_at).toLocaleString()}</div>}
+          <button onClick={() => setEditing(true)} data-testid="order-quote-edit-btn" className="text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] flex items-center gap-1.5 mt-1"><Edit3 size={11} /> UPDATE & RESEND</button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">AMOUNT</label>
+              <input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 1499" className="eh-input text-sm w-full" data-testid="order-quote-amount" />
+            </div>
+            <div>
+              <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">CURRENCY</label>
+              <select value={currency} onChange={e => setCurrency(e.target.value)} className="eh-input text-sm w-full">
+                <option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 block">NOTE FOR CUSTOMER (optional)</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="e.g. 50% upfront, balance on delivery" className="eh-input text-sm w-full resize-none" data-testid="order-quote-note" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={send} disabled={busy} data-testid="order-quote-send-btn" className="eh-btn-primary text-xs flex-1 justify-center inline-flex items-center gap-1.5 disabled:opacity-50">
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              {busy ? 'SENDING…' : hasQuote ? 'UPDATE & RESEND' : 'SEND QUOTE TO CUSTOMER'}
+            </button>
+            {hasQuote && <button onClick={() => setEditing(false)} className="text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border border-[var(--eh-border)]">CANCEL</button>}
+          </div>
+          <div className="eh-mono text-[10px] opacity-50 leading-5">Customer gets an email with a one-tap pay link. If they have Telegram linked, they get a DM too.</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+
   const reload = async () => {
     setLoading(true);
     try { setOrders(await api.listOrders()); } catch (e) { toast.error(e.message || 'Failed to load'); }
     finally { setLoading(false); }
   };
   useEffect(() => { reload(); }, []);
-  const clear = async () => {
+
+  const clearAll = async () => {
     if (!window.confirm('Delete ALL orders permanently?')) return;
-    try { await api.clearOrders(); setOrders([]); toast.success('Orders cleared'); } catch (e) { toast.error(e.message); }
+    try { await api.clearOrders(); setOrders([]); setSelected(null); toast.success('Orders cleared'); } catch (e) { toast.error(e.message); }
   };
+
   const updateStatus = async (id, status) => {
-    try { await api.updateOrder(id, status); setOrders(orders.map(o => o.id === id ? { ...o, status } : o)); toast.success('Status updated'); } catch (e) { toast.error(e.message); }
+    try {
+      await api.updateOrder(id, status);
+      const fresh = await api.getOrder(id);
+      setOrders(prev => prev.map(o => o.id === id ? fresh : o));
+      if (selected?.id === id) setSelected(fresh);
+      toast.success(`Status → ${status}`);
+    } catch (e) { toast.error(e.message); }
   };
+
+  const filtered = useMemo(() => {
+    let rows = filter === 'all' ? orders : orders.filter(o => o.status === filter);
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      rows = rows.filter(o => (o.id || '').toLowerCase().includes(q) || (o.email || '').toLowerCase().includes(q) || (o.name || '').toLowerCase().includes(q) || (o.serviceName || '').toLowerCase().includes(q));
+    }
+    return rows;
+  }, [orders, filter, query]);
+
+  // Top stat tiles — quick at-a-glance for admin (matches Recovery dashboard polish)
+  const stats = useMemo(() => {
+    const total = orders.length;
+    const awaitingQuote = orders.filter(o => !(Number(o.payment_amount || o.amount || 0) > 0)).length;
+    const paymentReview = orders.filter(o => o.status === 'payment_review').length;
+    const verifiedSum = orders.filter(o => ['verified', 'in-progress', 'delivered', 'paid'].includes(o.status)).reduce((s, o) => s + Number(o.payment_amount || o.amount || 0), 0);
+    return { total, awaitingQuote, paymentReview, verifiedSum };
+  }, [orders]);
+
   return (
-    <Section kicker="// INCOMING" title="ORDERS INBOX" actions={<><button onClick={reload} className="eh-btn-ghost text-xs"><RefreshCcw size={12} /> REFRESH</button><button onClick={clear} className="eh-btn-ghost text-xs"><Trash2 size={12} /> CLEAR ALL</button></>}>
-      <div className="eh-panel overflow-x-auto">
-        <table className="w-full eh-mono text-sm min-w-[820px]">
-          <thead><tr className="text-left border-b border-[var(--eh-border)]"><th className="p-3 text-xs tracking-widest opacity-70">ID</th><th className="p-3 text-xs">SERVICE</th><th className="p-3 text-xs">CLIENT</th><th className="p-3 text-xs">EMAIL</th><th className="p-3 text-xs">SIZE</th><th className="p-3 text-xs">TARGET</th><th className="p-3 text-xs">STATUS</th><th className="p-3 text-xs">DATE</th></tr></thead>
-          <tbody>
-            {orders.map(o => (
-              <tr key={o.id} className="border-b border-[var(--eh-border)]">
-                <td className="p-3 eh-neon-soft">{o.id}</td>
-                <td className="p-3">{o.serviceName}</td>
-                <td className="p-3">{o.name}</td>
-                <td className="p-3 opacity-80">{o.email}</td>
-                <td className="p-3">{o.size}</td>
-                <td className="p-3 opacity-80 max-w-[200px] truncate">{o.target}</td>
-                <td className="p-3"><select value={o.status} onChange={e=>updateStatus(o.id, e.target.value)} className="eh-input py-1 text-xs"><option value="received">received</option><option value="verified">verified</option><option value="in-progress">in-progress</option><option value="delivered">delivered</option></select></td>
-                <td className="p-3 opacity-70 text-xs">{new Date(o.createdAt).toLocaleString()}</td>
-              </tr>
-            ))}
-            {!loading && orders.length===0 && <tr><td colSpan={8} className="p-6 text-center opacity-60">Inbox empty. Place a test order from the storefront.</td></tr>}
-            {loading && <tr><td colSpan={8} className="p-6 text-center opacity-60 eh-mono text-xs">&gt; loading orders...</td></tr>}
-          </tbody>
-        </table>
+    <Section kicker="// INCOMING" title="ORDERS INBOX" actions={<><button onClick={reload} className="eh-btn-ghost text-xs" data-testid="orders-refresh-btn"><RefreshCcw size={12} /> REFRESH</button><button onClick={clearAll} className="eh-btn-ghost text-xs" data-testid="orders-clear-btn"><Trash2 size={12} /> CLEAR ALL</button></>}>
+      {/* Stat tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div className="eh-panel p-4"><div className="eh-mono text-[10px] opacity-60">TOTAL ORDERS</div><div className="eh-display text-2xl font-black eh-neon">{stats.total}</div></div>
+        <div className="eh-panel p-4" style={{ borderColor: stats.awaitingQuote ? 'rgba(255,211,77,.4)' : undefined }}><div className="eh-mono text-[10px] opacity-60">AWAITING QUOTE</div><div className="eh-display text-2xl font-black" style={{ color: stats.awaitingQuote ? '#ffd34d' : undefined }}>{stats.awaitingQuote}</div><div className="eh-mono text-[10px] opacity-50 mt-0.5">needs price</div></div>
+        <div className="eh-panel p-4" style={{ borderColor: stats.paymentReview ? 'rgba(77,224,255,.4)' : undefined }}><div className="eh-mono text-[10px] opacity-60">PAYMENT REVIEW</div><div className="eh-display text-2xl font-black" style={{ color: stats.paymentReview ? '#4de0ff' : undefined }}>{stats.paymentReview}</div><div className="eh-mono text-[10px] opacity-50 mt-0.5">verify proof</div></div>
+        <div className="eh-panel p-4"><div className="eh-mono text-[10px] opacity-60">REVENUE LOCKED</div><div className="eh-display text-2xl font-black eh-neon">₹{stats.verifiedSum.toLocaleString('en-IN')}</div><div className="eh-mono text-[10px] opacity-50 mt-0.5">verified+</div></div>
       </div>
+
+      {/* Filter chips */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <button onClick={() => setFilter('all')} data-testid="orders-filter-all" className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${filter === 'all' ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>ALL ({orders.length})</button>
+        {ORDER_STATUSES.map(s => {
+          const n = orders.filter(o => o.status === s.v).length;
+          if (n === 0 && filter !== s.v) return null;
+          return <button key={s.v} onClick={() => setFilter(s.v)} data-testid={`orders-filter-${s.v}`} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${filter === s.v ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)]'}`}>{s.label} ({n})</button>;
+        })}
+      </div>
+
+      {/* Search */}
+      <div className="mb-4">
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="> search by ID, email, name, service…" className="eh-input text-sm w-full" data-testid="orders-search" />
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center"><Loader2 className="animate-spin inline-block" /></div>
+      ) : filtered.length === 0 ? (
+        <div className="eh-panel p-10 text-center eh-mono text-xs opacity-60">{orders.length === 0 ? 'Inbox empty. Place a test order from the storefront.' : 'No orders match this view.'}</div>
+      ) : (
+        <div className="eh-panel overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-[rgba(255,255,255,.03)] eh-mono text-[10px] tracking-widest uppercase opacity-70">
+              <tr>
+                <th className="text-left p-3">Order</th>
+                <th className="text-left p-3">Service</th>
+                <th className="text-left p-3">Customer</th>
+                <th className="text-left p-3">Quote</th>
+                <th className="text-left p-3">Status</th>
+                <th className="text-right p-3">—</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(o => {
+                const st = ORDER_STATUSES.find(s => s.v === o.status) || { label: (o.status || '—').toUpperCase(), cls: 'opacity-70' };
+                const amt = Number(o.payment_amount || o.amount || 0);
+                return (
+                  <tr key={o.id} className="border-t border-[var(--eh-border)] hover:bg-white/5 cursor-pointer" onClick={() => setSelected(o)} data-testid={`order-row-${o.id}`}>
+                    <td className="p-3"><div className="eh-mono text-xs eh-neon-soft">{o.id}</div><div className="text-[10px] opacity-50">{new Date(o.createdAt).toLocaleString()}</div></td>
+                    <td className="p-3"><div className="text-sm">{o.serviceName || '—'}</div>{o.size && <div className="eh-mono text-[10px] opacity-60">qty {o.size}</div>}</td>
+                    <td className="p-3 text-xs"><div>{o.name || '—'}</div><div className="opacity-60">{o.email || o.userEmail || '—'}</div></td>
+                    <td className="p-3">{amt > 0 ? <span className="eh-mono eh-neon">₹{amt.toLocaleString('en-IN')}</span> : <span className="eh-mono text-[#ffd34d] text-[10px] tracking-widest">// AWAITING</span>}</td>
+                    <td className="p-3"><span className={`eh-mono text-[10px] font-bold tracking-widest ${st.cls}`}>{st.label}</span></td>
+                    <td className="p-3 text-right"><button onClick={(e) => { e.stopPropagation(); setSelected(o); }} className="text-xs underline opacity-80 hover:opacity-100">Open</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selected && (
+        <div className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4" onClick={() => setSelected(null)} data-testid="order-detail-modal">
+          <div onClick={e => e.stopPropagation()} className="eh-panel max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-[#0d1115]">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--eh-border)] sticky top-0 bg-[#0d1115] z-10">
+              <div>
+                <div className="eh-mono text-[10px] opacity-60">ORDER</div>
+                <div className="eh-neon eh-mono font-bold">{selected.id}</div>
+              </div>
+              <button onClick={() => setSelected(null)} aria-label="close" data-testid="order-detail-close"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <OrderField l="Service" v={selected.serviceName || selected.service} />
+                <OrderField l="Size / Qty" v={selected.size} />
+                <OrderField l="Name" v={selected.name} />
+                <OrderField l="Email" v={selected.email || selected.userEmail} />
+                <OrderField l="Telegram" v={selected.tg} link={selected.tg ? `https://t.me/${(selected.tg || '').replace(/^@/, '')}` : null} />
+                <OrderField l="Created" v={new Date(selected.createdAt).toLocaleString()} />
+                <div className="col-span-2">
+                  <OrderField l="Target / URL" v={selected.target} link={selected.target && /^https?:\/\//.test(selected.target) ? selected.target : null} mono />
+                </div>
+                {selected.case_id && <div className="col-span-2"><OrderField l="Linked recovery case" v={selected.case_id} link={`/track?id=${selected.case_id}`} mono /></div>}
+              </div>
+              {selected.notes && (
+                <div>
+                  <div className="eh-mono text-[10px] opacity-60 mb-1">NOTES</div>
+                  <div className="eh-panel p-3 text-sm whitespace-pre-wrap leading-6">{selected.notes}</div>
+                </div>
+              )}
+
+              {/* Quote / Payment Request */}
+              <SetOrderQuotePanel order={selected} onUpdated={(o) => { setSelected(o); setOrders(prev => prev.map(x => x.id === o.id ? o : x)); }} />
+
+              {/* Payment proof (if customer submitted) */}
+              {(selected.payment_method || selected.payment_proof_url || selected.payment_tx_reference) && (
+                <div className="eh-panel p-4 border border-[var(--eh-border)]">
+                  <div className="eh-mono text-[10px] opacity-70 tracking-widest mb-2 flex items-center gap-2"><BadgeCheck size={11} className="text-[var(--eh-green)]" /> // CUSTOMER PAYMENT</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <OrderField l="Method" v={(selected.payment_method || '—').toUpperCase()} mono />
+                    <OrderField l="Amount paid" v={selected.payment_amount ? `${(selected.payment_currency || 'INR')} ${Number(selected.payment_amount).toLocaleString('en-IN')}` : '—'} mono />
+                    <OrderField l="TX / Ref" v={selected.payment_tx_reference} mono />
+                    <OrderField l="Submitted at" v={selected.payment_submitted_at ? new Date(selected.payment_submitted_at).toLocaleString() : '—'} />
+                  </div>
+                  {selected.payment_proof_url && (
+                    <a href={selected.payment_proof_url} target="_blank" rel="noreferrer" className="block mt-3">
+                      <img src={selected.payment_proof_url} alt="proof" className="max-h-56 rounded border border-[var(--eh-green)]" onError={e => { e.target.style.display = 'none'; }} />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Status updater */}
+              <div>
+                <div className="eh-mono text-[10px] opacity-60 mb-1">UPDATE STATUS</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ORDER_STATUSES.map(s => (
+                    <button key={s.v} onClick={() => updateStatus(selected.id, s.v)} data-testid={`order-status-${s.v}`} className={`text-[10px] eh-mono tracking-widest px-3 py-1.5 rounded border ${selected.status === s.v ? 'border-[var(--eh-green)] text-[var(--eh-green)] bg-[rgba(0,255,157,.08)]' : 'border-[var(--eh-border)] hover:border-[var(--eh-green)]'}`}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--eh-border)] justify-between">
+                <a href={`/track?id=${selected.id}${Number(selected.payment_amount || selected.amount || 0) > 0 ? '&pay=1' : ''}`} target="_blank" rel="noreferrer" className="eh-btn-ghost text-xs flex items-center gap-1.5"><Eye size={12} /> OPEN PUBLIC TRACKER</a>
+                {selected.tg && <a href={`https://t.me/${(selected.tg || '').replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="eh-btn-primary text-xs flex items-center gap-1.5"><Send size={12} /> CONTACT ON TELEGRAM</a>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Section>
   );
 };
@@ -1557,7 +1793,7 @@ const AdminPanel = () => {
   if (!mode) return <Login onOk={(r) => { setMode(r); if (r === 'feed_mod') setActive('feed'); }} />;
 
   const logout = async () => {
-    try { await api.logout(); } catch (_) {}
+    try { await api.logout(); } catch (_) { /* noop */ }
     localStorage.removeItem('eh_admin'); localStorage.removeItem('eh_admin_token');
     setMode(false); navigate('/admin');
   };
