@@ -36,16 +36,19 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
   // Auto-scroll into view when user lands here from an email "PAY NOW" link
   useEffect(() => {
-    if (autoScroll && settings && boxRef.current) {
+    if (autoScroll && (cf.configured || settings) && boxRef.current) {
       const t = setTimeout(() => boxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 350);
       return () => clearTimeout(t);
     }
-  }, [autoScroll, settings]);
+  }, [autoScroll, settings, cf.configured]);
 
-  if (!settings) return null;
-  const anyManual = settings.manual_enabled || settings.crypto_enabled;
-  if (!cf.configured && !anyManual) return null;
+  // Only hide the entire box once the order is fully paid — otherwise always
+  // render at least the Cashfree pane (the manual-UPI/crypto admin config may
+  // be empty for a fresh deploy, but Cashfree should still be reachable).
   if (['delivered', 'paid', 'verified', 'in-progress'].includes(order.status)) return null;
+  const safeSettings = settings || { manual_enabled: false, crypto_enabled: false, crypto_wallets: [], upi_id: '', bank_details: '' };
+  const anyManual = safeSettings.manual_enabled || safeSettings.crypto_enabled;
+  if (!cf.configured && !anyManual) return null;
 
   const amount = Number(order.payment_amount || order.amount || 0);
 
@@ -103,7 +106,7 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
     finally { setSubmitting(false); }
   };
 
-  const activeWallet = (settings.crypto_wallets || []).find(w => w.coin === coin);
+  const activeWallet = (safeSettings.crypto_wallets || []).find(w => w.coin === coin);
 
   const TabBtn = ({ id, icon: Icon, label, recommended }) => (
     <button onClick={() => setTab(id)} data-testid={`pay-tab-${id}`} className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded eh-mono text-[11px] sm:text-xs tracking-widest transition-all ${tab === id ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)] hover:border-[rgba(0,255,157,.3)]'}`}>
@@ -121,8 +124,8 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {cf.configured && <TabBtn id="cashfree" icon={Zap} label="CARD / UPI" recommended />}
-        {settings.manual_enabled && <TabBtn id="manual" icon={CreditCard} label="MANUAL UPI" />}
-        {settings.crypto_enabled && <TabBtn id="crypto" icon={Bitcoin} label="CRYPTO" />}
+        {safeSettings.manual_enabled && <TabBtn id="manual" icon={CreditCard} label="MANUAL UPI" />}
+        {safeSettings.crypto_enabled && <TabBtn id="crypto" icon={Bitcoin} label="CRYPTO" />}
       </div>
 
       {tab === 'cashfree' && (
@@ -148,7 +151,7 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
           {anyManual && (
             <div className="flex items-center gap-3 pt-1">
               <div className="flex-1 h-px bg-[var(--eh-border)]" />
-              <button onClick={() => setTab(settings.manual_enabled ? 'manual' : 'crypto')} className="eh-mono text-[10px] tracking-widest opacity-70 hover:opacity-100">OR PAY MANUALLY →</button>
+              <button onClick={() => setTab(safeSettings.manual_enabled ? 'manual' : 'crypto')} className="eh-mono text-[10px] tracking-widest opacity-70 hover:opacity-100">OR PAY MANUALLY →</button>
               <div className="flex-1 h-px bg-[var(--eh-border)]" />
             </div>
           )}
@@ -157,36 +160,36 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
       {tab === 'manual' && (
         <div className="space-y-3" data-testid="pay-manual-pane">
-          {settings.upi_id && (
+          {safeSettings.upi_id && (
             <div className="flex items-center justify-between gap-3 p-3 border border-[var(--eh-border)] rounded">
               <div className="min-w-0">
                 <div className="eh-mono text-[10px] opacity-60">UPI ID</div>
-                <div className="eh-mono text-sm font-bold eh-neon-soft truncate">{settings.upi_id}</div>
-                {settings.upi_name && <div className="eh-mono text-[10px] opacity-60 truncate">→ {settings.upi_name}</div>}
+                <div className="eh-mono text-sm font-bold eh-neon-soft truncate">{safeSettings.upi_id}</div>
+                {safeSettings.upi_name && <div className="eh-mono text-[10px] opacity-60 truncate">→ {safeSettings.upi_name}</div>}
               </div>
-              <button onClick={() => copy(settings.upi_id, 'upi')} className="eh-btn-ghost text-xs shrink-0">{copied === 'upi' ? <Check size={12} /> : <Copy size={12} />} COPY</button>
+              <button onClick={() => copy(safeSettings.upi_id, 'upi')} className="eh-btn-ghost text-xs shrink-0">{copied === 'upi' ? <Check size={12} /> : <Copy size={12} />} COPY</button>
             </div>
           )}
-          {settings.qr_image_url && (
+          {safeSettings.qr_image_url && (
             <div className="text-center">
-              <img src={settings.qr_image_url} alt="QR" className="mx-auto max-w-[200px] rounded border border-[var(--eh-border)]" />
+              <img src={safeSettings.qr_image_url} alt="QR" className="mx-auto max-w-[200px] rounded border border-[var(--eh-border)]" />
               <div className="eh-mono text-[10px] opacity-60 mt-1">scan to pay</div>
             </div>
           )}
-          {settings.bank_details && (
+          {safeSettings.bank_details && (
             <div className="p-3 border border-[var(--eh-border)] rounded">
               <div className="eh-mono text-[10px] opacity-60 mb-1">BANK DETAILS</div>
-              <pre className="eh-mono text-xs whitespace-pre-wrap leading-6">{settings.bank_details}</pre>
+              <pre className="eh-mono text-xs whitespace-pre-wrap leading-6">{safeSettings.bank_details}</pre>
             </div>
           )}
-          {settings.instructions && <div className="eh-mono text-[11px] opacity-80 leading-6 p-3 border border-dashed border-[var(--eh-border)] rounded">{settings.instructions}</div>}
+          {safeSettings.instructions && <div className="eh-mono text-[11px] opacity-80 leading-6 p-3 border border-dashed border-[var(--eh-border)] rounded">{safeSettings.instructions}</div>}
         </div>
       )}
 
       {tab === 'crypto' && (
         <div className="space-y-3" data-testid="pay-crypto-pane">
           <div className="flex gap-2 flex-wrap">
-            {(settings.crypto_wallets || []).map(w => (
+            {(safeSettings.crypto_wallets || []).map(w => (
               <button key={w.coin} onClick={() => setCoin(w.coin)} className={`px-3 py-1.5 rounded eh-mono text-xs tracking-widest ${coin === w.coin ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>{w.coin}</button>
             ))}
           </div>

@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 14 — verified two user-reported production bugs are fixed. (1) PaymentBox no longer returns null when /api/payments/settings has manual_enabled=false AND crypto_enabled=false: the box still renders with the Cashfree tab/CTA. (2) notify_quote_sent renders flat Gmail-safe HTML body (no nested <table> inside body div) and contains the required markers 'QUOTE TOTAL', 'Payment options', and CTA url ending '&pay=1'. All 7 new tests pass + full iter9/10/12/13 regression (52/52) pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_payment_box_quote_email.py",
+    "/app/test_reports/pytest/iter14_results.xml",
+    "/app/test_reports/pytest/iter14_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PaymentBox.jsx line 51 still has `if (!cf.configured && !anyManual) return null;` — this is safe in current state because the backend's `_ensure_payment_settings` always seeds defaults, but the safeSettings fallback no longer triggers null. The remaining guard is intentional (no payment method at all) and is fine.",
+    "OrderIn pydantic model has no `amount`/`payment_amount` field — admins can only set order pricing via the recovery `send-payment` flow or by direct DB write. Acceptable since the recovery flow is the documented quoting path, but a generic admin PATCH for order pricing would be a useful enhancement.",
+    "email_service._wrap still uses tables for the outer chrome (header/CTA/footer) — that's standard for email clients and not affected by the Gmail strip behavior reported. The fix correctly removed nested tables only from the body content.",
+    "Frontend OrderDetail relies on customer-side `api.getOrder(id)` which is GET /api/orders/{id} — currently unauthenticated (anyone with the order id can fetch). Not in scope of this bug but flagging for future hardening."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_payment_box_quote_email.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7 new + 52/52 regression)", "frontend": "100% (all PaymentBox renders + 3-tab regression pass)"},
+  "test_credentials": "admin: admin123 · customer: test1@example.com / hack123 (both verified working)",
+  "seed_data_creation": "Tests create TEST_iter14 recovery cases and tear them down via DELETE /api/recovery/cases/{id}. payment_settings is toggled and restored to default within each test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Frontend headless flow uses API-set cookie (httpOnly eh_session is auto-set by /api/auth/login) — no UI login needed for /me/orders/{id}. UI login form selectors are non-standard; if needed, locate via the page's specific data-testid. Iter14 test file covers: payment_settings non-null contract, cashfree=production, PUT admin toggle, notify_quote_sent flat-HTML, recovery send-payment linked-order creation, and customer /me/orders shape.",
+  "rca of the issue": {
+    "bug_1": "PaymentBox.jsx had `if (!settings) return null;` after the useEffect — when /api/payments/settings was unreachable or threw, settings stayed null and the entire box rendered nothing, hiding the Cashfree CTA too. Fix replaces with `safeSettings` fallback ({manual_enabled:false, crypto_enabled:false, crypto_wallets:[], ...}) so the Cashfree pane always renders when cf.configured=true.",
+    "bug_2": "notify_quote_sent body had nested <table> tags inside a <div> which Gmail strips. Heading text used white-on-near-black which Gmail dark-mode could invert to invisibility. Fix uses flat <p>/<div>/<ul> blocks with explicit contrast-safe colors (#cbd5e1 on #0a0d10, #00ff9d accent).",
+    "reproduction": "Pre-fix: set payment_settings to {manual_enabled:false, crypto_enabled:false}, load /me/orders/{id} on an unpaid priced order → entire PaymentBox missing. Post-fix verified via playwright: box + cashfree tab + ₹499 CTA all present in screenshot pb_no_manual.png.",
+    "mitigation": "Already applied in /app/frontend/src/components/PaymentBox.jsx and /app/backend/email_service.py per the review request."
+  }
+}

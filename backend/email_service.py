@@ -211,27 +211,46 @@ async def notify_quote_sent(email: str, name: str, case_id: str, amount: float, 
     if not email:
         return
     sym = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}.get(currency, "")
-    note_block = f'<p style="background:#10141a;border-left:3px solid #00ff9d;padding:12px 16px;color:#cbd5e1;font-style:italic;">"{note}"</p>' if note else ""
-    body = f"""
-      <p>Hey {name or 'there'},</p>
-      <p>Your recovery quote is ready — work starts the moment you pay:</p>
-      <p style="background:#10141a;border:1px solid #00ff9d33;border-radius:10px;padding:18px 22px;font-family:'Space Grotesk',Inter,sans-serif;color:#00ff9d;font-size:32px;font-weight:800;text-align:center;">{sym}{amount:,.0f} <span style="color:#64748b;font-size:14px;font-weight:400;">{currency}</span></p>
-      {note_block}
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:16px;background:#0d1115;border:1px solid #1f2937;border-radius:10px;padding:14px 18px;">
-        <tr>
-          <td style="padding:8px 0;">
-            <div style="color:#00ff9d;font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:.1em;">// PAYMENT OPTIONS</div>
-            <ul style="margin:8px 0 0 0;padding-left:20px;color:#cbd5e1;font-size:13px;line-height:24px;">
-              <li><b style="color:#00ff9d;">Instant</b> — Card / UPI / Netbanking (Cashfree, secured)</li>
-              <li>Manual UPI / Bank transfer</li>
-              <li>Crypto (USDT &amp; more)</li>
-            </ul>
-          </td>
-        </tr>
-      </table>
-      <p style="margin-top:18px;font-size:13px;color:#cbd5e1;">Tap the button below — pick your method and you're done in &lt; 30 sec.</p>
-    """
-    html = _wrap("Your quote is ready 💳", f"Pay {sym}{amount:,.0f} to start recovery", body, "PAY NOW · OPEN CASE", f"{SITE_URL}/track?id={case_id}&pay=1")
+    note_block = ""
+    if note:
+        # Plain blockquote-style div — Gmail renders this reliably in both
+        # light and dark modes (no nested table, contrast-safe colors).
+        note_block = (
+            f'<div style="margin:16px 0;padding:14px 18px;border-left:3px solid #00ff9d;'
+            f'background:#0d1115;color:#e5e7eb;font-style:italic;font-size:14px;line-height:1.6;">'
+            f'&ldquo;{note}&rdquo;</div>'
+        )
+    # Flat, Gmail-safe body. No nested table-in-div-in-td. Heading text uses
+    # mid-gray on dark bg so it survives Gmail dark-mode inversion. Each
+    # block is its own <p> or <div> with explicit color + bg.
+    body = (
+        f'<p style="font-size:15px;color:#e5e7eb;margin:0 0 12px 0;">Hey {name or "there"},</p>'
+        f'<p style="font-size:14px;color:#cbd5e1;line-height:1.7;margin:0 0 16px 0;">'
+        f'Your recovery quote is ready &mdash; work starts the moment you pay.</p>'
+        f'<div style="margin:0 0 12px 0;padding:22px 24px;background:#0d1115;border:1px solid #00ff9d;'
+        f'border-radius:10px;text-align:center;">'
+        f'<div style="color:#94a3b8;font-size:11px;letter-spacing:.15em;margin-bottom:6px;">// QUOTE TOTAL</div>'
+        f'<div style="color:#00ff9d;font-size:36px;font-weight:800;line-height:1;">'
+        f'{sym}{amount:,.0f} <span style="color:#64748b;font-size:14px;font-weight:400;">{currency}</span>'
+        f'</div></div>'
+        f'{note_block}'
+        f'<p style="font-size:13px;color:#cbd5e1;line-height:1.7;margin:18px 0 6px 0;">'
+        f'<b style="color:#00ff9d;">Payment options:</b></p>'
+        f'<ul style="margin:0 0 18px 22px;padding:0;color:#cbd5e1;font-size:13px;line-height:1.8;">'
+        f'<li><b style="color:#ffffff;">Instant</b> &mdash; Card / UPI / Netbanking (Cashfree, secure)</li>'
+        f'<li>Manual UPI or bank transfer</li>'
+        f'<li>Crypto (USDT and more)</li>'
+        f'</ul>'
+        f'<p style="font-size:13px;color:#94a3b8;line-height:1.7;margin:0;">'
+        f'Tap below to open your case and pay &mdash; takes under 30 seconds.</p>'
+    )
+    html = _wrap(
+        f"Your quote is ready · {sym}{amount:,.0f}",
+        f"Pay {sym}{amount:,.0f} to start recovery {case_id}",
+        body,
+        "PAY NOW · OPEN CASE",
+        f"{SITE_URL}/track?id={case_id}&pay=1",
+    )
     await send_email(email, f"[ERRORHACKER] Quote ready · {sym}{amount:,.0f} for {case_id}", html)
 
 async def notify_order_status(email: str, name: str, order_id: str, status: str, service_name: str = ""):
