@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Search, CheckCircle2, Circle, Clock, Package, ShieldCheck, AlertCircle, ShieldAlert, FileSearch, Handshake, Send as TgIcon, RefreshCcw, X, CreditCard, Bell, RotateCcw, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
@@ -82,11 +82,12 @@ const inferKind = (id) => {
  * Drives its accent color from `--tile-color` (matches tools-tile aesthetic).
  * State: `done` · `current` · `pending`.
  */
-const StageTile = ({ stage, state, index }) => {
+const StageTile = ({ stage, state, index, justUpdated, tileRef }) => {
   const Icon = stage.icon;
   return (
     <div
-      className={`eh-stage-tile is-${state}`}
+      ref={tileRef}
+      className={`eh-stage-tile is-${state} ${justUpdated ? 'is-just-updated' : ''}`}
       style={{ '--tile-color': stage.color, animationDelay: `${index * 70}ms` }}
       data-testid={`trace-stage-${stage.key}-${state}`}
     >
@@ -103,10 +104,41 @@ const StageTile = ({ stage, state, index }) => {
   );
 };
 
+/**
+ * Hook: detect status transitions on refresh and smooth-scroll the new
+ * `current` stage tile into view with a pulse highlight. Skips the initial
+ * mount so first-time loads don't auto-scroll past the order details.
+ */
+const useStatusScroll = (currentStatus) => {
+  const prevStatusRef = useRef(currentStatus);
+  const currentTileRef = useRef(null);
+  const [justUpdated, setJustUpdated] = useState(false);
+  useEffect(() => {
+    if (prevStatusRef.current !== currentStatus) {
+      const prev = prevStatusRef.current;
+      prevStatusRef.current = currentStatus;
+      // Skip the very first sync (initial mount where prev was equal at construction)
+      if (prev !== undefined && prev !== currentStatus) {
+        setJustUpdated(true);
+        // Defer so the new tile is in the DOM
+        setTimeout(() => {
+          if (currentTileRef.current) {
+            currentTileRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+        const t = setTimeout(() => setJustUpdated(false), 3400);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [currentStatus]);
+  return { currentTileRef, justUpdated };
+};
+
 const RefundView = ({ refund, onRefresh, refreshing }) => {
   const isRejected = refund.status === 'rejected';
   const stageIdx = REFUND_STAGES.findIndex(s => s.key === refund.status);
   const terminal = isRejected ? REFUND_REJECTED : null;
+  const { currentTileRef, justUpdated } = useStatusScroll(refund.status);
 
   return (
     <div className="eh-panel eh-brackets p-4 sm:p-7" data-testid="refund-track-card">
@@ -158,7 +190,16 @@ const RefundView = ({ refund, onRefresh, refreshing }) => {
         <div data-testid="refund-trace-timeline">
           {REFUND_STAGES.map((s, i) => {
             const state = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'pending';
-            return <StageTile key={s.key} stage={s} state={state} index={i} />;
+            return (
+              <StageTile
+                key={s.key}
+                stage={s}
+                state={state}
+                index={i}
+                tileRef={state === 'current' ? currentTileRef : undefined}
+                justUpdated={state === 'current' && justUpdated}
+              />
+            );
           })}
         </div>
       ) : (
@@ -175,6 +216,7 @@ const RefundView = ({ refund, onRefresh, refreshing }) => {
 const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll }) => {
   const status = recCase.status || 'new';
   const [linkedOrder, setLinkedOrder] = useState(null);
+  const { currentTileRef, justUpdated } = useStatusScroll(status);
 
   useEffect(() => {
     if (recCase.linked_order_id) {
@@ -232,7 +274,16 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
         <div data-testid="recovery-trace-timeline">
           {RECOVERY_STAGES.map((s, i) => {
             const state = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'pending';
-            return <StageTile key={s.key} stage={s} state={state} index={i} />;
+            return (
+              <StageTile
+                key={s.key}
+                stage={s}
+                state={state}
+                index={i}
+                tileRef={state === 'current' ? currentTileRef : undefined}
+                justUpdated={state === 'current' && justUpdated}
+              />
+            );
           })}
         </div>
       ) : (
@@ -270,6 +321,7 @@ const RecoveryView = ({ recCase, onRefresh, refreshing, teamTgUrl, autoScroll })
 
 const OrderView = ({ order, setOrder, autoScroll }) => {
   const idx = ORDER_STAGES.findIndex(s => s.key === order.status);
+  const { currentTileRef, justUpdated } = useStatusScroll(order.status);
   return (
     <div className="eh-panel eh-brackets p-4 sm:p-7">
       <span className="br-bl" /><span className="br-br" />
@@ -293,7 +345,16 @@ const OrderView = ({ order, setOrder, autoScroll }) => {
       <div data-testid="order-trace-timeline">
         {ORDER_STAGES.map((s, i) => {
           const state = i < idx ? 'done' : i === idx ? 'current' : 'pending';
-          return <StageTile key={s.key} stage={s} state={state} index={i} />;
+          return (
+            <StageTile
+              key={s.key}
+              stage={s}
+              state={state}
+              index={i}
+              tileRef={state === 'current' ? currentTileRef : undefined}
+              justUpdated={state === 'current' && justUpdated}
+            />
+          );
         })}
       </div>
       <PaymentBox order={order} onUpdated={setOrder} autoScroll={autoScroll} />

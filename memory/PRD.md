@@ -11,6 +11,16 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-22 · Auto-Scroll · Inline Pay · Animated Stage Connectors** ✨ (Feb 2026)
+  - **User pain**: "when we refresh it should auto scroll to that update · in card upi / manual upi space is there right add pay option there only dont need extra scroll down · try to do some unique animation arrow mark from case received"
+  - **Auto-scroll on status refresh** (`OrderTracker.jsx`): new `useStatusScroll(status)` hook tracks the previous status via `useRef`. When refresh delivers a new status, the hook smooth-scrolls the new `current` StageTile into view (`block: 'center'`) and tags it with `.is-just-updated` for a 3.4s pulsing focus ring. Initial mount is skipped so first-time loads don't auto-scroll past order details.
+  - **Inline PAY action in each PayTile** (`PaymentBox.jsx`): refactored `PayTile` to accept `children`. When the tile is active, a new `.pay-action` slot expands inline with the payment CTA + helper info — no scrolling required:
+    - **Card/UPI** (green, FAST): big `⚡ PAY ₹X →` CTA + "Powered by Cashfree" footer right inside the tile
+    - **Manual UPI** (cyan): UPI ID + COPY button + "Pay ₹X · then submit proof below" instruction + "Verified within 30 min" footer
+    - **Crypto** (yellow): coin pill picker + address + COPY button + "1 confirmation required" footer
+    - The old standalone Cashfree/Manual/Crypto panes were removed (replaced by inline content). Only the shared "SUBMIT PROOF" section stays at the bottom for manual paths.
+  - **Animated stage connectors** (`index.css`): new keyframes `eh-arrow-pulse` (vertical pulse line flowing downward between done stages) + `eh-arrow-bob` (bobbing chevron arrowhead under each done stage's icon). Both inherit the stage's `--tile-color` so the cascade reads cyan → orange → yellow → green → purple as it animates.
+  - **Verified on 390×844 (iPhone)**: Card/UPI tile active = green PAY ₹5,747 → button inside the tile, no scroll needed. Manual UPI tile click expands inline with cyan UPI ID + COPY. Stages have bobbing arrows tying done steps together visually.
 - **Iter-21 · Premium Multi-Color Theme · Tracker Stages + Payment Methods** 🎨 (Feb 2026)
   - **User pain** (verbatim): "operation tracker theme is not good complete green is not good and payment info theme is also not friendly user i want premium icons which you created in tools section same theme i want in that change entire theme of track section payment section users should feel good and pleasant with animation"
   - **Fixes shipped**:

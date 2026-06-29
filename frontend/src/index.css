@@ -1193,6 +1193,64 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
 }
 .eh-stage-tile + .eh-stage-tile { margin-top: 10px; }
 
+/* Animated connector — drawn between adjacent stage tiles when the upper
+   one is `is-done`. A vertical line with a downward pulse that visually
+   shows progress flowing into the next step. */
+.eh-stage-tile.is-done + .eh-stage-tile::before {
+  opacity: 1; /* keep accent strip visible */
+}
+.eh-stage-tile.is-done::after,
+.eh-stage-tile.is-current::after {
+  content: '';
+  position: absolute;
+  left: 30px; /* aligns with center of stage-icon (44px wide tile + 16px left pad ~ 38px; 30 lines under icon for animation) */
+  top: 100%;
+  width: 2px;
+  height: 10px;
+  background: linear-gradient(to bottom,
+    var(--tile-color, var(--eh-green)) 0%,
+    transparent 100%);
+  opacity: .6;
+  pointer-events: none;
+}
+.eh-stage-tile.is-done::after {
+  height: 12px;
+  animation: eh-arrow-pulse 1.6s ease-in-out infinite;
+}
+@keyframes eh-arrow-pulse {
+  0%   { transform: translateY(-4px) scaleY(.6); opacity: 0; }
+  35%  { opacity: .9; }
+  100% { transform: translateY(8px) scaleY(1.2); opacity: 0; }
+}
+/* Downward arrowhead tick on done tiles so progression is visually unmistakable */
+.eh-stage-tile.is-done .stage-icon::after {
+  content: '';
+  position: absolute;
+  bottom: -7px; left: 50%;
+  width: 6px; height: 6px;
+  border-right: 2px solid var(--tile-color, var(--eh-green));
+  border-bottom: 2px solid var(--tile-color, var(--eh-green));
+  transform: translateX(-50%) rotate(45deg);
+  opacity: .85;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--tile-color, var(--eh-green)) 60%, transparent));
+  animation: eh-arrow-bob 1.4s ease-in-out infinite;
+}
+@keyframes eh-arrow-bob {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(45deg); }
+  50%      { transform: translateX(-50%) translateY(2px) rotate(45deg); }
+}
+.eh-stage-tile .stage-icon { position: relative; }
+
+/* Auto-scroll target pulse — when stage gets focus from refresh */
+@keyframes eh-stage-focus {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tile-color, var(--eh-green)) 45%, transparent); }
+  50%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--tile-color, var(--eh-green)) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tile-color, var(--eh-green)) 0%, transparent); }
+}
+.eh-stage-tile.is-just-updated {
+  animation: eh-stage-enter .42s ease both, eh-stage-focus 1.6s ease-out .42s 2;
+}
+
 /* Payment-method tile — same DNA as tools-tile but for the three pay paths */
 .eh-pay-tile {
   position: relative;
@@ -1266,6 +1324,43 @@ html.light .eh-title-main .eh-chrom-r, html.light .eh-title-main .eh-chrom-c { d
   font-size: 10px; letter-spacing: .14em; font-weight: 700; text-transform: uppercase;
   margin-top: 10px;
   color: var(--tile-color, var(--eh-green));
+}
+
+/* Inline action region — appears inside the tile when it becomes active.
+   No need to scroll down to find the pay button anymore. */
+.eh-pay-tile .pay-action {
+  display: none;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed color-mix(in srgb, var(--tile-color, var(--eh-green)) 30%, transparent);
+  animation: eh-stage-enter .35s ease both;
+}
+.eh-pay-tile.is-active .pay-action { display: block; }
+.eh-pay-tile.is-active .pay-arrow { display: none; }
+.eh-pay-tile .pay-action .pay-cta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 12px 16px;
+  border-radius: 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px; font-weight: 800; letter-spacing: .1em;
+  background: var(--tile-color, var(--eh-green));
+  color: #001a10;
+  border: none; cursor: pointer;
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--tile-color, var(--eh-green)) 35%, transparent);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.eh-pay-tile .pay-action .pay-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--tile-color, var(--eh-green)) 50%, transparent);
+  filter: brightness(1.05);
+}
+.eh-pay-tile .pay-action .pay-cta:disabled {
+  opacity: .55; cursor: not-allowed;
+}
+.eh-pay-tile .pay-action .pay-note {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; opacity: .65; margin-top: 8px;
+  display: flex; align-items: center; gap: 5px; justify-content: center;
 }
 
 /* Animated data-stream backdrop for the status hero */

@@ -125,23 +125,28 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
 
   const activeWallet = (safeSettings.crypto_wallets || []).find(w => w.coin === coin);
 
-  // Premium payment-method tile (extends tools-tile aesthetic)
+  // Premium payment-method tile (extends tools-tile aesthetic). When `id`
+  // is the active tab, the `.pay-action` slot is rendered inside the tile
+  // so the user can complete payment without scrolling further.
   // eslint-disable-next-line react/no-unstable-nested-components
-  const PayTile = ({ id, icon: Icon, color, title, sub, badge }) => (
-    <button
-      type="button"
-      onClick={() => setTab(id)}
+  const PayTile = ({ id, icon: Icon, color, title, sub, badge, children }) => (
+    <div
       data-testid={`pay-tab-${id}`}
       className={`eh-pay-tile ${tab === id ? 'is-active' : ''}`}
       style={{ '--tile-color': color }}
+      onClick={() => tab !== id && setTab(id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && tab !== id) setTab(id); }}
     >
       <span className="shine" />
       {badge && <span className="badge">{badge}</span>}
       <div className="pay-icon"><Icon size={20} color={color} strokeWidth={1.8} /></div>
       <h4>{title}</h4>
       <p>{sub}</p>
-      <span className="pay-arrow">{tab === id ? '▸ SELECTED' : 'CHOOSE →'}</span>
-    </button>
+      <span className="pay-arrow">CHOOSE →</span>
+      {tab === id && <div className="pay-action" onClick={(e) => e.stopPropagation()}>{children}</div>}
+    </div>
   );
 
   return (
@@ -224,123 +229,68 @@ const PaymentBox = ({ order, onUpdated, autoScroll }) => {
         </div>
       ) : (
       <>
-      {/* Premium payment-method tile picker — picks the active path */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+      {/* Premium payment-method tile picker — each tile expands inline with
+          its own pay action when selected (no scrolling needed). */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
         {cf.configured && (
-          <PayTile id="cashfree" icon={Zap} color="#00ff9d" title="Card / UPI" sub="Instant · auto-verify" badge="FAST" />
+          <PayTile id="cashfree" icon={Zap} color="#00ff9d" title="Card / UPI" sub="Instant · auto-verify" badge="FAST">
+            <button onClick={payWithCashfree} disabled={paying || amount <= 0} className="pay-cta" data-testid="pay-cashfree-btn">
+              {paying ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+              {paying ? 'OPENING…' : amount > 0 ? `PAY ₹${amount.toLocaleString('en-IN')} →` : 'AWAITING QUOTE'}
+            </button>
+            <div className="pay-note">
+              <ShieldCheck size={10} /> Powered by Cashfree · {cf.mode === 'production' ? 'live mode' : 'sandbox'}
+            </div>
+          </PayTile>
         )}
         {safeSettings.manual_enabled && (
-          <PayTile id="manual" icon={CreditCard} color="#4de0ff" title="Manual UPI" sub="Pay & upload proof" />
+          <PayTile id="manual" icon={CreditCard} color="#4de0ff" title="Manual UPI" sub="Pay & upload proof">
+            {safeSettings.upi_id && (
+              <div className="flex items-center justify-between gap-2 mb-2 p-2.5 rounded border" style={{ borderColor: 'rgba(77,224,255,.25)', background: 'rgba(77,224,255,.05)' }}>
+                <div className="min-w-0">
+                  <div className="eh-mono text-[9px] opacity-60 tracking-widest">UPI ID</div>
+                  <div className="eh-mono text-[12px] font-bold truncate" style={{ color: '#4de0ff' }}>{safeSettings.upi_id}</div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); copy(safeSettings.upi_id, 'upi'); }} className="text-[10px] eh-mono px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[#4de0ff] flex items-center gap-1 shrink-0">
+                  {copied === 'upi' ? <Check size={11} /> : <Copy size={11} />} COPY
+                </button>
+              </div>
+            )}
+            {safeSettings.qr_image_url && (
+              <img src={safeSettings.qr_image_url} alt="UPI QR" className="block mx-auto max-w-[150px] rounded border border-[var(--eh-border)] mb-2" />
+            )}
+            {amount > 0 && (
+              <div className="eh-mono text-[11px] opacity-80 mb-2 text-center">Pay <span className="font-bold" style={{ color: '#4de0ff' }}>₹{amount.toLocaleString('en-IN')}</span> · then submit proof below</div>
+            )}
+            <div className="pay-note"><ShieldCheck size={10} /> Verified within 30 min</div>
+          </PayTile>
         )}
         {safeSettings.crypto_enabled && (
-          <PayTile id="crypto" icon={Bitcoin} color="#ffd34d" title="Crypto" sub="USDT · BTC · ETH" />
+          <PayTile id="crypto" icon={Bitcoin} color="#ffd34d" title="Crypto" sub="USDT · BTC · ETH">
+            {(safeSettings.crypto_wallets || []).length > 0 && (
+              <div className="flex gap-1 flex-wrap mb-2">
+                {(safeSettings.crypto_wallets || []).map(w => (
+                  <button key={w.coin} onClick={(e) => { e.stopPropagation(); setCoin(w.coin); }} className={`px-2.5 py-1 rounded eh-mono text-[10px] tracking-widest ${coin === w.coin ? 'text-black font-bold' : 'border border-[var(--eh-border)]'}`} style={coin === w.coin ? { background: '#ffd34d' } : {}}>{w.coin}</button>
+                ))}
+              </div>
+            )}
+            {activeWallet && (
+              <div className="mb-2 p-2.5 rounded border" style={{ borderColor: 'rgba(255,211,77,.25)', background: 'rgba(255,211,77,.05)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="eh-mono text-[9px] opacity-60 tracking-widest">{activeWallet.coin} {activeWallet.network && `· ${activeWallet.network}`}</div>
+                  <button onClick={(e) => { e.stopPropagation(); copy(activeWallet.address, 'wallet'); }} className="text-[10px] eh-mono px-2 py-0.5 rounded border border-[var(--eh-border)] hover:border-[#ffd34d] flex items-center gap-1">
+                    {copied === 'wallet' ? <Check size={10} /> : <Copy size={10} />} COPY
+                  </button>
+                </div>
+                <div className="eh-mono text-[11px] break-all" style={{ color: '#ffd34d' }}>{activeWallet.address}</div>
+              </div>
+            )}
+            <div className="pay-note"><ShieldCheck size={10} /> 1 confirmation required</div>
+          </PayTile>
         )}
       </div>
 
-      {tab === 'cashfree' && (
-        <div className="space-y-3" data-testid="pay-cashfree-pane">
-          {/* Tools-tile inspired card — colored top accent, compact mobile-first layout */}
-          <div className="relative overflow-hidden rounded-xl border border-[rgba(0,255,157,.45)] bg-[rgba(0,255,157,.05)]">
-            {/* Top accent strip (badge-style like tools tile) */}
-            <div className="flex items-center justify-between px-4 pt-3 pb-2.5">
-              <div className="inline-flex items-center gap-1.5">
-                <span className="relative inline-flex w-2 h-2">
-                  <span className="absolute inset-0 rounded-full bg-[var(--eh-green)] opacity-70 animate-ping" />
-                  <span className="relative w-2 h-2 rounded-full bg-[var(--eh-green)]" />
-                </span>
-                <span className="eh-mono text-[10px] tracking-[.22em] text-[var(--eh-green)] font-bold">RECOMMENDED</span>
-              </div>
-              <span className="eh-mono text-[9px] tracking-widest opacity-50">INSTANT · PCI-DSS L1</span>
-            </div>
-            <div className="px-4 pb-4">
-              {/* Tighter mobile layout: icon + headline on one row, smaller text */}
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg grid place-items-center shrink-0 bg-[rgba(0,255,157,.12)] border border-[rgba(0,255,157,.5)]">
-                  <Zap size={16} className="sm:hidden" color="var(--eh-green)" strokeWidth={2} />
-                  <Zap size={20} className="hidden sm:block" color="var(--eh-green)" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <div className="eh-display font-black text-[15px] sm:text-lg leading-snug">Pay &amp; start work · right now</div>
-                  <div className="eh-mono text-[10.5px] sm:text-[11px] opacity-70 mt-1 leading-[1.55]">Card · UPI · Netbanking · Wallets — auto-verifies your order on payment.</div>
-                </div>
-              </div>
-              <button onClick={payWithCashfree} disabled={paying || amount <= 0} className="eh-btn-primary w-full justify-center py-3 sm:py-3 text-sm inline-flex items-center gap-2 disabled:opacity-50" data-testid="pay-cashfree-btn">
-                {paying ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                {paying ? <span>OPENING…</span> : amount > 0 ? (
-                  <span>PAY ₹{amount.toLocaleString('en-IN')} <span className="hidden sm:inline opacity-80">· OPEN CHECKOUT</span><span className="sm:hidden opacity-80"> →</span></span>
-                ) : <span>AWAITING QUOTE</span>}
-              </button>
-              <div className="mt-2.5 flex items-center justify-center gap-1.5 eh-mono text-[9.5px] sm:text-[10px] opacity-55">
-                <ShieldCheck size={10} className="text-[var(--eh-green)]" />
-                <span>Powered by Cashfree · {cf.mode === 'production' ? 'live mode' : 'sandbox'}</span>
-              </div>
-            </div>
-          </div>
-          {anyManual && (
-            <div className="flex items-center gap-3 pt-1">
-              <div className="flex-1 h-px bg-[var(--eh-border)]" />
-              <button onClick={() => setTab(safeSettings.manual_enabled ? 'manual' : 'crypto')} className="eh-mono text-[10px] tracking-widest opacity-70 hover:opacity-100">OR PAY MANUALLY →</button>
-              <div className="flex-1 h-px bg-[var(--eh-border)]" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'manual' && (
-        <div className="space-y-3" data-testid="pay-manual-pane">
-          {safeSettings.upi_id && (
-            <div className="flex items-center justify-between gap-3 p-3 border border-[var(--eh-border)] rounded">
-              <div className="min-w-0">
-                <div className="eh-mono text-[10px] opacity-60">UPI ID</div>
-                <div className="eh-mono text-sm font-bold eh-neon-soft truncate">{safeSettings.upi_id}</div>
-                {safeSettings.upi_name && <div className="eh-mono text-[10px] opacity-60 truncate">→ {safeSettings.upi_name}</div>}
-              </div>
-              <button onClick={() => copy(safeSettings.upi_id, 'upi')} className="eh-btn-ghost text-xs shrink-0">{copied === 'upi' ? <Check size={12} /> : <Copy size={12} />} COPY</button>
-            </div>
-          )}
-          {safeSettings.qr_image_url && (
-            <div className="text-center">
-              <img src={safeSettings.qr_image_url} alt="QR" className="mx-auto max-w-[200px] rounded border border-[var(--eh-border)]" />
-              <div className="eh-mono text-[10px] opacity-60 mt-1">scan to pay</div>
-            </div>
-          )}
-          {safeSettings.bank_details && (
-            <div className="p-3 border border-[var(--eh-border)] rounded">
-              <div className="eh-mono text-[10px] opacity-60 mb-1">BANK DETAILS</div>
-              <pre className="eh-mono text-xs whitespace-pre-wrap leading-6">{safeSettings.bank_details}</pre>
-            </div>
-          )}
-          {safeSettings.instructions && <div className="eh-mono text-[11px] opacity-80 leading-6 p-3 border border-dashed border-[var(--eh-border)] rounded">{safeSettings.instructions}</div>}
-        </div>
-      )}
-
-      {tab === 'crypto' && (
-        <div className="space-y-3" data-testid="pay-crypto-pane">
-          <div className="flex gap-2 flex-wrap">
-            {(safeSettings.crypto_wallets || []).map(w => (
-              <button key={w.coin} onClick={() => setCoin(w.coin)} className={`px-3 py-1.5 rounded eh-mono text-xs tracking-widest ${coin === w.coin ? 'bg-[rgba(0,255,157,.15)] text-[var(--eh-green)] border border-[rgba(0,255,157,.4)]' : 'border border-[var(--eh-border)]'}`}>{w.coin}</button>
-            ))}
-          </div>
-          {activeWallet && (
-            <>
-              <div className="p-3 border border-[var(--eh-border)] rounded">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="eh-mono text-[10px] opacity-60">{activeWallet.coin} {activeWallet.network && `· ${activeWallet.network}`}</div>
-                  <button onClick={() => copy(activeWallet.address, 'wallet')} className="eh-btn-ghost text-[10px] py-1 px-2">{copied === 'wallet' ? <Check size={10} /> : <Copy size={10} />} COPY</button>
-                </div>
-                <div className="eh-mono text-xs break-all eh-neon-soft">{activeWallet.address}</div>
-              </div>
-              {activeWallet.qr_url && (
-                <div className="text-center">
-                  <img src={activeWallet.qr_url} alt={`${activeWallet.coin} QR`} className="mx-auto max-w-[200px] rounded border border-[var(--eh-border)]" />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Manual proof submission — hidden for Cashfree path */}
+      {/* Manual proof submission — only when a non-cashfree method is active */}
       {tab !== 'cashfree' && (
         <div className="space-y-2 mt-4 border-t border-[var(--eh-border)] pt-4">
           <div className="eh-mono text-xs tracking-widest opacity-70">SUBMIT PROOF</div>
