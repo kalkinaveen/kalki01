@@ -4,7 +4,7 @@ export const API = `${BACKEND_URL}/api`;
 
 const getToken = () => localStorage.getItem('eh_admin_token') || '';
 
-async function req(path, { method = 'GET', body, admin = false, auth = false } = {}) {
+async function req(path, { method = 'GET', body, admin = false, auth = false, signal = undefined } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (admin) headers['X-Admin-Token'] = getToken();
   const userTok = localStorage.getItem('eh_user_token');
@@ -14,6 +14,7 @@ async function req(path, { method = 'GET', body, admin = false, auth = false } =
     headers,
     credentials: 'include',
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -168,7 +169,7 @@ export const api = {
   smmCatalog: ({ q = '', platform = '', category = '', refresh = 0 } = {}) =>
     req(`/public/smm/catalog?q=${encodeURIComponent(q)}&platform=${encodeURIComponent(platform)}&category=${encodeURIComponent(category)}${refresh ? '&refresh=1' : ''}`),
   smmPublicService: (smmId) => req(`/public/smm/service/${smmId}`),
-  smmPublicQuote: (data) => req('/public/smm/quote', { method: 'POST', body: data }),
+  smmPublicQuote: (data, opts = {}) => req('/public/smm/quote', { method: 'POST', body: data, signal: opts.signal }),
   smmPublicOrder: (data) => req('/public/smm/order', { method: 'POST', body: data, auth: true }),
   // What's new (homepage promo feed)
   whatsNew: () => req('/whats-new'),

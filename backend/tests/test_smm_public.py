@@ -46,7 +46,9 @@ def test_public_quote_rejects_invalid_qty():
     assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
 
 
-def test_public_order_creates_order_with_smm_binding():
+def test_public_order_rejects_anonymous():
+    """Iter-28: anonymous SMM orders are no longer accepted — customers must
+    sign in and pay from their wallet."""
     row = _first_catalog_row()
     r = requests.post(f"{API}/public/smm/order", json={
         "smm_service_id": row["id"],
@@ -55,29 +57,19 @@ def test_public_order_creates_order_with_smm_binding():
         "email": "pytest@smoke.com",
         "name": "pytest",
     }, timeout=30)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["ok"] is True
-    order = body["order"]
-    assert order["id"].startswith("ORD-")
-    assert order["smm_service_id"] == row["id"]
-    assert order["status"] == "received"
-    assert order["amount"] > 0
-    assert body["redirect"].startswith(f"/track?id={order['id']}")
-
-    r2 = requests.get(f"{API}/orders/{order['id']}", timeout=30)
-    assert r2.status_code == 200
-    assert r2.json()["smm_service_id"] == row["id"]
+    assert r.status_code == 401, f"Expected 401 (sign-in required), got {r.status_code}: {r.text}"
+    assert "sign in" in r.json().get("detail", "").lower()
 
 
-def test_public_order_requires_email():
+def test_public_order_anonymous_no_email_still_401():
+    """The auth gate runs before payload validation."""
     row = _first_catalog_row()
     r = requests.post(f"{API}/public/smm/order", json={
         "smm_service_id": row["id"],
         "quantity": row["min"],
         "link": "https://example.com/test",
     }, timeout=30)
-    assert r.status_code == 400, f"Expected 400 for missing email, got {r.status_code}"
+    assert r.status_code == 401, f"Expected 401 for anonymous, got {r.status_code}"
 
 
 def test_public_service_lookup_returns_row():

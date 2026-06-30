@@ -346,9 +346,14 @@ const OrderSmmPage = () => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [showTopBtn, setShowTopBtn] = useState(false);
-  // Wallet-only flow state: live quote from /api/public/smm/quote
-  const [quote, setQuote] = useState(null);
+  // Wallet-only flow state: live quote runs in the background only to refresh
+  // walletBalance + validate tier math. The displayed charge always uses the
+  // synchronous client-side `instantQuote` below so typing feels instant.
   const [walletBalance, setWalletBalance] = useState(0);
+  // Tier discount fetched once on login — applied client-side so the charge box
+  // updates instantly on every keystroke without waiting for the server.
+  const [userTier, setUserTier] = useState(null);
+  const quoteAbortRef = useRef(null);
   const filterBarRef = useRef(null);
 
   const load = async (refresh = false) => {
@@ -364,37 +369,57 @@ const OrderSmmPage = () => {
     }
   };
 
-  // Initial catalog load + react to wallet changes (e.g. user just topped up
-  // in another tab) so the wallet balance pill stays accurate.
+  // Initial catalog load + react to wallet/tier changes so balance + discount
+  // stay accurate (e.g. user topped up or upgraded their pass in another tab).
   useEffect(() => { load(false); }, []);
   useEffect(() => {
     const refreshWallet = () => {
       if (!user) { setWalletBalance(0); return; }
       api.walletGet().then(w => setWalletBalance(w?.balance ?? 0)).catch(() => {});
     };
+    const refreshTier = () => {
+      if (!user) { setUserTier(null); return; }
+      api.mySubscription()
+        .then(s => setUserTier(s?.tier || null))
+        .catch(() => setUserTier(null));
+    };
     refreshWallet();
+    refreshTier();
     window.addEventListener('eh:wallet-changed', refreshWallet);
-    return () => window.removeEventListener('eh:wallet-changed', refreshWallet);
+    window.addEventListener('eh:tier-changed', refreshTier);
+    return () => {
+      window.removeEventListener('eh:wallet-changed', refreshWallet);
+      window.removeEventListener('eh:tier-changed', refreshTier);
+    };
   }, [user]);
 
-  // Live quote — re-fetch whenever the user changes service or quantity. Debounced
-  // 300ms so we don't spam the backend on every keystroke.
+  // Background quote sync — runs at 150ms debounce. We only need it to refresh
+  // walletBalance and validate the server's final-charge math; the visible
+  // charge is computed instantly client-side via `instantQuote` below.
+  // AbortController kills stale in-flight requests so a slow response can't
+  // overwrite a newer wallet snapshot.
   useEffect(() => {
-    if (!selected) { setQuote(null); return; }
+    if (!selected) return;
     const qty = parseInt(quantity || '0', 10) || 0;
-    if (qty < (selected.min || 0)) { setQuote(null); return; }
+    if (qty < (selected.min || 0)) return;
+    if (quoteAbortRef.current) { try { quoteAbortRef.current.abort(); } catch { /* ignore */ } }
+    const ac = new AbortController();
+    quoteAbortRef.current = ac;
     const t = setTimeout(async () => {
       try {
         const out = await api.smmPublicQuote({
           smm_service_id: selected.id,
           quantity: qty,
           link: link || 'placeholder',
-        });
-        setQuote(out);
+        }, { signal: ac.signal });
+        if (ac.signal.aborted) return;
         if (out.wallet_balance_inr != null) setWalletBalance(out.wallet_balance_inr);
-      } catch { /* ignore — let the user keep typing */ }
-    }, 300);
-    return () => clearTimeout(t);
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+        // Silent — local charge is still showing, server sync is best-effort.
+      }
+    }, 150);
+    return () => { clearTimeout(t); ac.abort(); };
   }, [selected, quantity, link, user]);
 
   // Reset pagination whenever filters change
@@ -422,15 +447,39 @@ const OrderSmmPage = () => {
 
   const visible = useMemo(() => filtered.slice(0, pageSize), [filtered, pageSize]);
 
-  // Local fallback charge for the small "₹ Charge" pill before the server quote
-  // round-trips. Once the quote returns, the form prefers quote.charge_inr.
-  const localCharge = useMemo(() => {
-    if (!selected) return 0;
+  // INSTANT client-side quote — computed synchronously on every keystroke so
+  // the live charge box never shows a stale ₹0 or waits on the network. The
+  // server quote (above) runs in the background only to confirm wallet
+  // balance + final-charge math; it never blocks this number.
+  const instantQuote = useMemo(() => {
+    if (!selected) return null;
     const qty = parseInt(quantity || '0', 10) || 0;
-    if (qty <= 0) return 0;
-    const raw = (Number(selected.rate_inr_per_1000) || 0) * qty / 1000;
-    return Math.max(raw, Number(catalog.min_order_inr) || 0);
-  }, [selected, quantity, catalog.min_order_inr]);
+    const rate = Number(selected.rate_inr_per_1000) || 0;
+    const minOrder = Number(catalog.min_order_inr) || 0;
+    const baseRaw = (rate * qty) / 1000;
+    // Apply the user's tier discount client-side using the cached tier info
+    const discountPct = Number(userTier?.smm_discount_pct || 0);
+    const tierName = userTier?.name || 'Rookie';
+    const discountAmt = +(baseRaw * discountPct / 100).toFixed(2);
+    const finalRaw = Math.max(+(baseRaw - discountAmt).toFixed(2), minOrder);
+    return {
+      base_charge_inr: +baseRaw.toFixed(2),
+      discount_pct: discountPct,
+      discount_amount_inr: discountAmt,
+      charge_inr: finalRaw,
+      tier_name: tierName,
+      wallet_balance_inr: walletBalance,
+      wallet_sufficient: walletBalance >= finalRaw,
+      logged_in: !!user,
+    };
+  }, [selected, quantity, catalog.min_order_inr, userTier, walletBalance, user]);
+
+  // Effective quote to render — ALWAYS show the instant client-side computation
+  // so the live charge updates synchronously on every keystroke. The server quote
+  // runs in the background only to refresh wallet_balance + validate tier math;
+  // it never blocks or overrides the visible number to avoid a stale-flicker
+  // when the user is mid-typing.
+  const renderedQuote = instantQuote;
 
   const handleSelect = (row) => {
     setSelected(row);
@@ -667,7 +716,7 @@ const OrderSmmPage = () => {
               busy={busy}
               onSubmit={handleSubmit}
               onClear={clearSelection}
-              quote={quote || (selected ? { charge_inr: localCharge, base_charge_inr: localCharge, discount_pct: 0, discount_amount_inr: 0, tier_name: 'Rookie' } : null)}
+              quote={renderedQuote}
               loggedIn={!!user}
               onLogin={() => navigate('/login?next=' + encodeURIComponent('/smm'))}
               walletBalance={walletBalance}
@@ -693,7 +742,7 @@ const OrderSmmPage = () => {
             busy={busy}
             onSubmit={handleSubmit}
             onClear={clearSelection}
-            quote={quote || { charge_inr: localCharge, base_charge_inr: localCharge, discount_pct: 0, discount_amount_inr: 0, tier_name: 'Rookie' }}
+            quote={renderedQuote}
             loggedIn={!!user}
             onLogin={() => navigate('/login?next=' + encodeURIComponent('/smm'))}
             walletBalance={walletBalance}
@@ -729,7 +778,7 @@ const OrderSmmPage = () => {
               <div className="text-[12px] font-semibold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{selected.name}</div>
             </div>
             <div className="text-right shrink-0">
-              <div className="eh-display font-black text-base" style={{ color: selectedMeta?.color }}>{formatINR(quote?.charge_inr ?? localCharge)}</div>
+              <div className="eh-display font-black text-base" style={{ color: selectedMeta?.color }}>{formatINR(renderedQuote?.charge_inr ?? 0)}</div>
               <div className="eh-mono text-[9px] opacity-60">PROCEED →</div>
             </div>
           </button>

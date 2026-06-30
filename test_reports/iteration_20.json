@@ -1,0 +1,25 @@
+{
+  "summary": "Iter-29 frontend verification: SMM live-charge instant-update bug fix + MyWallet multi-color redesign + regression checks. All 5 review items PASS end-to-end against the public preview URL with test1@example.com / hack123 (Operative tier, wallet ₹4,050.48).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OrderSmmPage.jsx now uses instantQuote (client-side useMemo) for the visible LIVE CHARGE — the perceptible-delay bug is gone. Verified by typing rapidly: every keystroke updates the [data-testid=smm-charge-display] synchronously (no debounce, no stale ₹0 mid-typing). Math correct: 5000×12.5/1000×0.95(Operative −5%) = ₹59.37 displayed; 1000×... = ₹11.87; sub-min values (5/50/500 units) correctly clamp to min ₹10. Server quote still fires in the background via the 150ms-debounced AbortController call only to refresh walletBalance — exactly as described in the agent-to-agent context.",
+    "MyWallet.jsx redesign is solid: balance hero (neon green border, ₹ big), yellow Daily Spin tile linking /me/spin, 3 multi-color method tiles (Cashfree #00ff9d, Manual #ff2d92, Crypto #4de0ff) all render and respond to clicks. Tiles transition into colour-matched forms; 'CHANGE METHOD' back button restores the picker; submitting a manual deposit shows wallet-done-state and toast notification. CashfreeTopupModal opens correctly from wallet-cashfree-cta. Code structure is clean (563 lines, single responsibility, METHOD_META map keeps colours/icons co-located).",
+    "MINOR/POLISH (non-blocking): (a) Catalog still shows 'Catalog unavailable: SMM panel error: Invalid API key' banner in preview — known dev-mode issue (3 TEST services seeded as fallback). (b) On /me/wallet the 'NEW DEPOSIT' button (after done state) only resets `method` to null but leaves the success toast visible; fine since toast auto-dismisses. (c) wallet-amount input accepts negative steps via browser spinner because min=10 but step not set — Pydantic backend rejects <10 so no security impact. (d) The Cashfree modal's PCI-DSS subtitle says 'live mode' even when cfConfig.mode === 'sandbox' could match — actual config returned live, so display is correct.",
+    "RESIDUAL from iter-28 still applicable: wallet debit + order insert is sequential (not transactional). Not retested this iteration — out of scope."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only iteration)", "frontend": "100% (5/5 review items verified)" },
+  "test_credentials": "test1@example.com / hack123 — Operative tier, wallet ₹4,050.48 (debited ₹10 during charge testing; deposit submitted but pending admin approval so balance unchanged at end of run).",
+  "seed_data_creation": "None — used pre-existing TEST services 999001/999002/999003 (TEST · Instagram Followers ₹12.5, YouTube Views ₹5, TikTok Likes ₹18) seeded in earlier iterations.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter-29 verified live: (1) SMM live charge ([data-testid=smm-charge-display]) updates SYNCHRONOUSLY on every keystroke — typing progression captured: '5'→₹10, '50'→₹10, '500'→₹10 (all correctly clamped to min ₹10), '5000'→₹59.37 (rate 12.5 × 5 × 0.95 Operative discount). Re-typing rapidly (1000→₹11.87, 100→₹10) confirmed no stale flicker. (2) MyWallet testids confirmed: wallet-balance-card, wallet-spin-cta (href=/me/spin), wallet-method-picker, wallet-method-{cashfree,manual,crypto}, wallet-method-back (returns to picker), wallet-quick-{100,500,1000,2000,5000}, wallet-amount, wallet-tx-ref, wallet-cashfree-cta (text 'PAY ₹500 INSTANTLY', opens CashfreeTopupModal with 'ADD MONEY · Top up your wallet' heading), wallet-submit, wallet-done-state, wallet-txn-panel. (3) Transactions render 10 rows for test1, each linking to /receipt/WTX-* (first: /receipt/WTX-E691CB69C6). (4) Submit SMM CTA: 'PAY ₹10 FROM WALLET · INSTANT' (wallet sufficient path). Topup CTA path not triggered because wallet >> any test charge; iter-28 already verified that path.",
+  "rca of the issue": "Both reported issues are resolved. (1) SMM live-charge delay: ROOT CAUSE was renderedQuote falling back to the server `quote` state which updated only after the 150ms debounced /api/public/smm/quote round-trip. FIX (verified): renderedQuote = instantQuote unconditionally, so the client-side useMemo recomputes synchronously on every quantity change. Server quote still runs in background (now abortable) for wallet refresh, but never overrides the visible number. (2) MyWallet single-green design: REPLACED with 3-tile multi-color method picker (Cashfree green / Manual pink / Crypto cyan) + yellow Daily Spin accent. Each method transitions into a colour-matched form using a shared activeColor variable. All transitions, back-button, and done-state flows verified end-to-end."
+}

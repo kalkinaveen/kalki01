@@ -401,7 +401,22 @@ def make_router(db, check_admin, get_user_from_request=None):
             "user_id": user["user_id"],
             "userEmail": user.get("email"),
         }
-        await db.orders.insert_one(order_doc)
+        try:
+            await db.orders.insert_one(order_doc)
+        except Exception as insert_err:
+            # Order insert failed AFTER wallet was debited. Refund the wallet
+            # immediately so the customer's money is never stranded.
+            try:
+                await _server._wallet_txn(
+                    user["user_id"], "credit", float(final_charge),
+                    note=f"Refund · order insert failed · {order_id}",
+                    ref={"type": "smm_order_refund", "order_id": order_id, "original_txn_id": txn.get("id")},
+                )
+            except Exception:
+                log_err = f"CRITICAL: wallet debit + refund both failed for user={user['user_id']} order={order_id} err={insert_err}"
+                import logging as _logging
+                _logging.getLogger("smm").error(log_err)
+            raise HTTPException(status_code=500, detail=f"Order creation failed — wallet refunded. ({insert_err})")
         order_doc.pop("_id", None)
 
         # Step 6 — fire panel placement + admin notification (best-effort, background)
@@ -467,9 +482,19 @@ def make_router(db, check_admin, get_user_from_request=None):
         """List every order that's wired to the SMM panel. Used by the admin panel
         to replace the old manual 'link service' UI with a live order inbox."""
         await check_admin(x_admin_token)
+        # Treat "no status yet" as Pending so the chip count and the filtered
+        # table agree. Otherwise rows whose smm_status is null/empty (because
+        # the Peakerr placement hasn't returned yet) only show in the count.
+        PENDING_VALUES = ["Pending", "In progress", "Processing", "Starting", None, ""]
         q: Dict[str, Any] = {"smm_service_id": {"$exists": True}}
         if status:
-            q["smm_status"] = status
+            if status.lower() == "pending":
+                q["$or"] = [
+                    {"smm_status": {"$in": PENDING_VALUES}},
+                    {"smm_status": {"$exists": False}},
+                ]
+            else:
+                q["smm_status"] = status
         if has_error:
             q["smm_error"] = {"$nin": [None, ""]}
         cur = db.orders.find(q).sort("createdAt", -1).limit(int(limit))
@@ -477,9 +502,14 @@ def make_router(db, check_admin, get_user_from_request=None):
         async for o in cur:
             o.pop("_id", None)
             rows.append(o)
-        # Summary counts so the UI can show pill totals at the top
         all_rows = await db.orders.count_documents({"smm_service_id": {"$exists": True}})
-        pending = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_status": {"$in": ["Pending", "In progress", "Processing", "Starting", None]}})
+        pending = await db.orders.count_documents({
+            "smm_service_id": {"$exists": True},
+            "$or": [
+                {"smm_status": {"$in": PENDING_VALUES}},
+                {"smm_status": {"$exists": False}},
+            ],
+        })
         errored = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_error": {"$nin": [None, ""]}})
         completed = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_status": "Completed"})
         return {
