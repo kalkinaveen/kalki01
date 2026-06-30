@@ -1,24 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   Search, ArrowRight, Bot, Zap, Loader2, Sparkles, RefreshCcw,
   Instagram, Youtube, Music2, Facebook, Twitter, Send, Globe2,
-  Check, X, Tag,
+  Check, X, Tag, ChevronUp,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Public customer-facing SMM catalog → place-order form.
- * Mounted at /smm — anyone can browse, but ordering requires email.
+ * Mounted at /smm — anyone can browse, ordering requires email.
  *
- * Flow:
- *   1. Pick a platform chip (Instagram / YouTube / TikTok / …)
- *   2. Search + scroll the live catalog (priced in INR with admin markup)
- *   3. Pick a service card → inline link + qty inputs + live ₹ Charge
- *   4. PROCEED TO PAY → creates order + redirects to /track?id=&pay=1
+ * Scroll UX fixes (Iter-24.1):
+ *   - Pagination (24 cards per page, "LOAD MORE")
+ *   - Sticky compact filter bar (search + platform chips pinned on scroll)
+ *   - Mobile bottom-sheet modal for the OrderForm (no more endless scroll)
+ *   - Floating "back to top" FAB (appears after 600px scroll)
+ *   - Persistent mini-bar showing selected service + live ₹ + PROCEED at every scroll position
  */
+
+const PAGE_SIZE = 24;
 
 const PLATFORM_META = {
   instagram: { color: '#ff6b9d', icon: Instagram, label: 'Instagram' },
@@ -114,18 +117,19 @@ const ServiceCard = ({ row, selected, onSelect }) => {
   );
 };
 
-const OrderForm = ({ service, charge, quantity, setQuantity, link, setLink, contact, setContact, busy, onSubmit, onClear }) => {
+/**
+ * Order form body — used in both the sticky right-side card (desktop)
+ * AND inside the bottom-sheet modal (mobile).
+ */
+const OrderFormBody = ({ service, charge, quantity, setQuantity, link, setLink, contact, setContact, busy, onSubmit, onClear, inSheet = false }) => {
   const meta = PLATFORM_META[service.platform] || PLATFORM_META.other;
   const Icon = meta.icon;
   return (
-    <div
-      data-testid="smm-order-form"
-      className="eh-panel p-4 sm:p-5 relative overflow-hidden min-w-0 max-w-full"
-      style={{ borderColor: `${meta.color}55`, background: 'linear-gradient(180deg, rgba(255,255,255,.015), transparent)' }}
-    >
-      <span aria-hidden className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${meta.color}, transparent)` }} />
+    <div className={`relative ${inSheet ? '' : 'eh-panel p-4 sm:p-5 overflow-hidden min-w-0 max-w-full'}`}
+         style={!inSheet ? { borderColor: `${meta.color}55`, background: 'linear-gradient(180deg, rgba(255,255,255,.015), transparent)' } : {}}
+         data-testid="smm-order-form">
+      {!inSheet && <span aria-hidden className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${meta.color}, transparent)` }} />}
 
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="w-11 h-11 rounded-lg grid place-items-center shrink-0" style={{ background: `${meta.color}1a`, border: `1px solid ${meta.color}55`, color: meta.color }}>
@@ -137,12 +141,13 @@ const OrderForm = ({ service, charge, quantity, setQuantity, link, setLink, cont
             <div className="eh-mono text-[10px] opacity-50 mt-0.5 truncate">{service.category}</div>
           </div>
         </div>
-        <button onClick={onClear} className="opacity-60 hover:opacity-100 shrink-0" data-testid="smm-clear-service">
-          <X size={16} />
-        </button>
+        {!inSheet && (
+          <button onClick={onClear} className="opacity-60 hover:opacity-100 shrink-0" data-testid="smm-clear-service">
+            <X size={16} />
+          </button>
+        )}
       </div>
 
-      {/* Form grid */}
       <div className="space-y-3">
         <div>
           <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">
@@ -211,20 +216,66 @@ const OrderForm = ({ service, charge, quantity, setQuantity, link, setLink, cont
         <button
           onClick={onSubmit}
           disabled={busy || !link.trim() || !contact.email.trim() || !quantity || charge <= 0}
-          className="w-full eh-btn-primary flex items-center justify-center gap-2 py-3.5 font-bold text-sm tracking-wider mt-1"
+          className="w-full flex items-center justify-center gap-2 py-3.5 font-bold text-sm tracking-wider mt-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           data-testid="smm-submit-btn"
           style={{ background: meta.color, color: '#000', borderColor: meta.color }}
         >
           {busy ? (
             <><Loader2 size={16} className="animate-spin" /> CREATING ORDER...</>
           ) : (
-            <>⚡ PAY {formatINR(charge)} · PROCEED <ArrowRight size={16} /></>
+            <><Zap size={14} /> PAY {formatINR(charge)} · PROCEED <ArrowRight size={16} /></>
           )}
         </button>
 
         <div className="text-center eh-mono text-[10px] opacity-60 pt-1 leading-relaxed">
-          Order locks in at this price. After payment, our SMM engine auto-places it on the panel in seconds — no manual wait.
+          Order locks in at this price. After payment, our SMM engine auto-places it in seconds.
         </div>
+      </div>
+    </div>
+  );
+};
+
+/** Mobile bottom-sheet modal wrapper */
+const BottomSheet = ({ open, onClose, children }) => {
+  // Lock body scroll when open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[60] lg:hidden" data-testid="smm-bottom-sheet">
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in"
+        style={{ animation: 'eh-fade-in .25s ease-out' }}
+      />
+      {/* Sheet */}
+      <div
+        className="absolute left-0 right-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-2xl border-t-2 eh-panel"
+        style={{
+          borderColor: 'var(--eh-green)',
+          background: 'var(--eh-panel)',
+          boxShadow: '0 -24px 60px -10px rgba(0,255,157,0.25)',
+          animation: 'eh-slide-up .28s cubic-bezier(.2,.9,.3,1)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="sticky top-0 z-10 pt-2 pb-1 flex flex-col items-center bg-[var(--eh-panel)] border-b border-[var(--eh-border)]">
+          <div className="w-12 h-1.5 rounded-full bg-white/20 mb-2" />
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-2 opacity-70 hover:opacity-100 p-1"
+            data-testid="smm-sheet-close"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4 pb-8">{children}</div>
       </div>
     </div>
   );
@@ -243,6 +294,10 @@ const OrderSmmPage = () => {
   const [quantity, setQuantity] = useState('');
   const [contact, setContact] = useState({ email: '', tg: '' });
   const [busy, setBusy] = useState(false);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [showTopBtn, setShowTopBtn] = useState(false);
+  const filterBarRef = useRef(null);
 
   const load = async (refresh = false) => {
     if (refresh) setRefreshing(true); else setLoading(true);
@@ -260,9 +315,18 @@ const OrderSmmPage = () => {
   useEffect(() => { load(false); }, []);
   useEffect(() => {
     if (user?.email && !contact.email) setContact(c => ({ ...c, email: user.email }));
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, contact.email]);
 
-  // Filtered list (client-side filter on top of the cached catalog)
+  // Reset pagination whenever filters change
+  useEffect(() => { setPageSize(PAGE_SIZE); }, [q, platform]);
+
+  // Scroll → back-to-top FAB
+  useEffect(() => {
+    const onScroll = () => setShowTopBtn(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
     const pl = platform.trim().toLowerCase();
@@ -273,10 +337,11 @@ const OrderSmmPage = () => {
         if (!blob.includes(ql)) return false;
       }
       return true;
-    }).slice(0, 200);
+    });
   }, [catalog, q, platform]);
 
-  // Compute live INR charge for current selection
+  const visible = useMemo(() => filtered.slice(0, pageSize), [filtered, pageSize]);
+
   const charge = useMemo(() => {
     if (!selected) return 0;
     const qty = parseInt(quantity || '0', 10) || 0;
@@ -289,10 +354,29 @@ const OrderSmmPage = () => {
     setSelected(row);
     setQuantity(String(row.min || 100));
     setLink('');
-    // Smooth scroll to form on mobile
-    setTimeout(() => {
-      document.getElementById('smm-form-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
+    // On mobile, open the bottom-sheet (no awkward bottom-of-page scroll).
+    // On desktop, the right-side sticky panel updates in place; scroll to it
+    // only if it's currently out of view.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setSheetOpen(true);
+    } else {
+      setTimeout(() => {
+        const anchor = document.getElementById('smm-form-anchor');
+        if (anchor) {
+          const rect = anchor.getBoundingClientRect();
+          if (rect.top < 60 || rect.top > window.innerHeight - 200) {
+            anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      }, 60);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelected(null);
+    setLink('');
+    setQuantity('');
+    setSheetOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -324,7 +408,6 @@ const OrderSmmPage = () => {
     }
   };
 
-  // Build platform list in featured order, then any extras
   const platformList = useMemo(() => {
     const counts = catalog.platform_counts || {};
     const seen = new Set();
@@ -338,6 +421,8 @@ const OrderSmmPage = () => {
     return out;
   }, [catalog.platform_counts]);
 
+  const selectedMeta = selected ? (PLATFORM_META[selected.platform] || PLATFORM_META.other) : null;
+
   return (
     <div className="min-h-screen px-3 sm:px-6 py-8 sm:py-12 max-w-7xl mx-auto overflow-x-hidden" data-testid="order-smm-page">
       {/* Hero */}
@@ -349,7 +434,7 @@ const OrderSmmPage = () => {
           <span className="text-[var(--eh-text)]"> instantly</span>
         </h1>
         <div className="mt-3 text-sm sm:text-base opacity-75 max-w-2xl" style={{ fontFamily: 'Inter,sans-serif' }}>
-          Pick from {formatLargeNum((catalog.rows || []).length)}+ live services across Instagram, YouTube, TikTok, Telegram and more — priced in <b className="text-[var(--eh-green)]">INR</b>, auto-placed on our panel the moment your payment clears.
+          Pick from {formatLargeNum((catalog.rows || []).length)}+ live services across Instagram, YouTube, TikTok, Telegram and more — priced in <b className="text-[var(--eh-green)]">INR</b>, auto-placed the moment your payment clears.
         </div>
         <div className="mt-3 flex flex-wrap gap-2 items-center">
           <span className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Zap size={11} className="text-[var(--eh-green)]" /> Auto-placement</span>
@@ -358,7 +443,6 @@ const OrderSmmPage = () => {
         </div>
       </div>
 
-      {/* Catalog error banner */}
       {catalog.error && (
         <div className="eh-panel p-3 mb-4 border-[#ff3148] text-sm">
           <b className="text-[#ff3148]">Catalog unavailable:</b> <span className="opacity-80">{catalog.error}</span>
@@ -368,8 +452,13 @@ const OrderSmmPage = () => {
       <div className="grid lg:grid-cols-[1fr_420px] gap-5 sm:gap-6 min-w-0">
         {/* LEFT: catalog browse */}
         <div className="min-w-0">
-          {/* Search + refresh */}
-          <div className="eh-panel p-3 sm:p-4 mb-4">
+          {/* Sticky compact filter bar — stays pinned as the user scrolls the catalog */}
+          <div
+            ref={filterBarRef}
+            className="eh-panel p-3 sm:p-4 mb-4 sticky top-3 z-30 backdrop-blur"
+            style={{ background: 'color-mix(in srgb, var(--eh-panel) 92%, transparent)' }}
+            data-testid="smm-filter-bar"
+          >
             <div className="flex items-center gap-2">
               <div className="relative flex-1 min-w-0">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
@@ -397,7 +486,6 @@ const OrderSmmPage = () => {
                 <span className="hidden sm:inline">REFRESH</span>
               </button>
             </div>
-            {/* Platform chips */}
             <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
               <PlatformChip slug="" count={catalog.rows?.length || 0} active={!platform} onClick={() => setPlatform('')} />
               {platformList.map(([p, c]) => (
@@ -422,24 +510,35 @@ const OrderSmmPage = () => {
             <div>
               <div className="flex items-center justify-between mb-3 px-1">
                 <div className="eh-mono text-[10px] opacity-60 tracking-widest">
-                  // {filtered.length} services shown
-                  {filtered.length === 200 && <span className="opacity-50"> · refine your search to see more</span>}
+                  // showing {visible.length} of {filtered.length}
                 </div>
                 <div className="eh-mono text-[10px] opacity-50 hidden sm:flex items-center gap-1.5">
                   <Tag size={10} /> markup {catalog.markup_percent}% · min {formatINR(catalog.min_order_inr)}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-                {filtered.map(r => (
+                {visible.map(r => (
                   <ServiceCard key={r.id} row={r} selected={selected?.id === r.id} onSelect={handleSelect} />
                 ))}
               </div>
+
+              {/* Load more */}
+              {visible.length < filtered.length && (
+                <button
+                  onClick={() => setPageSize(p => p + PAGE_SIZE)}
+                  className="mt-4 w-full eh-btn-ghost py-3 text-xs tracking-widest flex items-center justify-center gap-2"
+                  data-testid="smm-load-more"
+                >
+                  <ArrowRight size={12} className="rotate-90" />
+                  LOAD {Math.min(PAGE_SIZE, filtered.length - visible.length)} MORE · {filtered.length - visible.length} remaining
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* RIGHT: order form (sticky on desktop) */}
-        <div className="lg:sticky lg:top-20 self-start">
+        {/* RIGHT: desktop-only sticky order panel */}
+        <div className="hidden lg:block lg:sticky lg:top-20 self-start">
           <div id="smm-form-anchor" />
           {!selected ? (
             <div className="eh-panel p-5 text-center" data-testid="smm-empty-form">
@@ -449,11 +548,11 @@ const OrderSmmPage = () => {
               <div className="eh-mono text-[10px] tracking-widest opacity-60 mb-1">// AWAITING_SELECTION</div>
               <div className="text-sm font-semibold" style={{ fontFamily: 'Inter,sans-serif' }}>Pick a service from the catalog</div>
               <div className="text-xs opacity-60 mt-1.5 leading-relaxed">
-                Browse by platform, search by keyword, then tap any card to configure quantity, paste your link, and pay instantly.
+                Browse by platform, search by keyword, then click any card to configure and pay instantly.
               </div>
             </div>
           ) : (
-            <OrderForm
+            <OrderFormBody
               service={selected}
               charge={charge}
               quantity={quantity}
@@ -464,16 +563,92 @@ const OrderSmmPage = () => {
               setContact={setContact}
               busy={busy}
               onSubmit={handleSubmit}
-              onClear={() => { setSelected(null); setLink(''); setQuantity(''); }}
+              onClear={clearSelection}
             />
           )}
 
-          {/* Trust strip */}
           <div className="mt-3 eh-mono text-[10px] opacity-55 leading-relaxed px-1">
-            Powered by Peakerr-style auto-placement · INR rate locked at checkout · refunds available on undeliverable orders.
+            INR rate locked at checkout · refunds available on undeliverable orders.
           </div>
         </div>
       </div>
+
+      {/* Mobile bottom-sheet modal */}
+      <BottomSheet open={sheetOpen && !!selected} onClose={() => setSheetOpen(false)}>
+        {selected && (
+          <OrderFormBody
+            service={selected}
+            charge={charge}
+            quantity={quantity}
+            setQuantity={setQuantity}
+            link={link}
+            setLink={setLink}
+            contact={contact}
+            setContact={setContact}
+            busy={busy}
+            onSubmit={handleSubmit}
+            onClear={clearSelection}
+            inSheet
+          />
+        )}
+      </BottomSheet>
+
+      {/* Mobile floating mini-bar — appears when a service is selected but sheet is closed.
+          Lets the user keep browsing yet always have one-tap access back to the order form. */}
+      {selected && !sheetOpen && (
+        <div
+          className="lg:hidden fixed bottom-3 left-3 right-3 z-40 rounded-xl border shadow-2xl"
+          style={{
+            background: 'var(--eh-panel)',
+            borderColor: selectedMeta?.color || 'var(--eh-green)',
+            boxShadow: `0 16px 50px -10px ${selectedMeta?.color || '#00ff9d'}55`,
+            animation: 'eh-slide-up .25s ease-out',
+          }}
+          data-testid="smm-mini-bar"
+        >
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="w-full flex items-center gap-3 p-3 text-left"
+          >
+            <div className="w-9 h-9 rounded-lg grid place-items-center shrink-0"
+                 style={{ background: `${selectedMeta?.color}1a`, border: `1px solid ${selectedMeta?.color}55`, color: selectedMeta?.color }}>
+              <Check size={16} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="eh-mono text-[9px] tracking-widest opacity-60">SELECTED · TAP TO PAY</div>
+              <div className="text-[12px] font-semibold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{selected.name}</div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="eh-display font-black text-base" style={{ color: selectedMeta?.color }}>{formatINR(charge)}</div>
+              <div className="eh-mono text-[9px] opacity-60">PROCEED →</div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Floating "Back to Top" FAB */}
+      {showTopBtn && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-24 lg:bottom-6 right-3 lg:right-6 z-30 w-11 h-11 rounded-full grid place-items-center border-2 transition-all hover:scale-110"
+          style={{
+            background: 'var(--eh-panel)',
+            borderColor: 'var(--eh-green)',
+            color: 'var(--eh-green)',
+            boxShadow: '0 8px 30px -6px rgba(0,255,157,0.45)',
+          }}
+          aria-label="Back to top"
+          data-testid="smm-back-to-top"
+        >
+          <ChevronUp size={20} />
+        </button>
+      )}
+
+      {/* Page-local keyframes (no CSS file edit needed). */}
+      <style>{`
+        @keyframes eh-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes eh-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
     </div>
   );
 };
