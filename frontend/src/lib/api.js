@@ -161,6 +161,9 @@ export const api = {
   smmUnlinkService: (sid) => req(`/admin/services/${sid}/smm-link`, { method: 'DELETE', admin: true }),
   smmPlaceOrder: (oid) => req(`/admin/orders/${oid}/smm-place`, { method: 'POST', admin: true }),
   smmPollOrder: (oid) => req(`/admin/orders/${oid}/smm-poll`, { method: 'POST', admin: true }),
+  // SMM Orders Inbox (admin)
+  smmAdminOrders: ({ status = '', has_error = 0, limit = 100 } = {}) =>
+    req(`/admin/smm/orders?status=${encodeURIComponent(status)}&has_error=${has_error ? 1 : 0}&limit=${limit}`, { admin: true }),
   // SMM customer-facing catalog
   smmCatalog: ({ q = '', platform = '', category = '', refresh = 0 } = {}) =>
     req(`/public/smm/catalog?q=${encodeURIComponent(q)}&platform=${encodeURIComponent(platform)}&category=${encodeURIComponent(category)}${refresh ? '&refresh=1' : ''}`),

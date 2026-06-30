@@ -237,35 +237,80 @@ def make_router(db, check_admin, get_user_from_request=None):
         }
 
     @router.post("/public/smm/quote")
-    async def public_quote(body: PublicSmmOrderIn):
-        """Compute the live INR charge for {service, qty} without creating an order."""
+    async def public_quote(body: PublicSmmOrderIn, request: Request):
+        """Compute the live INR charge for {service, qty} without creating an order.
+        Also returns the user's wallet balance + auto-applied OPERATIVE PASS discount
+        so the frontend can render a "pay from wallet" CTA accurately."""
         row = await find_catalog_service(db, int(body.smm_service_id))
         if not row:
             raise HTTPException(status_code=404, detail="Service not found in catalog")
         cfg = await get_config(db)
         if body.quantity < row.get("min", 0) or body.quantity > row.get("max", 0):
             raise HTTPException(status_code=400, detail=f"Quantity must be between {row.get('min')} and {row.get('max')}")
-        charge_inr = compute_charge_inr(row.get("rate_inr_per_1000", 0), body.quantity, float(cfg.get("min_order_inr") or 0))
+        base_charge = compute_charge_inr(row.get("rate_inr_per_1000", 0), body.quantity, float(cfg.get("min_order_inr") or 0))
+        # Resolve user + tier (optional)
+        user = None
+        if get_user_from_request:
+            try: user = await get_user_from_request(request)
+            except Exception: user = None
+        discount_pct = 0
+        tier_name = "Rookie"
+        wallet_balance = 0.0
+        if user:
+            try:
+                from tiers import user_tier
+                full_user = await db.users.find_one({"user_id": user["user_id"]}) or {}
+                tier = user_tier(full_user)
+                discount_pct = float(tier.get("smm_discount_pct") or 0)
+                tier_name = tier.get("name", "Rookie")
+            except Exception:
+                pass
+            try:
+                import server as _server
+                wallet = await _server._wallet_get_or_create(user["user_id"])
+                wallet_balance = float(wallet.get("balance", 0))
+            except Exception:
+                pass
+        discount_amount = round(base_charge * discount_pct / 100, 2)
+        final_charge = max(round(base_charge - discount_amount, 2), float(cfg.get("min_order_inr") or 0))
         return {
             "service": row,
             "quantity": body.quantity,
-            "charge_inr": charge_inr,
+            "base_charge_inr": base_charge,
+            "discount_pct": discount_pct,
+            "discount_amount_inr": discount_amount,
+            "charge_inr": final_charge,
+            "tier_name": tier_name,
+            "wallet_balance_inr": wallet_balance,
+            "wallet_sufficient": wallet_balance >= final_charge,
             "min_order_inr": float(cfg.get("min_order_inr") or 0),
+            "logged_in": bool(user),
         }
 
     @router.post("/public/smm/order")
     async def public_create_order(body: PublicSmmOrderIn, request: Request):
-        """Create an app order with smm_service_id pre-bound. Returns the order id.
-        Customer is then redirected to /track?id=ORD-XXX&pay=1 by the frontend."""
+        """Wallet-only flow (Iter-28). Anonymous orders are rejected — users
+        must sign in and pay from their wallet balance. On success the order
+        is created with status='verified', wallet is atomically debited, and
+        Peakerr placement fires immediately in the background.
+
+        Errors:
+          401 → not logged in
+          402 → wallet balance too low (response includes needed_inr + current_balance_inr)
+        """
         import uuid
         from datetime import datetime, timezone
-        # Resolve user if logged in (optional — guests are allowed too).
-        user = None
-        if get_user_from_request:
-            try:
-                user = await get_user_from_request(request)
-            except Exception:
-                user = None
+        # Step 1 — require authentication
+        if not get_user_from_request:
+            raise HTTPException(status_code=500, detail="Auth resolver unavailable")
+        try:
+            user = await get_user_from_request(request)
+        except Exception:
+            user = None
+        if not user:
+            raise HTTPException(status_code=401, detail="Please sign in to place an SMM order")
+
+        # Step 2 — validate the service + quantity
         row = await find_catalog_service(db, int(body.smm_service_id))
         if not row:
             raise HTTPException(status_code=404, detail="Service not found in catalog")
@@ -274,49 +319,175 @@ def make_router(db, check_admin, get_user_from_request=None):
             raise HTTPException(status_code=400, detail=f"Quantity must be between {row.get('min')} and {row.get('max')}")
         if not (body.link or "").strip():
             raise HTTPException(status_code=400, detail="A valid target link / username is required")
-        # Require email — used for receipt + tracking link
-        email = (body.email or (user.get("email") if user else "") or "").strip()
-        if not email:
-            raise HTTPException(status_code=400, detail="Email is required to receive your order tracking link")
-        charge_inr = compute_charge_inr(row.get("rate_inr_per_1000", 0), body.quantity, float(cfg.get("min_order_inr") or 0))
+
+        # Step 3 — compute final charge with OPERATIVE PASS discount applied
+        base_charge = compute_charge_inr(row.get("rate_inr_per_1000", 0), body.quantity, float(cfg.get("min_order_inr") or 0))
+        discount_pct = 0
+        tier_name = "Rookie"
+        try:
+            from tiers import user_tier
+            full_user = await db.users.find_one({"user_id": user["user_id"]}) or {}
+            tier = user_tier(full_user)
+            discount_pct = float(tier.get("smm_discount_pct") or 0)
+            tier_name = tier.get("name", "Rookie")
+        except Exception:
+            pass
+        discount_amount = round(base_charge * discount_pct / 100, 2)
+        final_charge = max(round(base_charge - discount_amount, 2), float(cfg.get("min_order_inr") or 0))
+
+        # Step 4 — check wallet balance BEFORE creating the order so we never
+        # leave orphaned half-paid records lying around.
+        import server as _server
+        wallet = await _server._wallet_get_or_create(user["user_id"])
+        balance = float(wallet.get("balance", 0))
+        if balance < final_charge:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "wallet_insufficient",
+                    "message": f"Add ₹{int(final_charge - balance)} to your wallet to place this order.",
+                    "needed_inr": float(final_charge - balance),
+                    "current_balance_inr": balance,
+                    "charge_inr": final_charge,
+                },
+            )
+
+        # Step 5 — atomic wallet debit + order creation
         now = datetime.now(timezone.utc).isoformat()
         order_id = f"ORD-{uuid.uuid4().hex[:10].upper()}"
+        try:
+            txn = await _server._wallet_txn(
+                user["user_id"],
+                "debit",
+                float(final_charge),
+                note=f"SMM order · {row.get('platform','').upper()} · {body.quantity} units",
+                ref={"type": "smm_order", "order_id": order_id, "smm_service_id": int(row.get("id"))},
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Wallet debit failed: {e}")
+
         order_doc = {
             "id": order_id,
             "service": f"smm-{row.get('id')}",
             "serviceName": f"{row.get('platform','SMM').upper()} · {row.get('name','')}"[:200],
-            "name": (body.name or (user.get("name") if user else "") or "Customer").strip(),
-            "email": email,
+            "name": (body.name or user.get("name") or "Customer").strip(),
+            "email": (body.email or user.get("email") or "").strip(),
             "tg": (body.tg or "").strip(),
             "size": str(body.quantity),
             "target": body.link.strip(),
             "notes": (body.notes or "").strip(),
-            "amount": charge_inr,
-            "payment_amount": charge_inr,
+            "amount": final_charge,
+            "payment_amount": final_charge,
+            "base_charge_inr": base_charge,
+            "discount_pct": discount_pct,
+            "discount_amount_inr": discount_amount,
+            "tier_at_order": tier_name,
             "currency": "INR",
             "payment_currency": "INR",
-            "status": "received",
+            "payment_method": "wallet",
+            "payment_status": "paid",
+            "wallet_txn_id": txn.get("id"),
+            # Wallet-paid orders skip the "received → verified" loop and go straight
+            # to verified so place_order_for_app_order fires immediately.
+            "status": "verified",
             "createdAt": now,
-            # SMM panel pre-bind for auto-placement on verified
             "smm_service_id": int(row.get("id")),
             "smm_cost_usd_per_1000": float(row.get("cost_usd_per_1000") or 0),
             "smm_service_name": row.get("name", ""),
             "smm_quantity": int(body.quantity),
             "source": "public_smm_form",
+            "user_id": user["user_id"],
+            "userEmail": user.get("email"),
         }
-        if user:
-            order_doc["user_id"] = user.get("user_id")
-            order_doc["userEmail"] = user.get("email")
         await db.orders.insert_one(order_doc)
         order_doc.pop("_id", None)
-        # Fire admin notification (best-effort)
-        try:
-            import server  # local import to avoid circular at module-load
-            import asyncio as _asyncio
-            if hasattr(server, "_notify_order"):
-                _asyncio.create_task(server._notify_order(order_doc))
-        except Exception:
-            pass
-        return {"ok": True, "order": order_doc, "redirect": f"/track?id={order_id}&pay=1"}
+
+        # Step 6 — fire panel placement + admin notification (best-effort, background)
+        import asyncio as _asyncio
+        async def _bg_place_and_notify():
+            try:
+                await place_order_for_app_order(db, order_doc)
+            except Exception:
+                pass
+            try:
+                if hasattr(_server, "_notify_order"):
+                    await _server._notify_order(order_doc)
+            except Exception:
+                pass
+        _asyncio.create_task(_bg_place_and_notify())
+
+        return {
+            "ok": True,
+            "order": order_doc,
+            "wallet_txn": txn,
+            "new_wallet_balance_inr": balance - final_charge,
+            # No `&pay=1` — already paid from wallet, the tracker just shows progress.
+            "redirect": f"/track?id={order_id}",
+        }
+
+    # ---------- Admin SMM Orders Inbox ----------
+    @router.post("/admin/smm/seed-test-catalog")
+    async def admin_seed_test_catalog(x_admin_token: Optional[str] = Header(None)):
+        """Testing-only — inject a fixed set of rows into the in-memory catalog cache
+        so end-to-end tests can run without depending on the live Peakerr key.
+        Safe to call in production too; it just makes the catalog show these rows
+        until the next live refresh."""
+        await check_admin(x_admin_token)
+        import time
+        from smm_service import _CATALOG_CACHE as cache  # noqa: WPS433
+        cache["at"] = time.time()
+        cache["rows"] = [
+            {
+                "id": 999001, "name": "TEST · Instagram Followers (real)", "category": "Instagram Followers",
+                "platform": "instagram", "type": "Default", "min": 50, "max": 100000,
+                "dripfeed": False, "refill": True, "cancel": False,
+                "rate_inr_per_1000": 12.50, "cost_usd_per_1000": 0.10,
+            },
+            {
+                "id": 999002, "name": "TEST · YouTube Views (cheap)", "category": "YouTube Views",
+                "platform": "youtube", "type": "Default", "min": 100, "max": 500000,
+                "dripfeed": True, "refill": False, "cancel": True,
+                "rate_inr_per_1000": 5.00, "cost_usd_per_1000": 0.04,
+            },
+            {
+                "id": 999003, "name": "TEST · TikTok Likes (premium)", "category": "TikTok Likes",
+                "platform": "tiktok", "type": "Default", "min": 20, "max": 50000,
+                "dripfeed": False, "refill": True, "cancel": True,
+                "rate_inr_per_1000": 18.00, "cost_usd_per_1000": 0.16,
+            },
+        ]
+        cache["categories"] = sorted({r["category"] for r in cache["rows"]})
+        return {"ok": True, "seeded": len(cache["rows"])}
+
+    # ---------- Admin SMM Orders Inbox ----------
+    @router.get("/admin/smm/orders")
+    async def admin_smm_orders(x_admin_token: Optional[str] = Header(None), limit: int = 100, status: Optional[str] = None, has_error: int = 0):
+        """List every order that's wired to the SMM panel. Used by the admin panel
+        to replace the old manual 'link service' UI with a live order inbox."""
+        await check_admin(x_admin_token)
+        q: Dict[str, Any] = {"smm_service_id": {"$exists": True}}
+        if status:
+            q["smm_status"] = status
+        if has_error:
+            q["smm_error"] = {"$nin": [None, ""]}
+        cur = db.orders.find(q).sort("createdAt", -1).limit(int(limit))
+        rows = []
+        async for o in cur:
+            o.pop("_id", None)
+            rows.append(o)
+        # Summary counts so the UI can show pill totals at the top
+        all_rows = await db.orders.count_documents({"smm_service_id": {"$exists": True}})
+        pending = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_status": {"$in": ["Pending", "In progress", "Processing", "Starting", None]}})
+        errored = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_error": {"$nin": [None, ""]}})
+        completed = await db.orders.count_documents({"smm_service_id": {"$exists": True}, "smm_status": "Completed"})
+        return {
+            "rows": rows,
+            "total": all_rows,
+            "pending": pending,
+            "errored": errored,
+            "completed": completed,
+        }
 
     return router

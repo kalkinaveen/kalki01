@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   Search, ArrowRight, Bot, Zap, Loader2, Sparkles, RefreshCcw,
   Instagram, Youtube, Music2, Facebook, Twitter, Send, Globe2,
-  Check, X, Tag, ChevronUp,
+  Check, X, Tag, ChevronUp, Wallet,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,14 +12,18 @@ import RelatedServicesStrip from '../components/RelatedServicesStrip';
 
 /**
  * Public customer-facing SMM catalog → place-order form.
- * Mounted at /smm — anyone can browse, ordering requires email.
+ * Mounted at /smm — login is required, payment is wallet-only.
  *
- * Scroll UX fixes (Iter-24.1):
- *   - Pagination (24 cards per page, "LOAD MORE")
- *   - Sticky compact filter bar (search + platform chips pinned on scroll)
- *   - Mobile bottom-sheet modal for the OrderForm (no more endless scroll)
- *   - Floating "back to top" FAB (appears after 600px scroll)
- *   - Persistent mini-bar showing selected service + live ₹ + PROCEED at every scroll position
+ * Flow (Iter-28 · wallet-only):
+ *   1. Pick a platform chip (Instagram / YouTube / TikTok / …)
+ *   2. Search + scroll the live catalog (priced in INR with admin markup)
+ *   3. Pick a service card → inline link + qty inputs + live ₹ Charge
+ *   4. Live quote: base charge − Operative Pass discount = wallet debit amount
+ *   5. PAY FROM WALLET → atomic debit + immediate Peakerr placement,
+ *      redirect to /track?id=ORD-XXX (no Cashfree round-trip).
+ *
+ *   If wallet is short, the CTA flips to "TOP UP ₹X → instant" pointing at
+ *   /me/wallet. No order is created until wallet has enough money.
  */
 
 const PAGE_SIZE = 24;
@@ -122,9 +126,17 @@ const ServiceCard = ({ row, selected, onSelect }) => {
  * Order form body — used in both the sticky right-side card (desktop)
  * AND inside the bottom-sheet modal (mobile).
  */
-const OrderFormBody = ({ service, charge, quantity, setQuantity, link, setLink, contact, setContact, busy, onSubmit, onClear, inSheet = false }) => {
+const OrderFormBody = ({ service, quantity, setQuantity, link, setLink, busy, onSubmit, onClear, inSheet = false, quote, loggedIn, onLogin, walletBalance, onTopUp }) => {
   const meta = PLATFORM_META[service.platform] || PLATFORM_META.other;
   const Icon = meta.icon;
+  const charge = quote?.charge_inr ?? 0;
+  const baseCharge = quote?.base_charge_inr ?? charge;
+  const discountPct = quote?.discount_pct ?? 0;
+  const discountAmt = quote?.discount_amount_inr ?? 0;
+  const tierName = quote?.tier_name || 'Rookie';
+  const walletShort = Math.max(0, charge - walletBalance);
+  const canPay = loggedIn && walletShort <= 0 && link.trim() && quantity && charge > 0;
+
   return (
     <div className={`relative ${inSheet ? '' : 'eh-panel p-4 sm:p-5 overflow-hidden min-w-0 max-w-full'}`}
          style={!inSheet ? { borderColor: `${meta.color}55`, background: 'linear-gradient(180deg, rgba(255,255,255,.015), transparent)' } : {}}
@@ -151,9 +163,7 @@ const OrderFormBody = ({ service, charge, quantity, setQuantity, link, setLink, 
 
       <div className="space-y-3">
         <div>
-          <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">
-            TARGET LINK / USERNAME
-          </label>
+          <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">TARGET LINK / USERNAME</label>
           <input
             value={link}
             onChange={e => setLink(e.target.value)}
@@ -190,46 +200,85 @@ const OrderFormBody = ({ service, charge, quantity, setQuantity, link, setLink, 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">YOUR EMAIL · for tracking</label>
-            <input
-              type="email"
-              value={contact.email}
-              onChange={e => setContact({ ...contact, email: e.target.value })}
-              placeholder="> you@email.com"
-              className="eh-input text-sm w-full"
-              data-testid="smm-email-input"
-            />
+        {/* Quote breakdown — base · tier discount · payable */}
+        {loggedIn && charge > 0 && (
+          <div className="rounded-md border border-[var(--eh-border)] p-3 space-y-1.5" data-testid="smm-quote-breakdown">
+            <div className="flex items-center justify-between text-[11px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              <span className="opacity-70">Base charge</span>
+              <span className="eh-mono">{formatINR(baseCharge)}</span>
+            </div>
+            {discountPct > 0 && (
+              <div className="flex items-center justify-between text-[11px]" style={{ color: '#00ff9d' }}>
+                <span className="opacity-90">Operative Pass · {tierName} (−{discountPct}%)</span>
+                <span className="eh-mono">−{formatINR(discountAmt)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[12px] font-bold border-t border-[var(--eh-border)] pt-1.5 mt-1">
+              <span>Payable from wallet</span>
+              <span className="eh-mono" style={{ color: meta.color }}>{formatINR(charge)}</span>
+            </div>
           </div>
-          <div>
-            <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">TELEGRAM · optional</label>
-            <input
-              value={contact.tg}
-              onChange={e => setContact({ ...contact, tg: e.target.value })}
-              placeholder="> @yourhandle"
-              className="eh-input text-sm w-full"
-              data-testid="smm-telegram-input"
-            />
-          </div>
-        </div>
+        )}
 
-        <button
-          onClick={onSubmit}
-          disabled={busy || !link.trim() || !contact.email.trim() || !quantity || charge <= 0}
-          className="w-full flex items-center justify-center gap-2 py-3.5 font-bold text-sm tracking-wider mt-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          data-testid="smm-submit-btn"
-          style={{ background: meta.color, color: '#000', borderColor: meta.color }}
-        >
-          {busy ? (
-            <><Loader2 size={16} className="animate-spin" /> CREATING ORDER...</>
-          ) : (
-            <><Zap size={14} /> PAY {formatINR(charge)} · PROCEED <ArrowRight size={16} /></>
-          )}
-        </button>
+        {/* Wallet pay panel — primary action area */}
+        {!loggedIn ? (
+          <div className="rounded-md border border-[rgba(255,211,77,.5)] p-3.5 bg-[rgba(255,211,77,.05)]" data-testid="smm-login-gate">
+            <div className="text-[12.5px] font-semibold mb-1.5" style={{ fontFamily: 'Inter,sans-serif' }}>
+              Sign in to pay from your wallet
+            </div>
+            <div className="text-[11px] opacity-75 leading-relaxed mb-3" style={{ fontFamily: 'Inter,sans-serif' }}>
+              SMM orders are wallet-only. One sign-in, top up once, then every future order is a single tap.
+            </div>
+            <button
+              onClick={onLogin}
+              className="w-full flex items-center justify-center gap-2 py-3 font-bold text-sm tracking-wider rounded-md"
+              style={{ background: '#ffd34d', color: '#000' }}
+              data-testid="smm-login-cta"
+            >
+              <Wallet size={14} /> SIGN IN TO ORDER <ArrowRight size={16} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-[11px] eh-mono">
+              <span className="opacity-65 inline-flex items-center gap-1.5"><Wallet size={11} className="text-[var(--eh-green)]" /> WALLET BALANCE</span>
+              <span className={walletShort > 0 ? 'text-[#ffd34d] font-bold' : 'eh-neon font-bold'} data-testid="smm-wallet-balance">{formatINR(walletBalance)}</span>
+            </div>
+
+            {walletShort > 0 ? (
+              <>
+                <div className="rounded-md border border-[rgba(255,49,72,.45)] bg-[rgba(255,49,72,.05)] p-3 text-[11px] leading-relaxed" data-testid="smm-wallet-short">
+                  <b className="text-[#ff7a3d]">Wallet short by {formatINR(walletShort)}.</b><span className="opacity-80"> Add money now — your order will sit ready for one tap when you come back.</span>
+                </div>
+                <button
+                  onClick={onTopUp}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 font-bold text-sm tracking-wider rounded-md transition-all"
+                  style={{ background: '#ffd34d', color: '#000' }}
+                  data-testid="smm-topup-cta"
+                >
+                  <Wallet size={14} /> TOP UP {formatINR(walletShort)} → INSTANT <ArrowRight size={16} />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onSubmit}
+                disabled={busy || !canPay}
+                className="w-full flex items-center justify-center gap-2 py-3.5 font-bold text-sm tracking-wider rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: meta.color, color: '#000' }}
+                data-testid="smm-submit-btn"
+              >
+                {busy ? (
+                  <><Loader2 size={16} className="animate-spin" /> PLACING ORDER…</>
+                ) : (
+                  <><Zap size={14} /> PAY {formatINR(charge)} FROM WALLET · INSTANT <ArrowRight size={16} /></>
+                )}
+              </button>
+            )}
+          </>
+        )}
 
         <div className="text-center eh-mono text-[10px] opacity-60 pt-1 leading-relaxed">
-          Order locks in at this price. After payment, our SMM engine auto-places it in seconds.
+          Wallet debits instantly · Peakerr places your order within seconds · live tracker updates by itself.
         </div>
       </div>
     </div>
@@ -293,11 +342,13 @@ const OrderSmmPage = () => {
   const [selected, setSelected] = useState(null);
   const [link, setLink] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [contact, setContact] = useState({ email: '', tg: '' });
   const [busy, setBusy] = useState(false);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [showTopBtn, setShowTopBtn] = useState(false);
+  // Wallet-only flow state: live quote from /api/public/smm/quote
+  const [quote, setQuote] = useState(null);
+  const [walletBalance, setWalletBalance] = useState(0);
   const filterBarRef = useRef(null);
 
   const load = async (refresh = false) => {
@@ -313,10 +364,38 @@ const OrderSmmPage = () => {
     }
   };
 
+  // Initial catalog load + react to wallet changes (e.g. user just topped up
+  // in another tab) so the wallet balance pill stays accurate.
   useEffect(() => { load(false); }, []);
   useEffect(() => {
-    if (user?.email && !contact.email) setContact(c => ({ ...c, email: user.email }));
-  }, [user, contact.email]);
+    const refreshWallet = () => {
+      if (!user) { setWalletBalance(0); return; }
+      api.walletGet().then(w => setWalletBalance(w?.balance ?? 0)).catch(() => {});
+    };
+    refreshWallet();
+    window.addEventListener('eh:wallet-changed', refreshWallet);
+    return () => window.removeEventListener('eh:wallet-changed', refreshWallet);
+  }, [user]);
+
+  // Live quote — re-fetch whenever the user changes service or quantity. Debounced
+  // 300ms so we don't spam the backend on every keystroke.
+  useEffect(() => {
+    if (!selected) { setQuote(null); return; }
+    const qty = parseInt(quantity || '0', 10) || 0;
+    if (qty < (selected.min || 0)) { setQuote(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const out = await api.smmPublicQuote({
+          smm_service_id: selected.id,
+          quantity: qty,
+          link: link || 'placeholder',
+        });
+        setQuote(out);
+        if (out.wallet_balance_inr != null) setWalletBalance(out.wallet_balance_inr);
+      } catch { /* ignore — let the user keep typing */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [selected, quantity, link, user]);
 
   // Reset pagination whenever filters change
   useEffect(() => { setPageSize(PAGE_SIZE); }, [q, platform]);
@@ -343,7 +422,9 @@ const OrderSmmPage = () => {
 
   const visible = useMemo(() => filtered.slice(0, pageSize), [filtered, pageSize]);
 
-  const charge = useMemo(() => {
+  // Local fallback charge for the small "₹ Charge" pill before the server quote
+  // round-trips. Once the quote returns, the form prefers quote.charge_inr.
+  const localCharge = useMemo(() => {
     if (!selected) return 0;
     const qty = parseInt(quantity || '0', 10) || 0;
     if (qty <= 0) return 0;
@@ -382,28 +463,37 @@ const OrderSmmPage = () => {
 
   const handleSubmit = async () => {
     if (!selected) return;
+    if (!user) { navigate('/login?next=' + encodeURIComponent('/smm')); return; }
     const qty = parseInt(quantity || '0', 10) || 0;
     if (qty < (selected.min || 0) || qty > (selected.max || 0)) {
       toast.error(`Quantity must be between ${formatLargeNum(selected.min)} and ${formatLargeNum(selected.max)}`);
       return;
     }
     if (!link.trim()) { toast.error('Target link / username is required'); return; }
-    if (!contact.email.trim()) { toast.error('Email is required for the tracking link'); return; }
     setBusy(true);
     try {
       const out = await api.smmPublicOrder({
         smm_service_id: selected.id,
         quantity: qty,
         link: link.trim(),
-        email: contact.email.trim(),
-        tg: contact.tg.trim(),
-        name: user?.name || '',
-        notes: `Auto-placed via /smm public form · ${selected.category}`,
+        notes: `Wallet-paid · ${selected.category}`,
       });
-      toast.success(`Order created · ${out.order.id}`);
-      navigate(out.redirect || `/track?id=${out.order.id}&pay=1`);
+      toast.success(`Order placed · ${out.order.id} · ${formatINR(out.order.payment_amount || 0)} debited from wallet`);
+      // Tell the rest of the app the wallet just moved so badges refresh.
+      window.dispatchEvent(new CustomEvent('eh:wallet-changed'));
+      navigate(out.redirect || `/track?id=${out.order.id}`);
     } catch (e) {
-      toast.error(e.message || 'Failed to create order');
+      // The 402 "wallet_insufficient" error carries structured detail with the
+      // exact amount short — surface it as a top-up CTA instead of a raw toast.
+      const detail = e.detail;
+      if (detail && (detail.code === 'wallet_insufficient' || detail.needed_inr)) {
+        toast.error(detail.message || 'Wallet too low — top up first');
+        navigate('/me/wallet');
+      } else if (e.status === 401 || /sign in/i.test(e.message || '')) {
+        navigate('/login?next=' + encodeURIComponent('/smm'));
+      } else {
+        toast.error(e.message || 'Failed to create order');
+      }
     } finally {
       setBusy(false);
     }
@@ -570,16 +660,18 @@ const OrderSmmPage = () => {
           ) : (
             <OrderFormBody
               service={selected}
-              charge={charge}
               quantity={quantity}
               setQuantity={setQuantity}
               link={link}
               setLink={setLink}
-              contact={contact}
-              setContact={setContact}
               busy={busy}
               onSubmit={handleSubmit}
               onClear={clearSelection}
+              quote={quote || (selected ? { charge_inr: localCharge, base_charge_inr: localCharge, discount_pct: 0, discount_amount_inr: 0, tier_name: 'Rookie' } : null)}
+              loggedIn={!!user}
+              onLogin={() => navigate('/login?next=' + encodeURIComponent('/smm'))}
+              walletBalance={walletBalance}
+              onTopUp={() => navigate('/me/wallet')}
             />
           )}
 
@@ -594,16 +686,18 @@ const OrderSmmPage = () => {
         {selected && (
           <OrderFormBody
             service={selected}
-            charge={charge}
             quantity={quantity}
             setQuantity={setQuantity}
             link={link}
             setLink={setLink}
-            contact={contact}
-            setContact={setContact}
             busy={busy}
             onSubmit={handleSubmit}
             onClear={clearSelection}
+            quote={quote || { charge_inr: localCharge, base_charge_inr: localCharge, discount_pct: 0, discount_amount_inr: 0, tier_name: 'Rookie' }}
+            loggedIn={!!user}
+            onLogin={() => navigate('/login?next=' + encodeURIComponent('/smm'))}
+            walletBalance={walletBalance}
+            onTopUp={() => navigate('/me/wallet')}
             inSheet
           />
         )}
@@ -635,7 +729,7 @@ const OrderSmmPage = () => {
               <div className="text-[12px] font-semibold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{selected.name}</div>
             </div>
             <div className="text-right shrink-0">
-              <div className="eh-display font-black text-base" style={{ color: selectedMeta?.color }}>{formatINR(charge)}</div>
+              <div className="eh-display font-black text-base" style={{ color: selectedMeta?.color }}>{formatINR(quote?.charge_inr ?? localCharge)}</div>
               <div className="eh-mono text-[9px] opacity-60">PROCEED →</div>
             </div>
           </button>

@@ -243,49 +243,183 @@ const AdminSmmPanel = () => {
         </div>
       </div>
 
-      {/* Service mapping */}
-      <div className="eh-panel p-5">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div>
-            <div className="eh-mono text-[10px] tracking-widest opacity-60">// SERVICE_MAPPING</div>
-            <div className="eh-display font-black text-lg">Link your services to panel services</div>
+      <SmmOrdersInbox />
+    </div>
+  );
+};
+
+/**
+ * SmmOrdersInbox — replaces the old manual "link your service" mapping UI.
+ * Pulls /api/admin/smm/orders every 15s + on demand, shows live status of
+ * every wallet-paid SMM order, with per-row "POLL NOW" + "PLACE AGAIN".
+ */
+const SmmOrdersInbox = () => {
+  const [data, setData] = useState({ rows: [], total: 0, pending: 0, errored: 0, completed: 0 });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [busy, setBusy] = useState(null);
+
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true); else setRefreshing(true);
+    try {
+      const params = filter === 'errored' ? { has_error: 1 } : (filter === 'all' ? {} : { status: filter });
+      const out = await api.smmAdminOrders(params);
+      setData(out);
+    } catch (e) {
+      if (!silent) toast.error(e.message || 'Failed to load orders');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { load(false); }, [filter]); // eslint-disable-line
+  useEffect(() => {
+    // Auto-refresh every 15s so the inbox is always live without the admin
+    // having to think about it.
+    const t = setInterval(() => load(true), 15000);
+    return () => clearInterval(t);
+  }, [filter]); // eslint-disable-line
+
+  const pollOne = async (oid) => {
+    setBusy(oid);
+    try { await api.smmPollOrder(oid); await load(true); toast.success(`Polled ${oid}`); }
+    catch (e) { toast.error(e.message); }
+    finally { setBusy(null); }
+  };
+  const placeOne = async (oid) => {
+    setBusy(oid);
+    try { await api.smmPlaceOrder(oid); await load(true); toast.success(`Placement triggered for ${oid}`); }
+    catch (e) { toast.error(e.message); }
+    finally { setBusy(null); }
+  };
+
+  const statusColor = (s) => {
+    const t = String(s || '').toLowerCase();
+    if (t === 'completed') return '#00ff9d';
+    if (t === 'in progress' || t === 'processing' || t === 'starting') return '#4de0ff';
+    if (t === 'pending' || t === '') return '#ffd34d';
+    if (t === 'canceled' || t === 'partial' || t === 'cancelled') return '#9ca3af';
+    return '#ff3148';
+  };
+
+  return (
+    <div className="eh-panel p-5" data-testid="smm-orders-inbox">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div className="eh-mono text-[10px] tracking-widest opacity-60">// LIVE_SMM_ORDERS</div>
+          <div className="eh-display font-black text-lg flex items-center gap-2">
+            <Bot size={18} className="text-[var(--eh-green)]" /> SMM Orders Inbox
+            <span className="eh-mono text-[10px] opacity-60 font-normal">· auto-refreshes every 15s</span>
           </div>
-          <div className="eh-mono text-[11px] opacity-60">{mappedCount}/{services.length} mapped</div>
         </div>
-        {services.length === 0 ? (
-          <div className="text-center py-8 eh-mono text-xs opacity-60">No app services yet — create one under Services first.</div>
-        ) : (
-          <div className="space-y-2">
-            {services.map(s => {
-              const mapped = !!s.smm_service_id;
-              return (
-                <div key={s.id} className="grid grid-cols-12 gap-2 items-center p-3 rounded border border-[var(--eh-border)] hover:border-[rgba(0,255,157,.4)] transition-colors" data-testid={`smm-service-row-${s.id}`}>
-                  <div className="col-span-12 sm:col-span-5 min-w-0">
-                    <div className="text-sm font-semibold truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{s.name}</div>
-                    <div className="eh-mono text-[10px] opacity-50 truncate">{s.id} · {s.platform || '—'}</div>
-                  </div>
-                  <div className="col-span-7 sm:col-span-5 min-w-0">
-                    {mapped ? (
-                      <div>
-                        <div className="eh-mono text-[11px] eh-neon-soft truncate">↪ #{s.smm_service_id} {s.smm_service_name ? `· ${s.smm_service_name}` : ''}</div>
-                        {s.smm_price_per_1000_usd && <div className="eh-mono text-[10px] opacity-60">${s.smm_price_per_1000_usd}/1k · ₹{(s.smm_price_per_1000_usd * (cfg?.inr_rate || 88)).toFixed(2)}/1k cost</div>}
-                      </div>
-                    ) : (
-                      <div className="eh-mono text-[10px] opacity-50">not linked — orders will need manual placement</div>
-                    )}
-                  </div>
-                  <div className="col-span-5 sm:col-span-2 flex justify-end gap-1">
-                    {mapped && <button onClick={() => unlink(s.id)} className="text-[10px] eh-mono px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[#ff3148] hover:text-[#ff3148]" data-testid={`smm-unlink-${s.id}`}>UNLINK</button>}
-                    <button onClick={() => setPicking(s)} className="text-[10px] eh-mono px-2 py-1 rounded border border-[var(--eh-green)] text-[var(--eh-green)] hover:bg-[rgba(0,255,157,.08)]" data-testid={`smm-link-btn-${s.id}`}>{mapped ? 'CHANGE' : 'LINK'}</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => load(false)} disabled={refreshing} className="eh-btn-ghost text-xs inline-flex items-center gap-1.5" data-testid="smm-orders-refresh">
+            {refreshing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCcw size={11} />} REFRESH
+          </button>
+        </div>
       </div>
 
-      <ServicePickerModal open={!!picking} onClose={() => setPicking(null)} appService={picking} onLinked={load} />
+      {/* Summary pills + filter tabs */}
+      <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="smm-orders-filters">
+        {[
+          { id: 'all',       label: 'ALL',       count: data.total,     color: '#9ca3af' },
+          { id: 'Pending',   label: 'PENDING',   count: data.pending,   color: '#ffd34d' },
+          { id: 'Completed', label: 'COMPLETED', count: data.completed, color: '#00ff9d' },
+          { id: 'errored',   label: 'ERRORS',    count: data.errored,   color: '#ff3148' },
+        ].map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            data-testid={`smm-orders-filter-${f.id.toLowerCase()}`}
+            className="eh-mono text-[10px] tracking-widest font-bold px-2.5 py-1 rounded-full border transition-all"
+            style={{
+              borderColor: filter === f.id ? f.color : 'var(--eh-border)',
+              background: filter === f.id ? `${f.color}1a` : 'transparent',
+              color: filter === f.id ? f.color : 'var(--eh-text)',
+            }}
+          >
+            {f.label} <span className="opacity-60">· {f.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center"><Loader2 size={20} className="animate-spin inline-block opacity-70" /></div>
+      ) : data.rows.length === 0 ? (
+        <div className="text-center py-10 eh-mono text-xs opacity-60">No orders match this filter yet. They&apos;ll appear here automatically as customers pay.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" data-testid="smm-orders-table">
+            <thead>
+              <tr className="text-left eh-mono text-[10px] tracking-widest opacity-60">
+                <th className="py-2 pr-3">ORDER</th>
+                <th className="py-2 pr-3 hidden sm:table-cell">USER</th>
+                <th className="py-2 pr-3 hidden md:table-cell">SERVICE</th>
+                <th className="py-2 pr-3">QTY · ₹</th>
+                <th className="py-2 pr-3">PANEL ID</th>
+                <th className="py-2 pr-3">STATUS</th>
+                <th className="py-2 pr-0 text-right">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map(r => {
+                const c = statusColor(r.smm_status);
+                return (
+                  <tr key={r.id} className="border-t border-[var(--eh-border)] align-top" data-testid={`smm-order-row-${r.id}`}>
+                    <td className="py-2.5 pr-3 min-w-0">
+                      <div className="eh-mono text-[11px] text-[var(--eh-green)]">{r.id}</div>
+                      <div className="eh-mono text-[9px] opacity-50 mt-0.5">{new Date(r.createdAt).toLocaleString()}</div>
+                      <div className="md:hidden text-[11px] opacity-80 mt-1 truncate" style={{ fontFamily: 'Inter,sans-serif' }}>{r.smm_service_name || r.serviceName}</div>
+                    </td>
+                    <td className="py-2.5 pr-3 hidden sm:table-cell">
+                      <div className="text-[11px] truncate" style={{ fontFamily: 'Inter,sans-serif', maxWidth: 180 }}>{r.userEmail || r.email || '—'}</div>
+                      {r.tier_at_order && r.tier_at_order !== 'Rookie' && (
+                        <div className="eh-mono text-[9px] opacity-65 mt-0.5">{r.tier_at_order} {r.discount_pct ? `· −${r.discount_pct}%` : ''}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3 hidden md:table-cell">
+                      <div className="text-[11px] truncate" style={{ fontFamily: 'Inter,sans-serif', maxWidth: 240 }}>{r.smm_service_name || r.serviceName}</div>
+                      <div className="eh-mono text-[9px] opacity-50">#{r.smm_service_id}</div>
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <div className="eh-mono text-[11px]">{Number(r.smm_quantity || r.size || 0).toLocaleString('en-IN')}</div>
+                      <div className="eh-mono text-[10px] opacity-70" style={{ color: 'var(--eh-green)' }}>₹{Number(r.amount || 0).toLocaleString('en-IN')}</div>
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      {r.smm_panel_order_id ? (
+                        <span className="eh-mono text-[11px] text-[#4de0ff]">#{r.smm_panel_order_id}</span>
+                      ) : (
+                        <span className="eh-mono text-[10px] opacity-55">—</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className="eh-mono text-[9px] tracking-widest font-bold px-1.5 py-0.5 rounded uppercase whitespace-nowrap" style={{ background: `${c}1a`, color: c, border: `1px solid ${c}55` }}>
+                        {r.smm_status || 'pending'}
+                      </span>
+                      {r.smm_error && (
+                        <div className="eh-mono text-[9px] text-[#ff3148] mt-1 break-words" title={r.smm_error}>⚠ {String(r.smm_error).slice(0, 60)}{r.smm_error.length > 60 ? '…' : ''}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-0 text-right whitespace-nowrap">
+                      {r.smm_panel_order_id ? (
+                        <button onClick={() => pollOne(r.id)} disabled={busy === r.id} className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[#4de0ff] hover:text-[#4de0ff] disabled:opacity-50" data-testid={`smm-order-poll-${r.id}`}>
+                          {busy === r.id ? <Loader2 size={9} className="animate-spin inline" /> : 'POLL'}
+                        </button>
+                      ) : (
+                        <button onClick={() => placeOne(r.id)} disabled={busy === r.id} className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-green)] text-[var(--eh-green)] hover:bg-[rgba(0,255,157,.08)] disabled:opacity-50" data-testid={`smm-order-place-${r.id}`}>
+                          {busy === r.id ? <Loader2 size={9} className="animate-spin inline" /> : 'PLACE'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
