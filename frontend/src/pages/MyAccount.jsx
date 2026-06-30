@@ -27,6 +27,15 @@ import TierBadge from '../components/TierBadge';
 
 const MISSION_ICON = { calendar: Calendar, gift: Gift, zap: Zap, stethoscope: Stethoscope, sparkles: Sparkles };
 
+// Where to send the user when a mission is not yet completed. Maps to an
+// in-app route so they can finish the action and come back for the reward.
+const MISSION_GO_TO = {
+  refer_friend: { to: '/me#referrals', label: 'COPY REF LINK' },
+  place_smm:    { to: '/smm',           label: 'ORDER SMM' },
+  run_tool:     { to: '/tools',         label: 'OPEN TOOLS' },
+  spin:         { to: '/me/spin',       label: 'SPIN NOW' },
+};
+
 const StatTile = ({ Icon, label, value, suffix = '', color, to, testId }) => {
   const Wrap = to ? Link : 'div';
   const wrapProps = to ? { to } : {};
@@ -254,7 +263,7 @@ const MyAccount = () => {
           data-testid="dashboard-quote"
         >
           <span className="text-[var(--eh-green)] mr-1.5">&ldquo;</span>
-          You don't just have an account. You have a <span className="eh-neon not-italic font-bold">war room</span>.
+          You don&apos;t just have an account. You have a <span className="eh-neon not-italic font-bold">war room</span>.
           <span className="text-[var(--eh-green)] ml-1.5">&rdquo;</span>
         </blockquote>
       </div>
@@ -291,17 +300,34 @@ const MyAccount = () => {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {missions.map(m => {
             const Icon = MISSION_ICON[m.icon] || Sparkles;
+            const goTo = MISSION_GO_TO[m.id];
+            const isClaimed = m.claimed_today;
+            const isReady = m.ready_to_claim;
+            // Three visual states: CLAIMED (dimmed) · READY (bright bg) · TODO (muted with hint)
             return (
               <div
                 key={m.id}
                 className="relative overflow-hidden rounded-xl border p-4"
                 style={{
-                  borderColor: m.claimed_today ? 'var(--eh-border)' : `${m.color}55`,
-                  background: m.claimed_today ? 'rgba(255,255,255,.015)' : `linear-gradient(135deg, ${m.color}10, transparent 60%)`,
-                  opacity: m.claimed_today ? 0.55 : 1,
+                  borderColor: isClaimed
+                    ? 'var(--eh-border)'
+                    : (isReady ? `${m.color}99` : `${m.color}33`),
+                  background: isClaimed
+                    ? 'rgba(255,255,255,.015)'
+                    : (isReady
+                        ? `linear-gradient(135deg, ${m.color}1c, transparent 60%)`
+                        : `linear-gradient(135deg, ${m.color}08, transparent 60%)`),
+                  opacity: isClaimed ? 0.55 : 1,
                 }}
                 data-testid={`mission-${m.id}`}
               >
+                {isReady && (
+                  <span
+                    aria-hidden
+                    className="absolute top-0 left-0 right-0 h-[2px]"
+                    style={{ background: `linear-gradient(90deg, transparent, ${m.color}, transparent)` }}
+                  />
+                )}
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: `${m.color}1a`, border: `1px solid ${m.color}55`, color: m.color }}>
                     <Icon size={15} strokeWidth={1.8} />
@@ -309,21 +335,49 @@ const MyAccount = () => {
                   <div className="flex-1 min-w-0">
                     <div className="text-[12.5px] font-semibold leading-snug" style={{ fontFamily: 'Inter,sans-serif' }}>{m.title}</div>
                     <div className="eh-mono text-[10px] mt-1" style={{ color: m.color }}>+ ₹{m.reward_inr}</div>
+                    {!isClaimed && !isReady && m.hint && (
+                      <div
+                        className="eh-mono text-[10px] opacity-65 mt-1.5 leading-snug"
+                        data-testid={`mission-${m.id}-hint`}
+                      >
+                        {m.hint}
+                      </div>
+                    )}
                   </div>
-                  {m.claimed_today ? (
-                    <span className="eh-mono text-[9px] tracking-widest px-2 py-1 rounded border border-[var(--eh-border)] opacity-70" data-testid={`mission-${m.id}-claimed`}>
+                  {isClaimed ? (
+                    <span
+                      className="eh-mono text-[9px] tracking-widest px-2 py-1 rounded border border-[var(--eh-border)] opacity-70"
+                      data-testid={`mission-${m.id}-claimed`}
+                    >
                       ✓ CLAIMED
                     </span>
-                  ) : (
+                  ) : isReady ? (
                     <button
                       onClick={() => claimMission(m.id)}
                       disabled={busyMissionId === m.id}
-                      className="eh-mono text-[10px] tracking-widest font-bold px-2.5 py-1.5 rounded hover:brightness-110 disabled:opacity-50"
+                      className="eh-mono text-[10px] tracking-widest font-bold px-2.5 py-1.5 rounded hover:brightness-110 disabled:opacity-50 shrink-0"
                       style={{ background: m.color, color: '#000' }}
                       data-testid={`mission-${m.id}-claim`}
                     >
                       {busyMissionId === m.id ? '…' : 'CLAIM'}
                     </button>
+                  ) : goTo ? (
+                    <Link
+                      to={goTo.to}
+                      className="eh-mono text-[10px] tracking-widest font-bold px-2.5 py-1.5 rounded border hover:brightness-110 shrink-0 flex items-center gap-1"
+                      style={{ borderColor: `${m.color}66`, color: m.color, background: 'transparent' }}
+                      data-testid={`mission-${m.id}-go`}
+                    >
+                      {goTo.label} <ArrowRight size={10} />
+                    </Link>
+                  ) : (
+                    <span
+                      className="eh-mono text-[9px] tracking-widest px-2 py-1 rounded border opacity-60 shrink-0"
+                      style={{ borderColor: `${m.color}55`, color: m.color }}
+                      data-testid={`mission-${m.id}-locked`}
+                    >
+                      DO IT FIRST
+                    </span>
                   )}
                 </div>
               </div>

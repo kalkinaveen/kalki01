@@ -11,7 +11,33 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
-- **Iter-24 · Public Customer SMM Order Page** 🛒 (Feb 2026)
+- **Iter-30 · Daily Missions Anti-Cheat Fix** 🛡 (Feb 2026)
+  - **Bug reported**: User noticed they could tap CLAIM on any daily mission and get credited without actually doing the action (refer a friend, place an SMM order, use a tool, spin the wheel). The old `/api/me/missions/claim` only checked "already claimed today".
+  - **Root cause**: The endpoint never verified the mission was actually completed before crediting the wallet.
+  - **Fix** (`/app/backend/server.py`):
+    - Added a `verify` key to each entry in `_DAILY_MISSIONS` (`login` / `referral` / `smm_week` / `tool_today` / `spin_today`) plus a user-facing `hint`.
+    - New helper `_mission_completed(uid, verify)` runs the appropriate DB check: `db.referrals.count`, `db.orders` with `smm_service_id` in the last 7 days, `db.tool_usage` today, `db.spin_history` today.
+    - `GET /api/me/missions` now returns `completed` + `ready_to_claim` flags per mission.
+    - `POST /api/me/missions/claim` now refuses the credit with HTTP 400 + the mission's hint when `_mission_completed` returns false.
+  - **Frontend** (`/app/frontend/src/pages/MyAccount.jsx`):
+    - Mission card now renders three states: ✓ CLAIMED (dimmed), CLAIM button (only when `ready_to_claim`), or a brand-coloured outline "GO" button (OPEN TOOLS / SPIN NOW / ORDER SMM / COPY REF LINK) that takes the user to the right action.
+    - Hint text appears under the title for not-yet-completed missions so the user knows what to do.
+  - **Verified end-to-end** via curl: refer_friend / run_tool / spin all returned HTTP 400 with the mission-specific hint; place_smm (user had prior SMM orders) returned 200 and credited ₹50. UI now shows COPY REF LINK / OPEN TOOLS / SPIN NOW as outline buttons instead of plain CLAIM.
+
+- **Iter-29 · SMM Live-Charge Instant Update + MyWallet Multi-Color Redesign** 🎨 (Feb 2026)
+  - **What you asked for**: (1) The SMM order page's "LIVE CHARGE" box lagged behind keystrokes — every digit typed waited on a 150ms-debounced server quote round-trip. (2) `MyWallet.jsx` looked too green-on-green; needed the same premium multi-color tile aesthetic used on MissionHub / AuthShell.
+  - **Fix 1 — Instant client-side quote** (`/app/frontend/src/pages/OrderSmmPage.jsx`):
+    - `renderedQuote` now uses the `instantQuote` useMemo unconditionally, so every quantity change recomputes synchronously (`rate × qty / 1000 × (1 - tierDiscount)` clamped to `min_order_inr`). The visible ₹ value updates in the same render frame as the keystroke.
+    - The `/api/public/smm/quote` call still fires in the background (150ms debounce + AbortController) but now only refreshes `walletBalance`. It never overrides the visible charge, eliminating the stale-flicker.
+    - Removed the now-dead `quote` state.
+  - **Fix 2 — MyWallet redesign** (`/app/frontend/src/pages/MyWallet.jsx`, ~440 lines, full rewrite):
+    - Hero grid: neon-green balance tile + yellow Daily Spin tile side-by-side.
+    - 3-tile method picker: Cashfree (`#00ff9d`), Manual UPI/Bank (`#ff2d92`), Crypto (`#4de0ff`). Each tile transitions into a colour-matched form via a shared `activeColor` driving borders, quick-amount chips, and submit button.
+    - Ambient gradient blobs (green/pink/cyan) for depth — same pattern as `AuthShell`.
+    - Includes `wallet-method-back` to return to picker, `wallet-done-state` for post-submit success, and clean transactions list at the bottom.
+  - **Verified by testing agent** (`/app/test_reports/iteration_20.json`): all 5 review items pass 100%. Typing `5000` shows ₹59.37 instantly; rapid retypes (`1000`→₹11.87, `100`→₹10) confirm no stale values. MyWallet testids all wired correctly; CashfreeTopupModal still opens; manual deposit success flow verified.
+
+- **Iter-28 · Operative Pass Subscription + Wallet-Only SMM Flow** 👑 (Feb 2026)
   - **What you asked for**: a public, customer-facing place-order form so anyone can browse the 5800+ Peakerr services (priced in INR with the 40% markup already applied) and check out instantly without going through admin.
   - **Backend new endpoints** (in `/app/backend/routes/smm.py`):
     - `GET /api/public/smm/catalog?q=&platform=&category=&refresh=0` — returns rows with `rate_inr_per_1000`, `cost_usd_per_1000`, min/max, refill/dripfeed/cancel flags + `markup_percent`, `min_order_inr`, `platform_counts`. In-memory cached ~10min via `get_customer_catalog()`.

@@ -4572,28 +4572,66 @@ async def me_streak_checkin(request: Request):
 # Static daily missions — read-only for now. A real quest engine with state
 # tracking is a P2 follow-up. For ship-today we show the same list to everyone
 # and let the user explicitly claim a quest once per day per mission.
+#
+# Each mission carries a `verify` key naming the completion check applied
+# server-side before crediting the reward. Without verification users could
+# tap CLAIM without doing the action (Iter-30 bug fix).
 _DAILY_MISSIONS = [
-    {"id": "login_daily",  "title": "Log in today",                "reward_inr": 5,  "icon": "calendar", "color": "#00ff9d", "auto": True},
-    {"id": "refer_friend", "title": "Invite a friend (any new signup with your code)", "reward_inr": 100, "icon": "gift",     "color": "#ff2d92"},
-    {"id": "place_smm",    "title": "Place an SMM order this week", "reward_inr": 50, "icon": "zap",      "color": "#4de0ff"},
-    {"id": "run_tool",     "title": "Run any AI tool today",        "reward_inr": 10, "icon": "stethoscope", "color": "#ffd34d"},
-    {"id": "spin",         "title": "Use your daily spin",          "reward_inr": 10, "icon": "sparkles", "color": "#c084fc"},
+    {"id": "login_daily",  "title": "Log in today",                "reward_inr": 5,  "icon": "calendar",    "color": "#00ff9d", "verify": "login",       "auto": True},
+    {"id": "refer_friend", "title": "Invite a friend (any new signup with your code)", "reward_inr": 100, "icon": "gift",        "color": "#ff2d92", "verify": "referral",    "hint": "Share your referral link — claim once they sign up."},
+    {"id": "place_smm",    "title": "Place an SMM order this week", "reward_inr": 50, "icon": "zap",         "color": "#4de0ff", "verify": "smm_week",    "hint": "Pay for any SMM order in the last 7 days."},
+    {"id": "run_tool",     "title": "Run any AI tool today",        "reward_inr": 10, "icon": "stethoscope", "color": "#ffd34d", "verify": "tool_today",  "hint": "Use any AI tool from /tools today."},
+    {"id": "spin",         "title": "Use your daily spin",          "reward_inr": 10, "icon": "sparkles",    "color": "#c084fc", "verify": "spin_today",  "hint": "Spin the wheel from /me/spin first."},
 ]
+
+
+async def _mission_completed(uid: str, verify: str) -> bool:
+    """Server-side completion check for daily missions. Returns True only when
+    the user has actually performed the action — never trust client UI state."""
+    if not verify or verify == "login":
+        # The user is logged in to call this endpoint, so login_daily is always done.
+        return True
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    if verify == "referral":
+        return await db.referrals.count_documents({"inviter_id": uid}) > 0
+    if verify == "smm_week":
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        return await db.orders.count_documents({
+            "user_id": uid,
+            "smm_service_id": {"$exists": True, "$nin": [None, ""]},
+            "createdAt": {"$gte": week_ago},
+        }) > 0
+    if verify == "tool_today":
+        return await db.tool_usage.count_documents({
+            "user_id": uid,
+            "day": today_str,
+        }) > 0
+    if verify == "spin_today":
+        # spin_history.spun_at is ISO with Z suffix; match today's prefix
+        return await db.spin_history.count_documents({
+            "user_id": uid,
+            "spun_at": {"$regex": f"^{today_str}"},
+        }) > 0
+    return False
+
 
 @api.get("/me/missions")
 async def me_missions(request: Request):
-    """Daily missions with claim-state for the current user."""
+    """Daily missions with per-mission completion + claim state."""
     user = await require_user(request)
     uid = user["user_id"]
     today_str = datetime.now(timezone.utc).date().isoformat()
-    claimed_today = [row["mission_id"] async for row in db.mission_claims.find({"user_id": uid, "day": today_str})]
-    # Detect "auto-completable" missions — for now only login_daily
+    claimed_today = {row["mission_id"] async for row in db.mission_claims.find({"user_id": uid, "day": today_str})}
     items = []
     for m in _DAILY_MISSIONS:
+        claimed = m["id"] in claimed_today
+        # Avoid pointless DB hits — completion only matters when not yet claimed.
+        completed = True if claimed else await _mission_completed(uid, m.get("verify", ""))
         items.append({
             **m,
-            "claimed_today": m["id"] in claimed_today,
-            "ready_to_claim": m.get("auto") and m["id"] not in claimed_today,
+            "claimed_today": claimed,
+            "completed": completed,
+            "ready_to_claim": (not claimed) and completed,
         })
     return {"items": items, "day": today_str}
 
@@ -4602,7 +4640,10 @@ class MissionClaimIn(BaseModel):
 
 @api.post("/me/missions/claim")
 async def me_missions_claim(body: MissionClaimIn, request: Request):
-    """Manual quest claim. Each mission can be claimed at most once per day per user."""
+    """Manual quest claim. Each mission can be claimed at most once per day per user,
+    AND only after the mission's completion criteria are met server-side
+    (referrals, SMM order, tool use, spin). This prevents reward farming
+    by tapping CLAIM without actually doing the action."""
     user = await require_user(request)
     uid = user["user_id"]
     today_str = datetime.now(timezone.utc).date().isoformat()
@@ -4612,6 +4653,12 @@ async def me_missions_claim(body: MissionClaimIn, request: Request):
     existing = await db.mission_claims.find_one({"user_id": uid, "day": today_str, "mission_id": body.mission_id})
     if existing:
         raise HTTPException(status_code=400, detail="Already claimed today")
+    # Authoritative completion check — refuse the reward when the action wasn't done.
+    if not await _mission_completed(uid, mission.get("verify", "")):
+        raise HTTPException(
+            status_code=400,
+            detail=mission.get("hint") or "Complete the mission action first, then come back to claim.",
+        )
     await _wallet_txn(uid, "credit", float(mission["reward_inr"]), note=f"Quest reward · {mission['title']}")
     await db.mission_claims.insert_one({
         "id": f"MC-{uuid.uuid4().hex[:10].upper()}",
