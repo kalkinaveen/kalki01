@@ -11,6 +11,23 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-24 · Public Customer SMM Order Page** 🛒 (Feb 2026)
+  - **What you asked for**: a public, customer-facing place-order form so anyone can browse the 5800+ Peakerr services (priced in INR with the 40% markup already applied) and check out instantly without going through admin.
+  - **Backend new endpoints** (in `/app/backend/routes/smm.py`):
+    - `GET /api/public/smm/catalog?q=&platform=&category=&refresh=0` — returns rows with `rate_inr_per_1000`, `cost_usd_per_1000`, min/max, refill/dripfeed/cancel flags + `markup_percent`, `min_order_inr`, `platform_counts`. In-memory cached ~10min via `get_customer_catalog()`.
+    - `GET /api/public/smm/service/{smm_id}` — single row lookup.
+    - `POST /api/public/smm/quote` — returns live `charge_inr` for `{smm_service_id, quantity}` applying min-order floor; 400 for out-of-range qty.
+    - `POST /api/public/smm/order` — creates a full app order pre-bound with `smm_service_id`, `smm_quantity`, `payment_amount` and returns `{redirect: '/track?id=ORD-XXX&pay=1'}`. Email required; user_id auto-attached if logged in. Source tag = `public_smm_form`. On Cashfree payment + admin verify, the existing `place_order_for_app_order()` pipeline fires automatically.
+  - **Backend admin extras**: `SmmConfigIn` now accepts `markup_percent` + `min_order_inr` + `platforms_whitelist`. Admin SMM panel UI got matching `markup_percent` and `min_order_inr` inputs.
+  - **Backend bug fix**: `smm_service.place_order_for_app_order` previously referenced an undefined `service_doc` variable (would crash with NameError on auto-place). Replaced with the already-resolved `smm_service_id` + `smm_price_usd_per_1000` locals.
+  - **Frontend new page** `/app/frontend/src/pages/OrderSmmPage.jsx` (mounted at `/smm`):
+    - Hero with live service count, premium tile theme, platform chips (Instagram/YouTube/TikTok/Telegram/Twitter-X/Facebook/Spotify) with per-platform counts and brand colors.
+    - 200-result virtualized list of `ServiceCard` (name, category, REFILL/DRIP/CANCEL flags, min/max, big ₹/1k price).
+    - Sticky right-side `OrderForm` (link + qty + live INR charge + email/telegram), color-tinted per selected platform, big PROCEED button that hits `/api/public/smm/order` and navigates to OrderTracker.
+    - Mobile-first: chips horizontally scrollable, single-column cards, `overflow-x-hidden` + `min-w-0` constraints so nothing leaks past the viewport.
+  - **Navbar**: new "SMM" entry between Services and Books, auto-injected for existing site_config docs.
+  - **Regression tests**: 5 in `/app/backend/tests/test_smm_public.py` (catalog/quote/order/email-required/service-lookup) — all pass. Testing agent added 14 more in `test_iter15_smm_public_extra.py` covering markup PUT/refresh, cache flag, smm-place no-NameError, etc. Final score: **backend 19/19 · frontend 100% functional**.
+
 - **Iter-23 · Peakerr SMM Auto-Placement Pipeline (INR)** 🤖 (Feb 2026)
   - **What you asked for**: full automation of the SMM order flow with Peakerr API key `…201f`, INR display, safer fraud-review trigger (auto-place only when admin marks `verified`).
   - **Backend new files**:

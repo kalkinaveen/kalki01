@@ -67,7 +67,7 @@ const ServiceCard = ({ row, selected, onSelect }) => {
     <button
       data-testid={`smm-service-card-${row.id}`}
       onClick={() => onSelect(row)}
-      className="text-left w-full group relative overflow-hidden rounded-xl border transition-all p-4"
+      className="text-left w-full min-w-0 group relative overflow-hidden rounded-xl border transition-all p-4"
       style={{
         borderColor: selected ? meta.color : 'var(--eh-border)',
         background: selected ? `linear-gradient(135deg, ${meta.color}14, transparent 60%)` : 'rgba(255,255,255,0.015)',
@@ -120,7 +120,7 @@ const OrderForm = ({ service, charge, quantity, setQuantity, link, setLink, cont
   return (
     <div
       data-testid="smm-order-form"
-      className="eh-panel p-4 sm:p-5 relative overflow-hidden"
+      className="eh-panel p-4 sm:p-5 relative overflow-hidden min-w-0 max-w-full"
       style={{ borderColor: `${meta.color}55`, background: 'linear-gradient(180deg, rgba(255,255,255,.015), transparent)' }}
     >
       <span aria-hidden className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${meta.color}, transparent)` }} />
@@ -339,7 +339,7 @@ const OrderSmmPage = () => {
   }, [catalog.platform_counts]);
 
   return (
-    <div className="min-h-screen px-3 sm:px-6 py-8 sm:py-12 max-w-7xl mx-auto" data-testid="order-smm-page">
+    <div className="min-h-screen px-3 sm:px-6 py-8 sm:py-12 max-w-7xl mx-auto overflow-x-hidden" data-testid="order-smm-page">
       {/* Hero */}
       <div className="mb-6 sm:mb-8 relative">
         <div className="eh-mono text-[10px] sm:text-[11px] tracking-[0.3em] opacity-60 mb-2">// SMM_AUTO_PANEL</div>
@@ -365,7 +365,7 @@ const OrderSmmPage = () => {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[1fr_420px] gap-5 sm:gap-6">
+      <div className="grid lg:grid-cols-[1fr_420px] gap-5 sm:gap-6 min-w-0">
         {/* LEFT: catalog browse */}
         <div className="min-w-0">
           {/* Search + refresh */}
@@ -429,7 +429,7 @@ const OrderSmmPage = () => {
                   <Tag size={10} /> markup {catalog.markup_percent}% · min {formatINR(catalog.min_order_inr)}
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
                 {filtered.map(r => (
                   <ServiceCard key={r.id} row={r} selected={selected?.id === r.id} onSelect={handleSelect} />
                 ))}
