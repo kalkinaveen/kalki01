@@ -664,10 +664,10 @@ const OrderSmmPage = () => {
         @keyframes eh-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes eh-fade-in  { from { opacity: 0; } to { opacity: 1; } }
 
-        /* ERROR_SMM_PANEL badge — red glitch pulse */
+        /* ERROR_SMM_PANEL badge — brand-pink glitch pulse */
         @keyframes eh-error-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(255,49,72,0.55), inset 0 0 12px rgba(255,49,72,0.08); }
-          50%      { box-shadow: 0 0 0 6px rgba(255,49,72,0.0),  inset 0 0 18px rgba(255,49,72,0.18); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255,45,146,0.55), inset 0 0 12px rgba(255,45,146,0.08); }
+          50%      { box-shadow: 0 0 0 6px rgba(255,45,146,0.0),  inset 0 0 18px rgba(255,45,146,0.18); }
         }
         @keyframes eh-error-flicker {
           0%, 92%, 100% { opacity: 1; }
@@ -681,22 +681,22 @@ const OrderSmmPage = () => {
           50%      { transform: scale(1.35); opacity: 0.6; }
         }
         .eh-error-badge {
-          border-color: rgba(255,49,72,0.55);
-          background: linear-gradient(180deg, rgba(255,49,72,0.10), rgba(255,49,72,0.02));
+          border-color: rgba(255,45,146,0.55);
+          background: linear-gradient(180deg, rgba(255,45,146,0.12), rgba(255,45,146,0.02));
           animation: eh-error-pulse 2.4s ease-in-out infinite;
           backdrop-filter: blur(8px);
         }
         .eh-error-dot {
           width: 7px; height: 7px; border-radius: 999px;
-          background: #ff3148;
-          box-shadow: 0 0 10px #ff3148, 0 0 22px rgba(255,49,72,0.55);
+          background: #ff2d92;
+          box-shadow: 0 0 10px #ff2d92, 0 0 22px rgba(255,45,146,0.6);
           animation: eh-error-dot-blink 1.1s ease-in-out infinite;
         }
         .eh-error-text {
-          color: #ff3148;
+          color: #ff2d92;
           text-shadow:
-            0 0 8px rgba(255,49,72,0.85),
-            0 0 18px rgba(255,49,72,0.35),
+            0 0 8px rgba(255,45,146,0.85),
+            0 0 18px rgba(255,45,146,0.35),
             1px 0 0 rgba(0,229,255,0.35),
             -1px 0 0 rgba(255,200,0,0.25);
           animation: eh-error-flicker 4.2s linear infinite;
