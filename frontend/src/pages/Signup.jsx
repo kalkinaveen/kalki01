@@ -12,9 +12,11 @@ import AuthShell from '../components/AuthShell';
 const scorePw = (pw = '') => {
   if (!pw) return 0;
   let s = 0;
-  if (pw.length >= 6) s++;
+  if (pw.length >= 6)  s++;
   if (pw.length >= 10) s++;
-  if (/[0-9]/.test(pw) && /[a-zA-Z]/.test(pw)) s++;
+  // A long pure-letter or pure-digit password is plenty strong — don't punish
+  // friendly users for skipping the "must have a number" tax.
+  if ((pw.length >= 14) || (/[0-9]/.test(pw) && /[a-zA-Z]/.test(pw))) s++;
   return Math.min(s, 3);
 };
 const STRENGTH = ['Too short', 'Weak', 'Okay', 'Strong'];
