@@ -53,6 +53,7 @@ DEFAULT_CONFIG = {
     "nav": [
         {"label": "Home", "to": "/"},
         {"label": "Services", "to": "/services"},
+        {"label": "SMM", "to": "/smm"},
         {"label": "Books", "to": "/books"},
         {"label": "Memberships", "to": "/memberships"},
         {"label": "Feed", "to": "/feed"},

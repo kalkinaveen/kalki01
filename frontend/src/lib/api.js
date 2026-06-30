@@ -161,6 +161,12 @@ export const api = {
   smmUnlinkService: (sid) => req(`/admin/services/${sid}/smm-link`, { method: 'DELETE', admin: true }),
   smmPlaceOrder: (oid) => req(`/admin/orders/${oid}/smm-place`, { method: 'POST', admin: true }),
   smmPollOrder: (oid) => req(`/admin/orders/${oid}/smm-poll`, { method: 'POST', admin: true }),
+  // SMM customer-facing catalog
+  smmCatalog: ({ q = '', platform = '', category = '', refresh = 0 } = {}) =>
+    req(`/public/smm/catalog?q=${encodeURIComponent(q)}&platform=${encodeURIComponent(platform)}&category=${encodeURIComponent(category)}${refresh ? '&refresh=1' : ''}`),
+  smmPublicService: (smmId) => req(`/public/smm/service/${smmId}`),
+  smmPublicQuote: (data) => req('/public/smm/quote', { method: 'POST', body: data }),
+  smmPublicOrder: (data) => req('/public/smm/order', { method: 'POST', body: data, auth: true }),
   // users (admin)
   listUsers: () => req('/admin/users', { admin: true }),
   deleteUser: (uid) => req(`/admin/users/${uid}`, { admin: true, method: 'DELETE' }),

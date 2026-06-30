@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 15 — full backend + frontend regression for the new /smm customer-facing SMM order flow. Backend: 19/19 tests pass (5 existing in test_smm_public.py + 14 new in test_iter15_smm_public_extra.py) covering catalog INR/markup/cache/filters, quote 400/404 + min-floor, order persistence with smm_service_id binding + source=public_smm_form, missing-email 400, admin config PUT for markup_percent/min_order_inr with refresh=1 reflection, and the place_order_for_app_order bug-fix (no NameError, smm_error populated on $0 panel). Frontend: hero, navbar SMM link, 9 platform chips with counts, 200 service cards, search filter, platform chip filter (Instagram/YouTube confirmed by first-card title change), order form open with pre-filled qty + live ₹ charge + min_order floor, submit disabled without email, end-to-end PROCEED click creates ORD-XXX, navigates to /track?id=ORD-XXX&pay=1, OrderTracker timeline + Cashfree/Manual UPI/Crypto payment box rendered with PAY ₹10 button. Toast 'Order created · ORD-XXX' confirmed. Mobile (390x844): chips horizontally scrollable, 1-col cards, form below catalog, large thumb-friendly submit button.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/smm @ 390x844", "issues": ["Slight horizontal overflow — service cards render at ~426px wide and the order form's LIVE CHARGE box + PAY/PROCEED button extend past the 390px viewport (submit bbox x=17 width=392 → right edge ~409). Causes minor crop / horizontal scroll on small phones. Consider max-w-[100vw] + overflow-x-hidden on the OrderForm grid and narrower card min-width on <sm."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_smm_public.py",
+    "/app/backend/tests/test_iter15_smm_public_extra.py",
+    "/app/test_reports/pytest/iter15_smm_public.xml",
+    "/app/test_reports/pytest/iter15_extra.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix mobile horizontal overflow on /smm — constrain ServiceCard and OrderForm to 100vw; the 'LIVE CHARGE' chip and submit button currently overflow the 390px viewport by ~20px."
+  ],
+  "critical_code_review_comments": [
+    "OrderSmmPage.jsx caps displayed results at 200 (line 276 .slice(0,200)). When users filter by a large platform (Instagram has 1898 services) the UI shows 200 but the counter says 'refine your search to see more' — this is fine but consider adding a 'show all N' control or virtualized list for power users.",
+    "routes/smm.py public_create_order best-effort calls server._notify_order via local `import server` (line 314) — this works but creates a runtime circular dep that could blow up under early-startup edge cases. Consider passing the notifier callback into make_router() like get_user_from_request was wired.",
+    "PublicSmmOrderIn pydantic model: `quantity: int` has no constraint — large/negative values are validated inside the handler, but adding `Field(gt=0)` would surface a 422 earlier and keep handler logic minimal.",
+    "The cache 'cached:true' is keyed globally per-process, not by query — that's expected (rows are filtered after fetch), but in multi-worker deployments each worker holds its own cache so freshness behavior is non-deterministic across replicas. Acceptable for now.",
+    "Order doc stored from public form does not include `payment_provider` hint — frontend payload always assumes Cashfree default which is fine, but logging which channel customer eventually picks would help support."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter15_smm_public_extra.py (new)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% functional · 1 minor mobile overflow"},
+  "test_credentials": "admin password: admin123 (POST /api/admin/login → X-Admin-Token). No user login needed for /smm (guest checkout supported).",
+  "seed_data_creation": "Created two ephemeral TEST_iter15* public SMM orders (one for persistence check, one for smm-place check). Both remain in DB at status='received' (unpaid). Live ORD created via UI: ORD-A735B7E1A3.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public catalog cache TTL is ~10min; if you change admin smm config, append ?refresh=1 to /api/public/smm/catalog or the next call will still return stale pricing. The Peakerr panel has $0 balance — POST /api/admin/orders/{oid}/smm-place will always return ok:false with smm_error containing 'Not enough funds' (this is correct, not a bug). DO NOT PATCH /orders to status=verified during tests — that triggers auto-place which will fail in production logs. Frontend cards are sliced to 200 (OrderSmmPage.jsx line 276); to confirm filters use the first-card title text, not count.",
+  "rca of the issue": "N/A — all reviewed bugs were already fixed by main agent. The previously-undefined `service_doc` reference in smm_service.place_order_for_app_order is confirmed gone (test_smm_place_uses_smm_service_id_no_nameerror returns 200 with smm_error correctly populated and no 'service_doc' string in the error)."
+}

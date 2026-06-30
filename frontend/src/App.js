@@ -42,6 +42,7 @@ import OrderDetail from './pages/OrderDetail';
 import ReferralsPage from './pages/ReferralsPage';
 import CartPage from './pages/CartPage';
 import FeedPage from './pages/FeedPage';
+import OrderSmmPage from './pages/OrderSmmPage';
 import ScrollToTop from './components/ScrollToTop';
 import Analytics from './components/Analytics';
 
@@ -93,6 +94,7 @@ function App() {
                 <Route path="/me/orders/:id" element={<SiteShell><OrderDetail /></SiteShell>} />
                 <Route path="/me/referrals" element={<SiteShell><ReferralsPage /></SiteShell>} />
                 <Route path="/cart" element={<SiteShell><CartPage /></SiteShell>} />
+                <Route path="/smm" element={<SiteShell><OrderSmmPage /></SiteShell>} />
                 <Route path="/feed" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/feed/p/:postId" element={<SiteShell><FeedPage /></SiteShell>} />
                 <Route path="/feed/r/:reelId" element={<SiteShell><FeedPage /></SiteShell>} />

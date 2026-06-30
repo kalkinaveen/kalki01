@@ -426,6 +426,22 @@ async def _ensure_config():
             updates["nav"] = new_nav
     except Exception:
         pass
+    # Make sure 'SMM' nav entry exists (insert after /services if available, else append)
+    try:
+        nav = updates.get("nav") or doc.get("nav") or []
+        if not any(n.get("to") == "/smm" for n in nav):
+            new_nav = []
+            inserted = False
+            for n in nav:
+                new_nav.append(n)
+                if not inserted and n.get("to") == "/services":
+                    new_nav.append({"label": "SMM", "to": "/smm"})
+                    inserted = True
+            if not inserted:
+                new_nav.append({"label": "SMM", "to": "/smm"})
+            updates["nav"] = new_nav
+    except Exception:
+        pass
     # Recovery: merge in any new platforms / services from defaults (keyed by 'key' / 'id')
     # so existing deployments pick up newly-added recovery options without losing customisations.
     try:
@@ -5084,7 +5100,7 @@ from routes.cashfree import router as cashfree_router  # noqa: E402
 api.include_router(cashfree_router)
 
 from routes.smm import make_router as _make_smm_router  # noqa: E402
-api.include_router(_make_smm_router(db, _check_admin))
+api.include_router(_make_smm_router(db, _check_admin, _get_user_from_request))
 
 app.include_router(api)
 app.add_middleware(

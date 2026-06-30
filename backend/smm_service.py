@@ -303,7 +303,7 @@ async def place_order_for_app_order(db, order: Dict[str, Any]) -> Dict[str, Any]
     # Place the order
     client = SmmClient(cfg["url"], cfg["api_key"])
     try:
-        placed = await client.add_order(int(service_doc["smm_service_id"]), link, qty)
+        placed = await client.add_order(smm_service_id, link, qty)
     except Exception as e:
         out_fields["smm_error"] = f"panel call failed: {e}"
         await db.orders.update_one({"id": order_id}, {"$set": out_fields})
@@ -316,7 +316,7 @@ async def place_order_for_app_order(db, order: Dict[str, Any]) -> Dict[str, Any]
         return {**order, **out_fields}
 
     inr_rate = float(cfg.get("inr_rate") or DEFAULT_INR_RATE)
-    rate_usd_per_1000 = float(service_doc.get("smm_price_per_1000_usd") or 0)
+    rate_usd_per_1000 = float(smm_price_usd_per_1000 or 0)
     charge_usd = (rate_usd_per_1000 * qty) / 1000.0 if rate_usd_per_1000 else 0.0
     out_fields.update({
         "smm_panel_order_id": int(panel_oid),
@@ -324,7 +324,7 @@ async def place_order_for_app_order(db, order: Dict[str, Any]) -> Dict[str, Any]
         "smm_placed_at": _now_iso(),
         "smm_charge_usd": round(charge_usd, 4),
         "smm_charge_inr": round(charge_usd * inr_rate, 2),
-        "smm_service_id_used": int(service_doc["smm_service_id"]),
+        "smm_service_id_used": smm_service_id,
         "smm_quantity": qty,
         "smm_error": "",
     })

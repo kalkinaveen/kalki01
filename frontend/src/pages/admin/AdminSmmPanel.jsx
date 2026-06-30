@@ -100,7 +100,7 @@ const AdminSmmPanel = () => {
   const [editing, setEditing] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [picking, setPicking] = useState(null);
-  const [form, setForm] = useState({ enabled: false, url: '', api_key: '', inr_rate: 88, low_balance_inr: 500, auto_place_on_verified: true });
+  const [form, setForm] = useState({ enabled: false, url: '', api_key: '', inr_rate: 88, low_balance_inr: 500, markup_percent: 40, min_order_inr: 10, auto_place_on_verified: true });
 
   const load = async () => {
     setLoading(true);
@@ -119,6 +119,8 @@ const AdminSmmPanel = () => {
         api_key: '',
         inr_rate: c.inr_rate || 88,
         low_balance_inr: c.low_balance_inr || 500,
+        markup_percent: c.markup_percent ?? 40,
+        min_order_inr: c.min_order_inr ?? 10,
         auto_place_on_verified: c.auto_place_on_verified !== false,
       });
     } catch (e) { toast.error(e.message); }
@@ -213,6 +215,16 @@ const AdminSmmPanel = () => {
           <div>
             <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">LOW BALANCE ALERT @ (₹)</label>
             <input type="number" step="any" value={form.low_balance_inr} disabled={!editing} onChange={e => setForm({ ...form, low_balance_inr: parseFloat(e.target.value) || 0 })} className="eh-input text-sm w-full" />
+          </div>
+          <div>
+            <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">PROFIT MARKUP (%)</label>
+            <input type="number" step="any" value={form.markup_percent} disabled={!editing} onChange={e => setForm({ ...form, markup_percent: parseFloat(e.target.value) || 0 })} className="eh-input text-sm w-full" data-testid="smm-config-markup" />
+            <div className="eh-mono text-[9px] opacity-50 mt-1">Added on top of panel cost · shown to customer at /smm</div>
+          </div>
+          <div>
+            <label className="eh-mono text-[10px] tracking-widest opacity-60 mb-1 block">MIN ORDER FLOOR (₹)</label>
+            <input type="number" step="any" value={form.min_order_inr} disabled={!editing} onChange={e => setForm({ ...form, min_order_inr: parseFloat(e.target.value) || 0 })} className="eh-input text-sm w-full" data-testid="smm-config-min-order" />
+            <div className="eh-mono text-[9px] opacity-50 mt-1">Below this, the charge is rounded up to floor (covers panel fees)</div>
           </div>
           <label className={`eh-panel p-3 flex items-center gap-3 cursor-${editing ? 'pointer' : 'default'} col-span-1 sm:col-span-2`}>
             <input type="checkbox" checked={form.enabled} disabled={!editing} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="w-4 h-4 accent-[var(--eh-green)]" data-testid="smm-config-enabled" />
