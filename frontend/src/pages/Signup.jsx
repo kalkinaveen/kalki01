@@ -1,9 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Lock, Mail, User, ArrowRight, Loader2, Gift } from 'lucide-react';
+import { Mail, Lock, User, Gift, ArrowRight, Loader2, Eye, EyeOff, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import Logo from '../components/Logo';
+import AuthShell from '../components/AuthShell';
+
+/**
+ * Tiny inline password strength meter — friendly, not gatekeepy.
+ * Score 0..3: weak / okay / strong.
+ */
+const scorePw = (pw = '') => {
+  if (!pw) return 0;
+  let s = 0;
+  if (pw.length >= 6) s++;
+  if (pw.length >= 10) s++;
+  if (/[0-9]/.test(pw) && /[a-zA-Z]/.test(pw)) s++;
+  return Math.min(s, 3);
+};
+const STRENGTH = ['Too short', 'Weak', 'Okay', 'Strong'];
+const STRENGTH_COLOR = ['#777', '#ff7a3d', '#ffd34d', '#00ff9d'];
 
 const Signup = () => {
   const { register, user } = useAuth();
@@ -15,62 +30,181 @@ const Signup = () => {
   const [name, setName] = useState('');
   const [ref, setRef] = useState(refFromUrl);
   const [busy, setBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   useEffect(() => { if (user) nav('/me'); }, [user, nav]);
   useEffect(() => { if (refFromUrl) setRef(refFromUrl); }, [refFromUrl]);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!email || !pw) { toast.error('Email & password required'); return; }
-    if (pw.length < 4) { toast.error('Password too short (min 4 chars)'); return; }
+    if (!email || !pw) { toast.error('Please enter your email and password'); return; }
+    if (pw.length < 4) { toast.error('Password is a bit short — please use at least 4 characters'); return; }
     setBusy(true);
-    try { await register(email, pw, name, ref || null); toast.success(refFromUrl ? 'Welcome — referral bonus applied' : 'Welcome aboard, operator'); nav('/me'); }
-    catch (err) { toast.error(err.message || 'Signup failed'); }
-    finally { setBusy(false); }
+    try {
+      await register(email, pw, name, ref || null);
+      toast.success(refFromUrl ? 'Welcome — your referral bonus is on the way!' : 'Welcome to ERRORHACKER!');
+      nav('/me');
+    } catch (err) {
+      toast.error(err.message || 'Signup failed — please try again');
+    } finally {
+      setBusy(false);
+    }
   };
 
+  const pwScore = scorePw(pw);
+
   return (
-    <section className="min-h-[88vh] flex items-center justify-center eh-grid-bg px-4 py-8 sm:py-12">
-      <div className="w-full max-w-md relative">
-        <div aria-hidden className="absolute -top-10 -left-10 w-32 h-32 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--eh-green) 0%, transparent 70%)' }} />
-        <div aria-hidden className="absolute -bottom-12 -right-6 w-40 h-40 rounded-full opacity-20 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--eh-green) 0%, transparent 70%)' }} />
-        <div className="relative eh-panel eh-brackets px-5 py-6 sm:p-8" style={{ background: 'rgba(8,10,12,.92)', backdropFilter: 'blur(8px)' }}>
-          <span className="br-bl" /><span className="br-br" />
-          <div className="flex flex-col items-center text-center mb-6 sm:flex-row sm:text-left sm:items-center sm:gap-3">
-            <Logo size={48} />
-            <div className="mt-3 sm:mt-0">
-              <div className="eh-brand font-black tracking-widest text-base sm:text-lg eh-neon-soft">CREATE_OPERATOR</div>
-              <div className="eh-mono text-[10px] opacity-60 mt-0.5">// join the network</div>
-            </div>
-          </div>
-          <form onSubmit={submit} className="space-y-4" data-testid="signup-form">
-            <div>
-              <label className="eh-mono text-[11px] tracking-widest opacity-70 mb-2 flex items-center gap-2"><User size={12} /> NAME <span className="opacity-50 normal-case">— optional</span></label>
-              <input value={name} onChange={e=>setName(e.target.value)} data-testid="signup-name" className="eh-input text-base py-3.5" placeholder="> alias" />
-            </div>
-            <div>
-              <label className="eh-mono text-[11px] tracking-widest opacity-70 mb-2 flex items-center gap-2"><Mail size={12} /> EMAIL</label>
-              <input value={email} onChange={e=>setEmail(e.target.value)} type="email" data-testid="signup-email" autoComplete="email" inputMode="email" className="eh-input text-base py-3.5" placeholder="> operator@domain.com" />
-            </div>
-            <div>
-              <label className="eh-mono text-[11px] tracking-widest opacity-70 mb-2 flex items-center gap-2"><Lock size={12} /> PASSWORD</label>
-              <input value={pw} onChange={e=>setPw(e.target.value)} type="password" data-testid="signup-password" autoComplete="new-password" className="eh-input text-base py-3.5" placeholder="> min 4 chars" />
-            </div>
-            <div>
-              <label className="eh-mono text-[11px] tracking-widest opacity-70 mb-2 flex items-center gap-2"><Gift size={12} /> REFERRAL <span className="opacity-50 normal-case">— optional</span></label>
-              <input value={ref} onChange={e=>setRef(e.target.value.toUpperCase())} data-testid="signup-ref" className="eh-input text-base py-3.5" placeholder="> EHXXXXXX" />
-              {refFromUrl && <div className="eh-mono text-[10px] mt-1.5 text-[var(--eh-green)]">✓ referral applied — both you & inviter get rewarded</div>}
-            </div>
-            <button disabled={busy} type="submit" data-testid="signup-submit" className="eh-btn-primary w-full justify-center py-3.5 text-sm font-bold">
-              {busy ? <Loader2 className="animate-spin" size={14} /> : <ArrowRight size={14} />} {busy ? 'CREATING' : 'CREATE_ACCOUNT'}
-            </button>
-          </form>
-          <div className="mt-6 text-center eh-mono text-xs opacity-70">
-            Already have an account? <Link to="/login" className="text-[var(--eh-green)] hover:underline font-bold">log_in</Link>
-          </div>
-        </div>
+    <AuthShell
+      kicker="CREATE ACCOUNT"
+      title={<>Let's get you <span className="eh-neon">started</span></>}
+      subtitle="Sign up in seconds. Track orders, fund a wallet, request recovery, and unlock 5,800+ growth services — all under one roof."
+      footer={
+        <>
+          Already on board?{' '}
+          <Link to="/login" className="text-[var(--eh-green)] font-bold hover:underline" data-testid="signup-link-login">
+            Sign in
+          </Link>
+        </>
+      }
+    >
+      <div className="mb-5">
+        <h2 className="font-bold text-xl sm:text-2xl mb-1" style={{ fontFamily: 'Inter, sans-serif' }}>
+          Create your free account
+        </h2>
+        <p className="text-xs sm:text-sm opacity-65" style={{ fontFamily: 'Inter, sans-serif' }}>
+          No credit card. No commitment. You can delete your account anytime.
+        </p>
       </div>
-    </section>
+
+      <form onSubmit={submit} className="space-y-4" data-testid="signup-form">
+        <div>
+          <label
+            htmlFor="signup-name"
+            className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5 opacity-80"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            <User size={13} /> Your name <span className="opacity-50 font-normal">— optional</span>
+          </label>
+          <input
+            id="signup-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            data-testid="signup-name"
+            className="eh-input text-base py-3"
+            placeholder="What should we call you?"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="signup-email"
+            className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5 opacity-80"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            <Mail size={13} /> Email
+          </label>
+          <input
+            id="signup-email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            type="email"
+            data-testid="signup-email"
+            autoComplete="email"
+            inputMode="email"
+            className="eh-input text-base py-3"
+            placeholder="you@email.com"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="signup-password"
+            className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5 opacity-80"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            <Lock size={13} /> Password
+          </label>
+          <div className="relative">
+            <input
+              id="signup-password"
+              value={pw}
+              onChange={e => setPw(e.target.value)}
+              type={showPw ? 'text' : 'password'}
+              data-testid="signup-password"
+              autoComplete="new-password"
+              className="eh-input text-base py-3 pr-11"
+              placeholder="At least 4 characters"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw(v => !v)}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 opacity-60 hover:opacity-100 transition-opacity"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              data-testid="signup-toggle-pw"
+            >
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+          {/* Friendly strength meter — only renders once the user starts typing */}
+          {pw && (
+            <div className="mt-2 flex items-center gap-2" data-testid="signup-pw-strength">
+              <div className="flex-1 h-1.5 bg-[var(--eh-border)] rounded-full overflow-hidden">
+                <div
+                  className="h-full transition-all duration-300"
+                  style={{
+                    width: `${((pwScore + 1) / 4) * 100}%`,
+                    background: STRENGTH_COLOR[pwScore],
+                  }}
+                />
+              </div>
+              <span className="eh-mono text-[10px]" style={{ color: STRENGTH_COLOR[pwScore] }}>
+                {STRENGTH[pwScore]}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="signup-ref"
+            className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5 opacity-80"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            <Gift size={13} /> Referral code <span className="opacity-50 font-normal">— optional</span>
+          </label>
+          <input
+            id="signup-ref"
+            value={ref}
+            onChange={e => setRef(e.target.value.toUpperCase())}
+            data-testid="signup-ref"
+            className="eh-input text-base py-3"
+            placeholder="EHXXXXXX"
+          />
+          {refFromUrl && (
+            <div className="mt-1.5 inline-flex items-center gap-1.5 eh-mono text-[10px] text-[var(--eh-green)]" data-testid="signup-ref-applied">
+              <Check size={11} /> Referral applied — you and your inviter both get rewarded
+            </div>
+          )}
+        </div>
+
+        <button
+          disabled={busy}
+          type="submit"
+          data-testid="signup-submit"
+          className="eh-btn-primary w-full justify-center py-3 text-sm font-bold mt-2 disabled:opacity-50"
+        >
+          {busy ? (
+            <><Loader2 className="animate-spin" size={14} /> Creating your account…</>
+          ) : (
+            <>Create account <ArrowRight size={14} /></>
+          )}
+        </button>
+      </form>
+
+      <div className="mt-4 eh-mono text-[10px] opacity-55 text-center leading-relaxed">
+        Your data stays private — we never email-spam or sell anything.
+      </div>
+    </AuthShell>
   );
 };
 
