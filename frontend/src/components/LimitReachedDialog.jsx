@@ -138,7 +138,7 @@ const LimitReachedDialog = ({ open, detail, onClose, formStateKey = null, formSt
                 Submit your case to our recovery team. Free quote in 24h, pay only on success.
               </div>
               <Link
-                to={`/recovery?service=${recoveryService}&from=${detail.tool}`}
+                to={`/recovery?service=${recoveryService}&from=${detail.tool || 'tool'}`}
                 onClick={() => { persistFormState(); onClose(); }}
                 className="mt-2.5 inline-flex items-center gap-1.5 eh-mono text-[11px] tracking-widest font-bold text-black bg-[var(--eh-green)] px-3 py-1.5 rounded hover:brightness-110"
                 data-testid="limit-recovery-escape"
