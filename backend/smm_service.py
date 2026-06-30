@@ -25,6 +25,13 @@ log = logging.getLogger("smm")
 DEFAULT_PANEL_URL = "https://peakerr.com/api/v2"
 DEFAULT_INR_RATE = 88.0  # USD → INR fallback if admin hasn't set one (panel quotes rates in USD)
 DEFAULT_LOW_BALANCE_INR = 500.0  # admin gets a Telegram nudge when wallet drops below this
+DEFAULT_MARKUP_PERCENT = 40.0    # your profit added on top of panel cost
+DEFAULT_MIN_ORDER_INR = 10.0     # below this, the order can't be placed (panel fees would eat margin)
+DEFAULT_PLATFORM_WHITELIST = [
+    "instagram", "youtube", "tiktok", "telegram",
+    "twitter", "x ", "facebook", "spotify",
+]
+DEFAULT_CATALOG_TTL_SEC = 600  # 10 min — Peakerr prices change rarely; refetch every 10 min
 
 
 def _now_iso() -> str:
@@ -84,12 +91,26 @@ async def get_config(db) -> Dict[str, Any]:
             "api_key": "",
             "inr_rate": DEFAULT_INR_RATE,
             "low_balance_inr": DEFAULT_LOW_BALANCE_INR,
+            "markup_percent": DEFAULT_MARKUP_PERCENT,
+            "min_order_inr": DEFAULT_MIN_ORDER_INR,
+            "platforms_whitelist": DEFAULT_PLATFORM_WHITELIST,
             "auto_place_on_verified": True,
             "last_balance_usd": 0.0,
             "last_balance_at": None,
             "updated_at": _now_iso(),
         }
         await db.smm_config.insert_one(doc)
+    # Backfill defaults on existing configs created before these fields existed
+    backfill = {}
+    if doc.get("markup_percent") is None:
+        backfill["markup_percent"] = DEFAULT_MARKUP_PERCENT
+    if doc.get("min_order_inr") is None:
+        backfill["min_order_inr"] = DEFAULT_MIN_ORDER_INR
+    if not doc.get("platforms_whitelist"):
+        backfill["platforms_whitelist"] = DEFAULT_PLATFORM_WHITELIST
+    if backfill:
+        await db.smm_config.update_one({"_id": "main"}, {"$set": backfill})
+        doc.update(backfill)
     return doc
 
 
@@ -105,6 +126,116 @@ async def get_client(db) -> Optional[SmmClient]:
     if not cfg.get("enabled") or not cfg.get("api_key"):
         return None
     return SmmClient(cfg["url"], cfg["api_key"])
+
+
+# ----- Customer-facing catalog ------------------------------------------
+# In-memory cache to avoid hammering the panel on every page load. Peakerr
+# returns ~5,900 entries which is ~1.5 MB JSON; we filter + reshape it once
+# every DEFAULT_CATALOG_TTL_SEC.
+_CATALOG_CACHE: Dict[str, Any] = {"at": 0.0, "rows": [], "categories": []}
+
+
+def _platform_of(name: str, category: str, whitelist: List[str]) -> Optional[str]:
+    """Return the platform slug if either name or category contains a whitelisted token."""
+    blob = f"{name} {category}".lower()
+    for p in whitelist:
+        if p.lower().strip() in blob:
+            return p.lower().strip()
+    return None
+
+
+def _customer_price_inr(usd_per_1000: float, inr_rate: float, markup_pct: float) -> float:
+    """Cost → customer-facing rate per 1000, INR, including markup. Always >= 0."""
+    if usd_per_1000 <= 0:
+        return 0.0
+    cost_inr = usd_per_1000 * inr_rate
+    return round(cost_inr * (1.0 + (markup_pct or 0) / 100.0), 4)
+
+
+def compute_charge_inr(price_per_1000_inr: float, quantity: int, min_order_inr: float) -> float:
+    """Customer-facing total INR for `quantity` units. Honors the minimum order floor."""
+    raw = (price_per_1000_inr * max(quantity, 0)) / 1000.0
+    return round(max(raw, float(min_order_inr or 0)), 2)
+
+
+async def get_customer_catalog(db, force_refresh: bool = False) -> Dict[str, Any]:
+    """Return the customer-facing catalog: services filtered by platform whitelist,
+    priced in INR with markup, grouped categories. Cached for DEFAULT_CATALOG_TTL_SEC."""
+    import time
+    cfg = await get_config(db)
+    now = time.time()
+    cache_age = now - float(_CATALOG_CACHE.get("at", 0))
+    if not force_refresh and cache_age < DEFAULT_CATALOG_TTL_SEC and _CATALOG_CACHE.get("rows"):
+        return {
+            "rows": _CATALOG_CACHE["rows"],
+            "categories": _CATALOG_CACHE["categories"],
+            "inr_rate": float(cfg.get("inr_rate") or DEFAULT_INR_RATE),
+            "markup_percent": float(cfg.get("markup_percent") or DEFAULT_MARKUP_PERCENT),
+            "min_order_inr": float(cfg.get("min_order_inr") or DEFAULT_MIN_ORDER_INR),
+            "cached": True,
+            "age_sec": int(cache_age),
+        }
+    if not cfg.get("enabled") or not cfg.get("api_key"):
+        return {"rows": [], "categories": [], "inr_rate": 0, "markup_percent": 0, "min_order_inr": 0, "cached": False, "error": "panel disabled"}
+    inr_rate = float(cfg.get("inr_rate") or DEFAULT_INR_RATE)
+    markup_pct = float(cfg.get("markup_percent") or DEFAULT_MARKUP_PERCENT)
+    min_order = float(cfg.get("min_order_inr") or DEFAULT_MIN_ORDER_INR)
+    whitelist = list(cfg.get("platforms_whitelist") or DEFAULT_PLATFORM_WHITELIST)
+    client = SmmClient(cfg["url"], cfg["api_key"])
+    try:
+        raw = await client.services()
+    except Exception as e:
+        log.warning("catalog refresh failed: %s", e)
+        return {"rows": _CATALOG_CACHE.get("rows", []), "categories": _CATALOG_CACHE.get("categories", []), "inr_rate": inr_rate, "markup_percent": markup_pct, "min_order_inr": min_order, "cached": True, "error": str(e)}
+    rows = []
+    for s in raw:
+        name = str(s.get("name") or "")
+        category = str(s.get("category") or "")
+        platform = _platform_of(name, category, whitelist)
+        if not platform:
+            continue
+        try:
+            cost_usd = float(s.get("rate") or 0)
+        except Exception:
+            cost_usd = 0.0
+        rate_inr = _customer_price_inr(cost_usd, inr_rate, markup_pct)
+        rows.append({
+            "id": int(s.get("service")),
+            "name": name,
+            "category": category,
+            "platform": platform,
+            "type": s.get("type") or "Default",
+            "min": int(s.get("min") or 0),
+            "max": int(s.get("max") or 0),
+            "dripfeed": bool(s.get("dripfeed")),
+            "refill": bool(s.get("refill")),
+            "cancel": bool(s.get("cancel")),
+            "rate_inr_per_1000": rate_inr,
+            "cost_usd_per_1000": cost_usd,
+        })
+    categories = sorted({r["category"] for r in rows if r["category"]})
+    _CATALOG_CACHE["at"] = now
+    _CATALOG_CACHE["rows"] = rows
+    _CATALOG_CACHE["categories"] = categories
+    return {
+        "rows": rows,
+        "categories": categories,
+        "inr_rate": inr_rate,
+        "markup_percent": markup_pct,
+        "min_order_inr": min_order,
+        "cached": False,
+        "age_sec": 0,
+    }
+
+
+async def find_catalog_service(db, smm_service_id: int) -> Optional[Dict[str, Any]]:
+    """Return a single catalog row for a Peakerr service id (used at order-creation
+    time to compute the authoritative INR price)."""
+    cat = await get_customer_catalog(db)
+    for r in cat.get("rows", []):
+        if int(r.get("id") or 0) == int(smm_service_id):
+            return r
+    return None
 
 
 # ----- Order auto-placement --------------------------------------------
@@ -137,16 +268,23 @@ async def place_order_for_app_order(db, order: Dict[str, Any]) -> Dict[str, Any]
         await db.orders.update_one({"id": order_id}, {"$set": out_fields})
         return {**order, **out_fields}
 
-    # Lookup the linked panel service id on the app-side service.
-    # Services live as an array inside site_config.services (not their own collection).
-    service_doc = None
-    if order.get("service"):
-        cfg_doc = await db.site_config.find_one({"_id": "main"}) or {}
-        for s in (cfg_doc.get("services") or []):
-            if s.get("id") == order["service"]:
-                service_doc = s
-                break
-    if not service_doc or not service_doc.get("smm_service_id"):
+    # Lookup the linked panel service id.
+    # Priority: order's own `smm_service_id` (set by /order direct flow) →
+    # then fall back to the service mapping in site_config.services (admin-mapped curated services).
+    smm_service_id = None
+    smm_price_usd_per_1000 = None
+    if order.get("smm_service_id"):
+        smm_service_id = int(order["smm_service_id"])
+        smm_price_usd_per_1000 = float(order.get("smm_cost_usd_per_1000") or 0)
+    else:
+        if order.get("service"):
+            cfg_doc = await db.site_config.find_one({"_id": "main"}) or {}
+            for s in (cfg_doc.get("services") or []):
+                if s.get("id") == order["service"] and s.get("smm_service_id"):
+                    smm_service_id = int(s["smm_service_id"])
+                    smm_price_usd_per_1000 = float(s.get("smm_price_per_1000_usd") or 0)
+                    break
+    if not smm_service_id:
         out_fields["smm_error"] = "service not mapped to a panel service"
         await db.orders.update_one({"id": order_id}, {"$set": out_fields})
         return {**order, **out_fields}
