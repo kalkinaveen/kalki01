@@ -11,6 +11,25 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-23 · Peakerr SMM Auto-Placement Pipeline (INR)** 🤖 (Feb 2026)
+  - **What you asked for**: full automation of the SMM order flow with Peakerr API key `…201f`, INR display, safer fraud-review trigger (auto-place only when admin marks `verified`).
+  - **Backend new files**:
+    - `/app/backend/smm_service.py` — generic SMM panel client (works with ANY standard SMM API — Peakerr, JAP, SMMRaja — they all share the same schema: POST `/api/v2` with `key/action/service/link/quantity`). Methods: `balance()`, `services()`, `add_order()`, `status()`, `multi_status()`. Plus orchestrators: `place_order_for_app_order()` (idempotent, records all failures to `smm_error` on the order), `poll_order_status()`, `refresh_balance()` (with low-threshold detection).
+    - `/app/backend/routes/smm.py` — admin REST surface: `GET/PUT /admin/smm/config`, `GET /admin/smm/balance`, `GET /admin/smm/services?q=...&limit=`, `POST/DELETE /admin/services/{id}/smm-link`, `POST /admin/orders/{id}/smm-place`, `POST /admin/orders/{id}/smm-poll`.
+  - **Backend integration**: hook in `PATCH /api/orders/{id}` — when admin sets `status=verified` AND `auto_place_on_verified` is on, async `place_order_for_app_order()` fires (isolated try/except so panel outages can't block status updates). New lifespan background loop polls all in-progress panel orders every 5min and auto-advances `verified → in-progress → delivered`. API key is stored encrypted; only the last 4 chars (`…201f`) are ever sent back to the client.
+  - **Frontend new admin tab** (`/app/frontend/src/pages/admin/AdminSmmPanel.jsx` + sidebar link "SMM Auto" with `Bot` icon):
+    - 4 colored stat tiles: STATUS (LIVE/OFF) · PANEL BALANCE (₹ + $ + low-threshold) · MAPPED SERVICES · AUTO-PLACE
+    - Live red danger banner when balance < threshold with deep-link to peakerr.com/funds
+    - Config card with show/hide API key toggle, USD→INR rate, low-balance threshold, master enable + auto-place toggles
+    - Service mapping: every app-side service in `site_config.services` gets a LINK button → opens picker modal that searches Peakerr's 5943 services with INR-converted pricing inline (₹X/1k cost)
+    - Existing admin Orders detail modal now shows an inline **SmmPlacementPanel** with panel order ID, live status (Pending/In progress/Completed/Partial), remains count, start count, cost in ₹+$, plus RE-PLACE and ↻ REFRESH buttons
+  - **Verified end-to-end**:
+    - `PUT /admin/smm/config` saves config, masks key as `…201f`
+    - `GET /admin/smm/balance` returns live `{usd: 0, inr: 0, low_threshold_inr: 500}` (panel currently empty)
+    - `GET /admin/smm/services?q=instagram+followers` returns 660 services with INR conversion (₹33.26/1k for $0.378/1k)
+    - `POST /admin/services/yt-subs/smm-link` persists mapping inside `site_config.services`
+    - `PATCH /orders/{id}` with `status=verified` correctly fires auto-place; panel rejection ("Not enough funds") gets cleanly recorded as `smm_error` without breaking the status update.
+  - **What admin needs to do once**: 1) Top up Peakerr · 2) Open SMM Auto tab, link each service to a Peakerr service ID · 3) From then on every `verified` order auto-fires.
 - **Iter-22 · Auto-Scroll · Inline Pay · Animated Stage Connectors** ✨ (Feb 2026)
   - **User pain**: "when we refresh it should auto scroll to that update · in card upi / manual upi space is there right add pay option there only dont need extra scroll down · try to do some unique animation arrow mark from case received"
   - **Auto-scroll on status refresh** (`OrderTracker.jsx`): new `useStatusScroll(status)` hook tracks the previous status via `useRef`. When refresh delivers a new status, the hook smooth-scrolls the new `current` StageTile into view (`block: 'center'`) and tags it with `.is-just-updated` for a 3.4s pulsing focus ring. Initial mount is skipped so first-time loads don't auto-scroll past order details.

@@ -83,9 +83,43 @@ async def lifespan(_app):
         logging.getLogger("eh").warning("startup init warn: %s", e)
     logging.getLogger("eh").info("ERRORHACKER API ready")
 
+    # Background SMM status poller — every 5 min, refresh any orders that
+    # are placed-on-panel but not yet `Completed`. Wrapped so a single
+    # failure doesn't kill the loop.
+    async def _smm_poll_loop():
+        from smm_service import get_config as _scfg, poll_order_status as _spoll, refresh_balance as _sbal
+        import asyncio as _asyncio
+        while True:
+            try:
+                cfg = await _scfg(db)
+                if cfg.get("enabled") and cfg.get("api_key"):
+                    cursor = db.orders.find({
+                        "smm_panel_order_id": {"$exists": True, "$ne": None},
+                        "smm_status": {"$nin": ["Completed", "Canceled", "Cancelled"]},
+                    })
+                    rows = await cursor.to_list(200)
+                    for row in rows:
+                        row.pop("_id", None)
+                        try:
+                            await _spoll(db, row)
+                        except Exception as e:
+                            logging.getLogger("smm").warning("poll %s err: %s", row.get("id"), e)
+                    # Refresh wallet balance once per loop (cheap, surfaces low-balance alerts)
+                    try: await _sbal(db)
+                    except Exception: pass
+            except Exception as e:
+                logging.getLogger("smm").warning("smm poll loop err: %s", e)
+            await _asyncio.sleep(300)
+
+    smm_task = asyncio.create_task(_smm_poll_loop())
+
     yield  # ---- app runs ----
 
     # ---- shutdown ----
+    try:
+        smm_task.cancel()
+    except Exception:
+        pass
     try:
         client.close()
     except Exception:
@@ -1855,6 +1889,15 @@ async def update_order(order_id: str, body: StatusIn, x_admin_token: Optional[st
                 method=row.get("payment_method") or "manual",
             ))
             except Exception as e: log.warning("send_order_receipt_email dispatch failed: %s", e)
+        # SMM panel auto-placement — fraud-safer trigger ("verified" only, never "received").
+        # Each call is isolated so a panel outage can't block status updates.
+        try:
+            from smm_service import get_config as _smm_get_config, place_order_for_app_order as _smm_place
+            _scfg = await _smm_get_config(db)
+            if _scfg.get("enabled") and _scfg.get("auto_place_on_verified"):
+                asyncio.create_task(_smm_place(db, row))
+        except Exception as e:
+            log.warning("smm auto-place dispatch failed: %s", e)
     return row
 
 @api.delete("/orders")
@@ -5039,6 +5082,9 @@ async def works_with_update(body: Dict[str, Any] = Body(...), x_admin_token: Opt
 # defined before the route modules attempt to bind to them.
 from routes.cashfree import router as cashfree_router  # noqa: E402
 api.include_router(cashfree_router)
+
+from routes.smm import make_router as _make_smm_router  # noqa: E402
+api.include_router(_make_smm_router(db, _check_admin))
 
 app.include_router(api)
 app.add_middleware(

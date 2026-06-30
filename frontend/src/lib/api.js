@@ -152,6 +152,15 @@ export const api = {
   getPaymentSettings: () => req('/payments/settings'),
   putPaymentSettings: (data) => req('/payments/settings', { method: 'PUT', body: data, admin: true }),
   submitPaymentProof: (data) => req('/payments/proof', { method: 'POST', body: data }),
+  // SMM panel automation (admin)
+  smmGetConfig: () => req('/admin/smm/config', { admin: true }),
+  smmUpdateConfig: (data) => req('/admin/smm/config', { method: 'PUT', body: data, admin: true }),
+  smmBalance: () => req('/admin/smm/balance', { admin: true }),
+  smmSearchServices: (q, limit = 60) => req(`/admin/smm/services?q=${encodeURIComponent(q || '')}&limit=${limit}`, { admin: true }),
+  smmLinkService: (sid, data) => req(`/admin/services/${sid}/smm-link`, { method: 'POST', body: data, admin: true }),
+  smmUnlinkService: (sid) => req(`/admin/services/${sid}/smm-link`, { method: 'DELETE', admin: true }),
+  smmPlaceOrder: (oid) => req(`/admin/orders/${oid}/smm-place`, { method: 'POST', admin: true }),
+  smmPollOrder: (oid) => req(`/admin/orders/${oid}/smm-poll`, { method: 'POST', admin: true }),
   // users (admin)
   listUsers: () => req('/admin/users', { admin: true }),
   deleteUser: (uid) => req(`/admin/users/${uid}`, { admin: true, method: 'DELETE' }),

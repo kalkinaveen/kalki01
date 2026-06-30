@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone, RotateCcw, Sparkles, Send } from 'lucide-react';
+import { LayoutDashboard, Wrench, BookOpen, CreditCard, FileText, Terminal, Settings, LogOut, Plus, Trash2, ShoppingBag, Edit3, Save, X, Eye, EyeOff, Lock, Image as ImageIcon, Palette, Type, MessageSquare, Star, Quote, Activity, RefreshCcw, Download, Upload, Award, GitBranch, BadgeCheck, Cpu, Zap, Loader2, ArrowUp, ArrowDown, User, Mail, Copy, Gift, ShieldCheck, UserCog, Globe, Megaphone, RotateCcw, Sparkles, Send, Bot, AlertTriangle } from 'lucide-react';
 import Logo from '../components/Logo';
 import ImageInput from '../components/ImageInput';
 import { useSiteConfig, DEFAULTS } from '../contexts/SiteConfigContext';
@@ -12,6 +12,7 @@ import TelegramBotPanel from './admin/TelegramBotPanel';
 import WorksWithManager from './admin/WorksWithManager';
 import AnnouncementsManager from './admin/AnnouncementsManager';
 import RefundsManager from './admin/RefundsManager';
+import AdminSmmPanel from './admin/AdminSmmPanel';
 import AdminSpinPanel from './admin/AdminSpinPanel';
 
 const sections = [
@@ -38,6 +39,7 @@ const sections = [
   { to: 'feed',        label: 'Feed (IG)',    icon: Activity,        group: 'main' },
   { to: 'payments',    label: 'Payments',     icon: CreditCard,      group: 'main' },
   { to: 'refunds',     label: 'Refunds',      icon: RotateCcw,       group: 'main' },
+  { to: 'smm',         label: 'SMM Auto',     icon: Bot,             group: 'main' },
   { to: 'spin',        label: 'Spin Wheel',   icon: Sparkles,        group: 'main' },
   { to: 'coupons',     label: 'Coupons',      icon: Zap,             group: 'main' },
   { to: 'notifications', label: 'Notifications', icon: MessageSquare, group: 'main' },
@@ -663,6 +665,63 @@ const SetOrderQuotePanel = ({ order, onUpdated }) => {
   );
 };
 
+const SmmPlacementPanel = ({ order, onChanged }) => {
+  const [busy, setBusy] = useState(null);
+  const placed = !!order.smm_panel_order_id;
+  const errored = !!order.smm_error && !placed;
+  const status = (order.smm_status || '').trim();
+  const remains = order.smm_remains;
+  const startCount = order.smm_start_count;
+  const place = async () => {
+    setBusy('place');
+    try { const r = await api.smmPlaceOrder(order.id); if (r.ok) toast.success(`Placed on panel · #${r.order?.smm_panel_order_id}`); else toast.error(r.order?.smm_error || 'Placement failed'); onChanged?.(r.order); }
+    catch (e) { toast.error(e.message); }
+    finally { setBusy(null); }
+  };
+  const poll = async () => {
+    setBusy('poll');
+    try { const r = await api.smmPollOrder(order.id); toast.success(`Status: ${r.order?.smm_status || '—'}`); onChanged?.(r.order); }
+    catch (e) { toast.error(e.message); }
+    finally { setBusy(null); }
+  };
+  if (!placed && !errored && !order.smm_last_attempt_at) {
+    // Untouched by panel — let admin trigger manually if needed
+    return (
+      <div className="eh-panel p-4 border border-dashed border-[var(--eh-border)]" data-testid="smm-placement-panel">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <div className="eh-mono text-[10px] opacity-60 tracking-widest mb-1 flex items-center gap-2"><Bot size={11} /> // PANEL_PLACEMENT</div>
+            <div className="eh-mono text-[11px] opacity-70">Not placed yet — will auto-fire when you mark status `verified`</div>
+          </div>
+          <button onClick={place} disabled={busy === 'place'} className="eh-btn-ghost text-xs flex items-center gap-1.5" data-testid="smm-place-btn">{busy === 'place' ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />} PLACE NOW</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="eh-panel p-4" style={{ borderColor: errored ? '#ff314866' : placed ? 'rgba(0,255,157,.45)' : 'rgba(255,211,77,.45)', background: errored ? 'rgba(255,49,72,.05)' : placed ? 'rgba(0,255,157,.04)' : 'rgba(255,211,77,.04)' }} data-testid="smm-placement-panel">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div className="eh-mono text-[10px] opacity-70 tracking-widest flex items-center gap-2"><Bot size={11} className={errored ? 'text-[#ff3148]' : 'text-[var(--eh-green)]'} /> // PANEL_PLACEMENT</div>
+        <div className="flex gap-1.5">
+          {placed && <button onClick={poll} disabled={busy === 'poll'} className="text-[10px] eh-mono px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)]" data-testid="smm-poll-btn">{busy === 'poll' ? <Loader2 size={10} className="animate-spin inline" /> : '↻'} REFRESH</button>}
+          <button onClick={place} disabled={busy === 'place'} className="text-[10px] eh-mono px-2 py-1 rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)]" data-testid="smm-replace-btn">{busy === 'place' ? <Loader2 size={10} className="animate-spin inline" /> : '⚡'} {placed ? 'RE-PLACE' : 'PLACE AGAIN'}</button>
+        </div>
+      </div>
+      {placed ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div><div className="eh-mono text-[9px] opacity-60 tracking-widest">PANEL ORDER</div><div className="eh-mono text-xs eh-neon-soft">#{order.smm_panel_order_id}</div></div>
+          <div><div className="eh-mono text-[9px] opacity-60 tracking-widest">STATUS</div><div className="eh-mono text-xs font-bold" style={{ color: status === 'Completed' ? '#c084fc' : status === 'In progress' ? '#ffd34d' : '#00ff9d' }}>{status || '—'}</div></div>
+          <div><div className="eh-mono text-[9px] opacity-60 tracking-widest">REMAINS</div><div className="eh-mono text-xs">{remains !== undefined ? remains : '—'}</div></div>
+          <div><div className="eh-mono text-[9px] opacity-60 tracking-widest">START COUNT</div><div className="eh-mono text-xs">{startCount !== undefined ? startCount : '—'}</div></div>
+          {order.smm_charge_inr && <div className="col-span-2 sm:col-span-4 eh-mono text-[10px] opacity-60 mt-1">Cost: ₹{Number(order.smm_charge_inr).toLocaleString('en-IN')} (${order.smm_charge_usd}) · placed {order.smm_placed_at ? new Date(order.smm_placed_at).toLocaleString() : '—'}</div>}
+        </div>
+      ) : (
+        <div className="eh-mono text-[11px] text-[#ff3148] flex items-start gap-2"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{order.smm_error || 'Placement failed'}</div>
+      )}
+    </div>
+  );
+};
+
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -822,6 +881,9 @@ const Orders = () => {
                   )}
                 </div>
               )}
+
+              {/* SMM Auto placement status */}
+              <SmmPlacementPanel order={selected} onChanged={(o) => { setSelected(o); setOrders(prev => prev.map(x => x.id === o.id ? o : x)); }} />
 
               {/* Status updater */}
               <div>
@@ -1841,6 +1903,7 @@ const AdminPanel = () => {
         {allowed('feed') && active==='feed'        && <FeedManager />}
         {allowed('payments') && active==='payments'    && <PaymentSettingsTab />}
         {allowed('refunds') && active==='refunds'     && <RefundsManager />}
+        {allowed('smm') && active==='smm'         && <AdminSmmPanel />}
         {allowed('spin') && active==='spin'        && <AdminSpinPanel />}
         {allowed('coupons') && active==='coupons'     && <CouponsTab />}
         {allowed('notifications') && active==='notifications'&& <NotificationsTab />}
