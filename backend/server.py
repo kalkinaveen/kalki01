@@ -477,18 +477,41 @@ async def _ensure_config():
     return doc
 
 async def _ensure_admin():
+    """Ensure the admin creds doc exists with a BCRYPT password hash.
+
+    Migration-safe: a legacy plaintext doc (created before Iter-31 security
+    hardening) is detected and auto-rehashed on first read so existing
+    installations keep working without manual ops. The `password_hash` field
+    is the single source of truth from this point forward — the old `password`
+    field is deleted to avoid two competing values.
+
+    ADMIN_PASSWORD_FORCE=1 in .env still works (one-shot rotation from env).
+    """
     doc = await db.admin.find_one({"_id": "creds"})
     env_pw = os.environ.get("ADMIN_PASSWORD", "").strip()
     env_force = os.environ.get("ADMIN_PASSWORD_FORCE", "").strip() == "1"
     if not doc:
         # First boot — use env password if provided, otherwise default admin123
         pw = env_pw or "admin123"
-        await db.admin.insert_one({"_id": "creds", "password": pw, "tokens": []})
+        await db.admin.insert_one({"_id": "creds", "password_hash": _hash_pw(pw), "tokens": []})
         doc = await db.admin.find_one({"_id": "creds"})
-        log.info("admin creds bootstrapped")
-    elif env_force and env_pw and env_pw != doc.get("password"):
-        # ADMIN_PASSWORD_FORCE=1 → sync password from env (one-shot reset)
-        await db.admin.update_one({"_id": "creds"}, {"$set": {"password": env_pw, "tokens": []}})
+        log.info("admin creds bootstrapped (bcrypt)")
+        return doc
+    # Migrate legacy plaintext `password` field → bcrypt `password_hash`.
+    if doc.get("password") and not doc.get("password_hash"):
+        new_hash = _hash_pw(str(doc["password"]))
+        await db.admin.update_one(
+            {"_id": "creds"},
+            {"$set": {"password_hash": new_hash}, "$unset": {"password": ""}},
+        )
+        doc = await db.admin.find_one({"_id": "creds"})
+        log.warning("admin password migrated from plaintext to bcrypt")
+    # ADMIN_PASSWORD_FORCE=1 → sync password from env (one-shot reset)
+    if env_force and env_pw and not _verify_pw(env_pw, doc.get("password_hash", "")):
+        await db.admin.update_one(
+            {"_id": "creds"},
+            {"$set": {"password_hash": _hash_pw(env_pw), "tokens": []}, "$unset": {"password": ""}},
+        )
         doc = await db.admin.find_one({"_id": "creds"})
         log.info("admin password force-synced from ADMIN_PASSWORD env var")
     return doc
@@ -1871,11 +1894,100 @@ async def whats_new_delete(wid: str, x_admin_token: Optional[str] = Header(None)
 
 
 # ---- Admin auth ------------------------------------------------------------
+ADMIN_LOGIN_MAX_FAILS = 5            # lockout threshold
+ADMIN_LOGIN_LOCKOUT_MIN = 15         # lockout window
+ADMIN_LOGIN_ATTEMPT_TTL_SEC = ADMIN_LOGIN_LOCKOUT_MIN * 60
+
+
+async def _admin_brute_check(ip: str):
+    """Block the caller's IP after too many recent failed admin-login attempts.
+
+    Uses the `admin_login_attempts` collection. Each row is keyed by the IP
+    and stores `fails` (rolling count inside the lockout window) and
+    `first_at` (when the streak started). On a fresh window we reset.
+    Successful logins clear the entry via `_admin_brute_clear`.
+    """
+    if not ip:
+        return
+    rec = await db.admin_login_attempts.find_one({"_id": ip})
+    if not rec:
+        return
+    first_at = rec.get("first_at")
+    fails = int(rec.get("fails") or 0)
+    if not first_at:
+        return
+    try:
+        started = datetime.fromisoformat(first_at.replace("Z", "+00:00"))
+    except Exception:
+        return
+    age_sec = (datetime.now(timezone.utc) - started).total_seconds()
+    if age_sec > ADMIN_LOGIN_ATTEMPT_TTL_SEC:
+        # window expired — clean up so the next failure starts fresh
+        await db.admin_login_attempts.delete_one({"_id": ip})
+        return
+    if fails >= ADMIN_LOGIN_MAX_FAILS:
+        retry_in = max(1, int(ADMIN_LOGIN_ATTEMPT_TTL_SEC - age_sec))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed admin logins. Try again in {retry_in // 60 + 1} min.",
+        )
+
+
+async def _admin_brute_record(ip: str):
+    """Increment the failure counter for this IP, starting a new window if needed."""
+    if not ip:
+        return
+    now = _now_iso()
+    rec = await db.admin_login_attempts.find_one({"_id": ip})
+    if not rec or not rec.get("first_at"):
+        await db.admin_login_attempts.update_one(
+            {"_id": ip},
+            {"$set": {"fails": 1, "first_at": now, "last_at": now}},
+            upsert=True,
+        )
+        return
+    try:
+        started = datetime.fromisoformat(rec["first_at"].replace("Z", "+00:00"))
+        age_sec = (datetime.now(timezone.utc) - started).total_seconds()
+    except Exception:
+        age_sec = 0
+    if age_sec > ADMIN_LOGIN_ATTEMPT_TTL_SEC:
+        await db.admin_login_attempts.update_one(
+            {"_id": ip},
+            {"$set": {"fails": 1, "first_at": now, "last_at": now}},
+            upsert=True,
+        )
+    else:
+        await db.admin_login_attempts.update_one(
+            {"_id": ip},
+            {"$inc": {"fails": 1}, "$set": {"last_at": now}},
+        )
+
+
+async def _admin_brute_clear(ip: str):
+    if not ip:
+        return
+    await db.admin_login_attempts.delete_one({"_id": ip})
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort IP extraction behind the K8s ingress / Cloudflare."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else ""
+
+
 @api.post("/admin/login")
-async def admin_login(body: LoginIn):
+async def admin_login(body: LoginIn, request: Request):
+    ip = _client_ip(request)
+    await _admin_brute_check(ip)
     creds = await _ensure_admin()
-    if body.password != creds.get("password"):
+    pw_hash = creds.get("password_hash") or ""
+    if not pw_hash or not _verify_pw(body.password, pw_hash):
+        await _admin_brute_record(ip)
         raise HTTPException(status_code=401, detail="Access denied")
+    await _admin_brute_clear(ip)
     token = uuid.uuid4().hex
     tokens = (creds.get("tokens") or [])[-9:] + [token]  # keep last 10
     await db.admin.update_one({"_id": "creds"}, {"$set": {"tokens": tokens}})
@@ -1884,9 +1996,12 @@ async def admin_login(body: LoginIn):
 @api.post("/admin/password")
 async def admin_change_password(body: PasswordIn, x_admin_token: Optional[str] = Header(None)):
     await _check_admin(x_admin_token)
-    if not body.new_password or len(body.new_password) < 4:
-        raise HTTPException(status_code=400, detail="Password too short")
-    await db.admin.update_one({"_id": "creds"}, {"$set": {"password": body.new_password, "tokens": []}})
+    if not body.new_password or len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    await db.admin.update_one(
+        {"_id": "creds"},
+        {"$set": {"password_hash": _hash_pw(body.new_password), "tokens": []}, "$unset": {"password": ""}},
+    )
     return {"ok": True}
 
 @api.post("/admin/logout")
@@ -5461,13 +5576,24 @@ from routes.smm import make_router as _make_smm_router  # noqa: E402
 api.include_router(_make_smm_router(db, _check_admin, _get_user_from_request))
 
 app.include_router(api)
+
+# CORS — explicit origins ONLY when credentials are enabled. Wildcard
+# `allow_origin_regex=".*"` combined with `allow_credentials=True` is
+# unsafe (any site can attempt credentialed XHRs). Parse CORS_ORIGINS env
+# as a comma-separated allow-list.
+_cors_raw = (os.environ.get("CORS_ORIGINS") or "").strip()
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip() and o.strip() != "*"]
+if not _cors_origins:
+    # Sensible fallback for local dev — never the wildcard with credentials.
+    _cors_origins = ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_origin_regex=".*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
+log.info(f"CORS enabled for {len(_cors_origins)} origin(s): {_cors_origins}")
 
 
 # (startup/shutdown moved to lifespan handler above)

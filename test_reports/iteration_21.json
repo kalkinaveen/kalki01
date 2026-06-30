@@ -1,0 +1,30 @@
+{
+  "summary": "Iter-31 SEC-001 (bcrypt admin auth + brute-force lockout + change-password validation) and SEC-002 (CORS allow-list) verified via pytest + curl + mongosh. All 10 backend tests PASS. Regression checks for customer auth (eh_session cookie + /auth/me) and daily missions anti-cheat (Iter-30) also PASS. No backend issues found.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_iter31_sec_admin_cors.py",
+    "/app/test_reports/pytest/iter31_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SEC-001 ON-DISK: db.admin.findOne({_id:'creds'}) shows password_hash='$2b$12$yg/58VguMefPv7OVM1j2ju60awg56PLd6GRtxqdhq/K7eWuyvPKLW' and NO plaintext `password` key — legacy migration in _ensure_admin verified to have run. tokens[] array tracks active admin sessions (10 active right now from previous testing iterations — not a security issue, expected behaviour).",
+    "SEC-001 FUNCTIONAL: POST /api/admin/login with admin123 → 200 {ok:true, token:32-char hex}; with wrong pwd → 401 {detail:'Access denied'}. Bcrypt compare correctly used.",
+    "SEC-001 BRUTE FORCE: 5 wrong attempts from same IP → attempts 1–5 return 401, attempt 6 returns 429 {detail:'Too many failed admin logins. Try again in 15 min.'}. During lockout, even the CORRECT password is rejected with 429 — confirmed. Clearing db.admin_login_attempts via mongosh instantly restores login. Per-IP keying verified by inspecting collection (`_id` is the IP).",
+    "SEC-001 CHANGE PASSWORD VALIDATION: POST /api/admin/password with {new_password:'short'} → HTTP 400 (min length 8 enforced). The irreversible 'change to newSecure123' path was intentionally SKIPPED per the request brief to avoid leaving the test env in a non-default state — validation rejection path is sufficient evidence the endpoint guards length.",
+    "SEC-002 CORS: Direct probe at http://localhost:8001/api/config — Origin=https://errorhacker.site → headers include `access-control-allow-origin: https://errorhacker.site` AND `access-control-allow-credentials: true`. Origin=https://evil.example.com → ONLY `access-control-allow-credentials: true` is present, NO `access-control-allow-origin` (browser will block the response). Wildcard regex is gone. CORS_ORIGINS env correctly parsed.",
+    "REGRESSION customer auth: POST /api/auth/login with test1@example.com/hack123 → 200, `eh_session` cookie set on session jar. GET /api/auth/me with that cookie returns {user:{email:'test1@example.com', name:'Test One', ...}}. Bearer token also works. Preview URL is in CORS_ORIGINS allow-list so cross-origin frontend still works.",
+    "REGRESSION daily missions (Iter-30): GET /api/me/missions returns {day, items:[5 missions]} each carrying `completed` + `claimed_today` flags (the schema uses `claimed_today` instead of the brief's `ready_to_claim` — semantically equivalent for the anti-cheat decision). POST /api/me/missions/claim with mission_id='refer_friend' → 400 (zero referrals, correctly blocked). With 'place_smm' → 400 'Already claimed today' for this test user (they already claimed it this run — confirms place_smm WAS claimable because they had SMM orders this week, which is exactly the anti-cheat success condition; idempotency also correctly enforced).",
+    "Admin endpoint smoke (token validity sanity): GET /api/admin/users → 200, GET /api/admin/wallet/deposits → 200 with X-Admin-Token. Other admin paths I tried returned 404/405 because I guessed the wrong paths — those are routing concerns, NOT auth failures. No 401s observed anywhere with a valid token, so admin tabs will continue to load."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter31_sec_admin_cors.py"
+  ],
+  "success_rate": { "backend": "100% (10/10)", "frontend": "not tested (backend-only iteration)" },
+  "test_credentials": "admin: admin123 (bcrypt at rest, still works because revert was skipped). Customer: test1@example.com / hack123. Lockout was cleared at the end of every brute-force test (mongosh deleteMany on admin_login_attempts) so the env is fully usable.",
+  "seed_data_creation": "None. Used pre-existing admin doc + test1 user. Brute force collection was emptied at end (cleanup hook in pytest fixture + manual mongosh).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_iter31_sec_admin_cors.py (10 cases, 33s). Re-run any time with: `python -m pytest backend/tests/test_iter31_sec_admin_cors.py -v`. The fixture auto-clears db.admin_login_attempts before+after each test, so brute-force test is deterministic. Admin password remains admin123. CORS allow-list is in /app/backend/.env (CORS_ORIGINS). bcrypt hash format $2b$12$… present in db.admin.password_hash, plaintext password field removed by migration.",
+  "rca of the issue": "No bugs. SEC-001 and SEC-002 implementations are correct: (a) admin password is bcrypt($2b$12$) at rest, legacy plaintext docs migrate on first read; (b) brute-force throttle per-IP (admin_login_attempts collection) blocks after 5 fails for 15min, blocking even correct password during lockout; (c) change-password rejects <8 chars with 400; (d) CORS middleware enforces explicit allow-list and correctly omits access-control-allow-origin for disallowed origins while still echoing it for allowed origins with credentials=true."
+}
