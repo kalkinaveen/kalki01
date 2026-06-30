@@ -425,21 +425,36 @@ const OrderSmmPage = () => {
 
   return (
     <div className="min-h-screen px-3 sm:px-6 py-8 sm:py-12 max-w-7xl mx-auto overflow-x-hidden" data-testid="order-smm-page">
-      {/* Hero */}
-      <div className="mb-6 sm:mb-8 relative">
-        <div className="eh-mono text-[10px] sm:text-[11px] tracking-[0.3em] opacity-60 mb-2">// SMM_AUTO_PANEL</div>
-        <h1 className="eh-display text-3xl sm:text-5xl font-black leading-tight">
+      {/* Hero — centered, premium tile-themed badge with red ERROR glow */}
+      <div className="mb-8 sm:mb-10 relative text-center">
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border mb-5 eh-error-badge"
+          data-testid="smm-hero-badge"
+        >
+          <span className="eh-error-dot" />
+          <span className="eh-mono text-[10px] sm:text-[11px] tracking-[0.35em] font-bold">
+            <span className="eh-error-text">// ERROR</span>
+            <span className="opacity-75">_SMM_PANEL</span>
+          </span>
+        </div>
+
+        <h1 className="eh-display text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.05] tracking-tight">
           <span className="text-[var(--eh-text)]">Buy </span>
           <span className="eh-neon">SMM Services</span>
           <span className="text-[var(--eh-text)]"> instantly</span>
         </h1>
-        <div className="mt-3 text-sm sm:text-base opacity-75 max-w-2xl" style={{ fontFamily: 'Inter,sans-serif' }}>
-          Pick from {formatLargeNum((catalog.rows || []).length)}+ live services across Instagram, YouTube, TikTok, Telegram and more — priced in <b className="text-[var(--eh-green)]">INR</b>, auto-placed the moment your payment clears.
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2 items-center">
-          <span className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Zap size={11} className="text-[var(--eh-green)]" /> Auto-placement</span>
-          <span className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Bot size={11} className="text-[#4de0ff]" /> 24×7 fulfillment</span>
-          <span className="eh-mono text-[10px] px-2 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Sparkles size={11} className="text-[#ffd34d]" /> Refill guarantee on supported services</span>
+
+        <p
+          className="mt-4 mx-auto text-sm sm:text-base opacity-75 max-w-2xl leading-relaxed"
+          style={{ fontFamily: 'Inter,sans-serif' }}
+        >
+          Pick from <b className="text-[var(--eh-green)]">{formatLargeNum((catalog.rows || []).length)}+</b> live services across Instagram, YouTube, TikTok, Telegram and more — priced in <b className="text-[var(--eh-green)]">INR</b>, auto-placed the moment your payment clears.
+        </p>
+
+        <div className="mt-5 flex flex-wrap justify-center gap-2 items-center">
+          <span className="eh-mono text-[10px] px-2.5 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Zap size={11} className="text-[var(--eh-green)]" /> Auto-placement</span>
+          <span className="eh-mono text-[10px] px-2.5 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Bot size={11} className="text-[#4de0ff]" /> 24×7 fulfillment</span>
+          <span className="eh-mono text-[10px] px-2.5 py-1 rounded border border-[var(--eh-border)] inline-flex items-center gap-1.5"><Sparkles size={11} className="text-[#ffd34d]" /> Refill guarantee on supported services</span>
         </div>
       </div>
 
@@ -648,6 +663,44 @@ const OrderSmmPage = () => {
       <style>{`
         @keyframes eh-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes eh-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ERROR_SMM_PANEL badge — red glitch pulse */
+        @keyframes eh-error-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255,49,72,0.55), inset 0 0 12px rgba(255,49,72,0.08); }
+          50%      { box-shadow: 0 0 0 6px rgba(255,49,72,0.0),  inset 0 0 18px rgba(255,49,72,0.18); }
+        }
+        @keyframes eh-error-flicker {
+          0%, 92%, 100% { opacity: 1; }
+          93%           { opacity: 0.35; }
+          94%           { opacity: 1; }
+          96%           { opacity: 0.6; }
+          97%           { opacity: 1; }
+        }
+        @keyframes eh-error-dot-blink {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50%      { transform: scale(1.35); opacity: 0.6; }
+        }
+        .eh-error-badge {
+          border-color: rgba(255,49,72,0.55);
+          background: linear-gradient(180deg, rgba(255,49,72,0.10), rgba(255,49,72,0.02));
+          animation: eh-error-pulse 2.4s ease-in-out infinite;
+          backdrop-filter: blur(8px);
+        }
+        .eh-error-dot {
+          width: 7px; height: 7px; border-radius: 999px;
+          background: #ff3148;
+          box-shadow: 0 0 10px #ff3148, 0 0 22px rgba(255,49,72,0.55);
+          animation: eh-error-dot-blink 1.1s ease-in-out infinite;
+        }
+        .eh-error-text {
+          color: #ff3148;
+          text-shadow:
+            0 0 8px rgba(255,49,72,0.85),
+            0 0 18px rgba(255,49,72,0.35),
+            1px 0 0 rgba(0,229,255,0.35),
+            -1px 0 0 rgba(255,200,0,0.25);
+          animation: eh-error-flicker 4.2s linear infinite;
+        }
       `}</style>
     </div>
   );

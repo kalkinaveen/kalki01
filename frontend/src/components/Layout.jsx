@@ -9,6 +9,7 @@ import ScrollProgress from './ScrollProgress';
 const Layout = ({ children }) => {
   const { pathname } = useLocation();
   const isFeed = pathname.startsWith('/feed');
+  const isSmm = pathname.startsWith('/smm');
   return (
     <div className="App eh-scanlines">
       <ScrollProgress />
@@ -16,7 +17,7 @@ const Layout = ({ children }) => {
       <Navbar />
       <main>{children}</main>
       {!isFeed && <Footer />}
-      <FloatingStack />
+      {!isSmm && <FloatingStack />}
     </div>
   );
 };
