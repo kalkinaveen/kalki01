@@ -41,6 +41,9 @@ const Subscribe = () => {
       const out = await api.subscribe(tier.id);
       setCurrent(out.tier);
       setWalletBalance(b => b - tier.price_inr);
+      // Notify the rest of the app (navbar tier badge, wallet pill) in real time
+      window.dispatchEvent(new CustomEvent('eh:tier-changed', { detail: out.tier }));
+      window.dispatchEvent(new CustomEvent('eh:wallet-changed'));
       setCelebrate(out.tier);
     } catch (e) {
       toast.error(e.message || 'Activation failed');

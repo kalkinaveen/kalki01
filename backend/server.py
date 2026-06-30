@@ -4396,6 +4396,14 @@ async def me_wallet_txn_one(txn_id: str, request: Request):
 # -------- OPERATIVE PASS (subscription tiers) --------------------------------
 from tiers import TIERS as TIER_DEFS, get_tier as _resolve_tier, user_tier as _user_tier, build_subscription_record  # noqa: E402
 
+async def _safe_count(collection, query):
+    """count_documents that swallows 'collection missing' errors (returns 0).
+    Used in /me/dashboard for optional collections like recovery_cases."""
+    try:
+        return await collection.count_documents(query)
+    except Exception:
+        return 0
+
 @api.get("/subscription/tiers")
 async def list_subscription_tiers():
     """Public — the 4-tier comparison page reads this."""
@@ -4424,6 +4432,9 @@ async def me_subscribe(body: SubscribeIn, request: Request):
     this wallet-based flow ships today and reuses the existing top-up funnel."""
     user = await require_user(request)
     tier = _resolve_tier(body.tier_id)
+    # Reject unknown tier ids explicitly instead of silently falling back to rookie.
+    if tier["id"] != (body.tier_id or "").lower():
+        raise HTTPException(status_code=400, detail=f"Unknown tier id: {body.tier_id}")
     if tier["id"] == "rookie":
         raise HTTPException(status_code=400, detail="Rookie is the default tier — no purchase needed")
     price = int(tier.get("price_inr") or 0)
@@ -4513,7 +4524,7 @@ async def me_dashboard(request: Request):
                               + status_counts.get("received", 0)
                               + status_counts.get("verified", 0)
                               + status_counts.get("in_progress", 0)),
-            "recovery_cases": await db.recovery_cases.count_documents({"user_id": uid}) if "recovery_cases" in await db.list_collection_names() else 0,
+            "recovery_cases": await _safe_count(db.recovery_cases, {"user_id": uid}),
             "tool_uses_today": tool_used_today,
             "tool_uses_quota": int(effective_tier.get("tool_uses_per_day", 3)),
         },

@@ -23,8 +23,19 @@ const Navbar = () => {
   const nav = useNavigate();
   useEffect(() => {
     if (!user) { setBal(null); setTier(null); return; }
-    api.walletGet().then(w => setBal(w?.balance ?? 0)).catch(() => setBal(null));
-    api.mySubscription().then(s => setTier(s?.tier)).catch(() => setTier(null));
+    const refresh = () => {
+      api.walletGet().then(w => setBal(w?.balance ?? 0)).catch(() => setBal(null));
+      api.mySubscription().then(s => setTier(s?.tier)).catch(() => setTier(null));
+    };
+    refresh();
+    // Real-time refresh when the user activates / cancels a pass elsewhere in the app
+    const onTierChanged = () => refresh();
+    window.addEventListener('eh:tier-changed', onTierChanged);
+    window.addEventListener('eh:wallet-changed', onTierChanged);
+    return () => {
+      window.removeEventListener('eh:tier-changed', onTierChanged);
+      window.removeEventListener('eh:wallet-changed', onTierChanged);
+    };
   }, [user]);
   useEffect(() => {
     const onKey = (e) => {
