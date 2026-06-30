@@ -8,6 +8,8 @@ import WorksWithStrip from '../components/WorksWithStrip';
 import TestimonialsCarousel from '../components/TestimonialsCarousel';
 import FAQ from '../components/FAQ';
 import CountUp from '../components/CountUp';
+import MissionHub from '../components/MissionHub';
+import WhatsNewStrip from '../components/WhatsNewStrip';
 import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, FileText, Star, Lock, Zap, Calendar } from 'lucide-react';
@@ -156,6 +158,8 @@ const CTA = () => (
 const Home = () => (
   <>
     <Hero />
+    <WhatsNewStrip />
+    <MissionHub />
     <WorksWithStrip />
     <Partners />
     <StatsRow />

@@ -25,8 +25,14 @@ const TONES = [
 const PLATFORMS = ['Instagram', 'Facebook', 'TikTok', 'Twitter / X', 'Snapchat'];
 const LANGUAGES = ['English', 'Hindi', 'Spanish', 'Portuguese', 'French', 'German'];
 
+const TOOL_FORM_KEY = 'eh.tool.appeal.draft';
+
 const ToolAppeal = () => {
-  const [form, setForm] = useState({
+  // Restore any draft saved before a paywall/sign-in detour, so users never lose work.
+  const restoredForm = (() => {
+    try { return JSON.parse(localStorage.getItem(TOOL_FORM_KEY) || 'null'); } catch { return null; }
+  })();
+  const [form, setForm] = useState(restoredForm || {
     platform: 'Instagram',
     violation_reason: REASONS[0],
     account_handle: '',
@@ -44,6 +50,14 @@ const ToolAppeal = () => {
 
   const refreshUsage = () => api.toolsUsage().then(setUsage).catch(() => {});
   useEffect(() => { refreshUsage(); }, []);
+
+  // Clear the draft after a successful generation OR an explicit reset.
+  // Kept on the page until then so paywalled users can finish where they left off.
+  useEffect(() => {
+    if (letter) {
+      try { localStorage.removeItem(TOOL_FORM_KEY); } catch { /* ignore */ }
+    }
+  }, [letter]);
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -201,7 +215,7 @@ const ToolAppeal = () => {
             </p>
           </div>
         </div>
-        <LimitReachedDialog open={!!limitDialog} detail={limitDialog} onClose={() => setLimitDialog(null)} />
+        <LimitReachedDialog open={!!limitDialog} detail={limitDialog} onClose={() => setLimitDialog(null)} formStateKey={TOOL_FORM_KEY} formState={form} />
       </div>
     </div>
   );

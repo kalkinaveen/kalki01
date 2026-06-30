@@ -1791,6 +1791,85 @@ async def patch_config(payload: Dict[str, Any], x_admin_token: Optional[str] = H
     doc = await db.site_config.find_one({"_id": "main"})
     return _clean(doc)
 
+# ---- What's New (homepage promo feed) -------------------------------------
+WHATS_NEW_SEED = [
+    {"id": "wn-smm-launch",    "tag": "LAUNCH",  "color": "#ff2d92", "title": "SMM Auto-Panel is LIVE",          "body": "5,800+ verified services across Instagram, YouTube, TikTok & more — priced in INR, auto-placed the moment your payment clears.", "link": "/smm",      "sort": 1, "active": True},
+    {"id": "wn-tools-9",       "tag": "NEW",     "color": "#4de0ff", "title": "9 free AI recovery tools",        "body": "Breach checker, security score, AI appeal writer, phishing detector + 5 more — no signup, no data stored.",                       "link": "/tools",    "sort": 2, "active": True},
+    {"id": "wn-recovery-rate", "tag": "MILESTONE","color": "#00ff9d","title": "92% recovery success rate",       "body": "Over 1,200 disabled accounts brought back this quarter. Pay only when we deliver — no upfront, no setup fee.",                  "link": "/recovery", "sort": 3, "active": True},
+    {"id": "wn-mobile-redesign","tag": "UPDATE", "color": "#ffd34d", "title": "Mobile-first redesign",           "body": "Order tracker, cart and SMM panel rebuilt for one-thumb operation. Faster taps, bigger cards, no horizontal scroll.",            "link": "/track",    "sort": 4, "active": True},
+    {"id": "wn-membership-off","tag": "DEAL",    "color": "#c084fc", "title": "Underground membership · 30% off","body": "Lifetime access to all leaked-toolset drops, private channel and priority recovery queue — limited slots.",                    "link": "/memberships", "sort": 5, "active": True},
+]
+
+async def _ensure_whats_new():
+    """Seed the feed with 5 starter posts the first time it's queried."""
+    try:
+        count = await db.whats_new.count_documents({})
+        if count == 0:
+            now = datetime.utcnow().isoformat()
+            for it in WHATS_NEW_SEED:
+                await db.whats_new.insert_one({**it, "created_at": now, "updated_at": now})
+    except Exception:
+        pass
+
+@api.get("/whats-new")
+async def whats_new_list():
+    """Public homepage feed — only active entries, sorted."""
+    await _ensure_whats_new()
+    cur = db.whats_new.find({"active": {"$ne": False}}).sort([("sort", 1), ("created_at", -1)])
+    out = []
+    async for doc in cur:
+        doc.pop("_id", None)
+        out.append(doc)
+    return {"items": out}
+
+class WhatsNewIn(BaseModel):
+    title: str
+    body: str
+    tag: Optional[str] = "NEW"
+    color: Optional[str] = "#00ff9d"
+    link: Optional[str] = ""
+    sort: Optional[int] = 100
+    active: Optional[bool] = True
+
+@api.get("/admin/whats-new")
+async def whats_new_admin_list(x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await _ensure_whats_new()
+    cur = db.whats_new.find({}).sort([("sort", 1), ("created_at", -1)])
+    out = []
+    async for doc in cur:
+        doc.pop("_id", None)
+        out.append(doc)
+    return {"items": out}
+
+@api.post("/admin/whats-new")
+async def whats_new_create(body: WhatsNewIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    now = datetime.utcnow().isoformat()
+    doc = {"id": f"wn-{uuid.uuid4().hex[:8]}", **body.dict(), "created_at": now, "updated_at": now}
+    await db.whats_new.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.put("/admin/whats-new/{wid}")
+async def whats_new_update(wid: str, body: WhatsNewIn, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    patch = {**body.dict(), "updated_at": datetime.utcnow().isoformat()}
+    res = await db.whats_new.update_one({"id": wid}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="entry not found")
+    doc = await db.whats_new.find_one({"id": wid})
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/admin/whats-new/{wid}")
+async def whats_new_delete(wid: str, x_admin_token: Optional[str] = Header(None)):
+    await _check_admin(x_admin_token)
+    await db.whats_new.delete_one({"id": wid})
+    return {"ok": True}
+
+
+
 # ---- Admin auth ------------------------------------------------------------
 @api.post("/admin/login")
 async def admin_login(body: LoginIn):

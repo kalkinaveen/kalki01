@@ -34,7 +34,7 @@ const RecoveryWizardHeader = ({ step = 'service', teamOnline = true }) => {
       {/* subtle radial backdrop */}
       <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: 'radial-gradient(60% 80% at 80% 20%, rgba(0,255,157,.10), transparent 70%)' }} />
 
-      <div className="relative grid grid-cols-[auto_1fr] gap-4 sm:gap-5 items-center">
+      <div className="relative flex flex-col items-center text-center sm:grid sm:grid-cols-[auto_1fr] sm:items-center sm:text-left gap-3 sm:gap-5">
         {/* Animated shield logo */}
         <div className="rwh-logo relative shrink-0 grid place-items-center" data-testid="recovery-wizard-logo">
           <span className="rwh-ring rwh-ring-1" />
@@ -48,20 +48,20 @@ const RecoveryWizardHeader = ({ step = 'service', teamOnline = true }) => {
         </div>
 
         {/* Title + sub */}
-        <div className="min-w-0">
-          <div className="eh-mono text-[10px] sm:text-[11px] tracking-[.4em] text-[var(--eh-green)] mb-1.5 flex items-center gap-2">
+        <div className="min-w-0 w-full">
+          <div className="eh-mono text-[10px] sm:text-[11px] tracking-[.4em] text-[var(--eh-green)] mb-1.5 flex items-center gap-2 justify-center sm:justify-start">
             <Sparkles size={11} className="rwh-sparkle-icon" />
             {c.kicker}
           </div>
-          <h1 className="font-black leading-[1.1] mb-1.5" style={{ fontFamily: "'Space Grotesk', Inter, system-ui, sans-serif", letterSpacing: '-.02em', fontSize: 'clamp(1.35rem, 4.2vw, 2rem)' }} data-testid={`recovery-step-h1-${step}`}>
+          <h1 className="font-black leading-[1.15] mb-2" style={{ fontFamily: "'Space Grotesk', Inter, system-ui, sans-serif", letterSpacing: '-.02em', fontSize: 'clamp(1.5rem, 6vw, 2.2rem)' }} data-testid={`recovery-step-h1-${step}`}>
             {c.title}
           </h1>
-          <p className="text-xs sm:text-sm opacity-80 leading-relaxed max-w-xl" style={{ fontFamily: "'Space Grotesk', Inter, system-ui, sans-serif" }}>{c.sub}</p>
+          <p className="text-xs sm:text-sm opacity-80 leading-relaxed mx-auto sm:mx-0 max-w-md sm:max-w-xl" style={{ fontFamily: "'Space Grotesk', Inter, system-ui, sans-serif" }}>{c.sub}</p>
         </div>
       </div>
 
       {/* Reassurance chips — compact, friendly, persistent */}
-      <div className="relative flex items-center gap-1.5 sm:gap-2 mt-4 flex-wrap eh-mono text-[10px] sm:text-[11px]">
+      <div className="relative flex items-center gap-1.5 sm:gap-2 mt-4 flex-wrap justify-center sm:justify-start eh-mono text-[10px] sm:text-[11px]">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[rgba(0,255,157,.35)] bg-[rgba(0,255,157,.08)]">
           <span className="relative inline-flex w-1.5 h-1.5">
             <span className="absolute inset-0 rounded-full bg-[var(--eh-green)] eh-pulse-dot" />

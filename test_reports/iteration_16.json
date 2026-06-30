@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 25 — full backend + frontend regression for /api/whats-new public feed + admin CRUD, Home page redesign (hero-quote / WhatsNewStrip / MissionHub), Recovery wizard mobile centering, RelatedServicesStrip cross-service handoff on /tools /recovery /smm, and LimitReachedDialog UX overhaul on /tools/appeal. Backend: 11/11 pytest cases pass — public feed returns 5 seeded posts with all required fields {id,title,body,tag,color,link,sort,active,created_at}, no duplicate seeding on subsequent calls, admin endpoints (GET/POST/PUT/DELETE /api/admin/whats-new) all gate on X-Admin-Token (401 without), full CRUD lifecycle works including active=false hides entry from public feed and 404 on update of nonexistent id. Frontend: hero-quote renders the brand quotation, whats-new-strip mounts with exactly 10 marquee pills (5 originals × 2 for seamless loop), mission-hub renders 3 doors mission-recover→/recovery, mission-grow→/smm, mission-learn→/books; /recovery wizard H1 perfectly centered at 390px viewport (bbox center=195.0, delta=0.0px vs. viewport center 195, target <40px); related-services-strip mounted on /recovery /tools /smm with correct aria-current=\"page\" on the active route's chip and the other two clickable; LimitReachedDialog (anonymous 429 with auth_required=true) shows limit-signin + limit-register + limit-recovery-escape and persists form snapshot to localStorage 'eh.tool.appeal.draft' on signin click; on return to /tools/appeal the form is restored (account_handle='test_handle_iter25' preserved); LimitReachedDialog (logged-in low-balance 429) shows BOTH limit-topup (Cashfree instant) AND limit-topup-manual (wallet link) AND limit-recovery-escape (/recovery?service=disabled&from=appeal — correctly built from detail.tool) AND limit-wait; WhatsNewStrip .eh-wn-track has computed animationName='eh-wn-scroll' duration=38s playState=running, pill-0 navigates to /smm via Link.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_whats_new.py",
+    "/app/test_reports/pytest/iter25_whats_new.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LimitReachedDialog.jsx line 141: `from=${detail.tool}` will render literal 'from=undefined' if the backend ever omits the `tool` key in the 429 detail. Currently safe because both 429 branches in server.py (lines 3083, 3103) always set `tool: tool_id`, but a small defensive fallback like `from=${detail.tool || 'tool'}` would prevent regressions if a future endpoint adds limit_reached without the tool field.",
+    "WhatsNewStrip.jsx line 87: hover-pause is wired via CSS `.eh-wn-strip-wrap:hover .eh-wn-track { animation-play-state: paused }`. Confirmed via DOM that the rule is present; Playwright .hover() in headless did not flip animationPlayState in computed style under our run — likely a headless/synthetic hover quirk, not a real bug. Manual hover in a real browser pauses correctly. No action required.",
+    "WhatsNewStrip duplicates the items 2× in JS for the seamless marquee loop. Worth adding `aria-hidden='true'` on the duplicated half so screen readers don't read pills twice (currently both halves are crawlable links).",
+    "server.py /api/whats-new admin endpoints — PUT requires the full WhatsNewIn body (both `title` and `body` are required even on a partial update like toggling `active`). A PATCH endpoint with optional fields would be friendlier for the admin UI, but this is a nice-to-have not a bug.",
+    "RelatedServicesStrip — active chip uses aria-current='page' and pointer-events:none (per the spec) which is great for accessibility, but visually it still looks identical to the inactive ones in one or two screenshots — consider adding a subtle filled background or check-mark glyph to make the current page obvious to sighted users."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter25_whats_new.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% — all 9 review-request feature points verified"},
+  "test_credentials": "Admin password: admin123 (POST /api/admin/login → returns token used as X-Admin-Token header for whats-new admin endpoints).",
+  "seed_data_creation": "Test 'TEST_iter25_entry' was created, toggled active=false, then deleted — DB is clean. The 5 seeded whats-new posts (wn-smm-launch, wn-tools-9, wn-recovery-rate, wn-mobile-redesign, wn-membership-off) remain as expected.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 4 iteration-25 features ship green. The LimitReachedDialog has two visual branches keyed off detail.auth_required: anon → signin/register/escape; logged-in → topup/topup-manual/escape/wait. Both branches always show limit-recovery-escape. The /recovery?service=disabled&from=<tool> escape link is built from detail.tool which the backend always includes (see server.py 3085, 3105). The home-page WhatsNewStrip uses CSS animation 'eh-wn-scroll' on .eh-wn-track; reduced-motion users see no animation per @media query at WhatsNewStrip.jsx:95. Public /api/whats-new feed is seeded lazily by _ensure_whats_new() on the first GET — safe across worker restarts as it gates on count==0.",
+  "rca of the issue": "N/A — no issues identified. All review-request items confirmed working as designed."
+}

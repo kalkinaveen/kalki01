@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Stethoscope, FileText, ShieldCheck, Bot, ArrowRight, Sparkles, Database, TrendingUp, ShieldAlert, Crown, Camera } from 'lucide-react';
+import RelatedServicesStrip from '../components/RelatedServicesStrip';
 
 /**
  * AI Tools Hub — landing page for the suite of free recovery / security tools.
@@ -155,6 +156,8 @@ const ToolsPage = () => {
             ))}
           </div>
         </div>
+
+        <RelatedServicesStrip />
       </div>
     </div>
   );

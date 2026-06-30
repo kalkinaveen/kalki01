@@ -167,6 +167,12 @@ export const api = {
   smmPublicService: (smmId) => req(`/public/smm/service/${smmId}`),
   smmPublicQuote: (data) => req('/public/smm/quote', { method: 'POST', body: data }),
   smmPublicOrder: (data) => req('/public/smm/order', { method: 'POST', body: data, auth: true }),
+  // What's new (homepage promo feed)
+  whatsNew: () => req('/whats-new'),
+  whatsNewAdminList: () => req('/admin/whats-new', { admin: true }),
+  whatsNewAdminCreate: (data) => req('/admin/whats-new', { method: 'POST', body: data, admin: true }),
+  whatsNewAdminUpdate: (id, data) => req(`/admin/whats-new/${id}`, { method: 'PUT', body: data, admin: true }),
+  whatsNewAdminDelete: (id) => req(`/admin/whats-new/${id}`, { method: 'DELETE', admin: true }),
   // users (admin)
   listUsers: () => req('/admin/users', { admin: true }),
   deleteUser: (uid) => req(`/admin/users/${uid}`, { admin: true, method: 'DELETE' }),

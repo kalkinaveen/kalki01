@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import RelatedServicesStrip from '../components/RelatedServicesStrip';
 
 /**
  * Public customer-facing SMM catalog → place-order form.
@@ -659,11 +660,12 @@ const OrderSmmPage = () => {
         </button>
       )}
 
+      <RelatedServicesStrip />
+
       {/* Page-local keyframes (no CSS file edit needed). */}
       <style>{`
         @keyframes eh-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes eh-fade-in  { from { opacity: 0; } to { opacity: 1; } }
-
         /* ERROR_SMM_PANEL badge — brand-pink glitch pulse */
         @keyframes eh-error-pulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(255,45,146,0.55), inset 0 0 12px rgba(255,45,146,0.08); }

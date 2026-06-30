@@ -8,6 +8,7 @@ import RecoveryServiceTile from '../components/RecoveryServiceTile';
 import RecoveryWizardHeader from '../components/RecoveryWizardHeader';
 import PublicReviewForm from '../components/PublicReviewForm';
 import TestimonialsCarousel from '../components/TestimonialsCarousel';
+import RelatedServicesStrip from '../components/RelatedServicesStrip';
 
 const STEPS = ['service', 'details', 'contact'];
 
@@ -526,6 +527,8 @@ const RecoveryPage = () => {
           </div>
         ))}
       </div>
+
+      <RelatedServicesStrip />
     </section>
   );
 };

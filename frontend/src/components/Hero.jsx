@@ -27,6 +27,19 @@ const Hero = () => {
         <div className="eh-mono text-xs sm:text-sm opacity-90 mb-6" style={{ color: 'var(--eh-green)' }}>
           &gt; <Typewriter words={HERO.typewriterLines} />
         </div>
+        {/* Brand-pillar quote — short, memorable, prints well on social shares. */}
+        <blockquote
+          data-testid="hero-quote"
+          className="relative mx-auto max-w-3xl px-4 sm:px-8 mb-7 sm:mb-9"
+          style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}
+        >
+          <span aria-hidden className="hidden sm:block absolute left-0 top-2 text-3xl leading-none text-[var(--eh-green)] opacity-50">&ldquo;</span>
+          <span aria-hidden className="hidden sm:block absolute right-0 bottom-2 text-3xl leading-none text-[var(--eh-green)] opacity-50">&rdquo;</span>
+          <p className="font-bold italic text-base sm:text-xl md:text-2xl leading-snug">
+            We don't sell <span className="line-through opacity-50 not-italic font-normal">shortcuts</span>.
+            We sell <span className="eh-neon not-italic">unfair advantages</span>.
+          </p>
+        </blockquote>
         <p className="max-w-2xl mx-auto eh-mono text-xs sm:text-sm md:text-base leading-6 sm:leading-7 opacity-80 mb-8 sm:mb-10 px-2">{SITE.description}</p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4">
           <Link to={HERO.primaryCtaTo} className="eh-btn-primary text-xs sm:text-sm w-full sm:w-auto">{HERO.primaryCta} <ArrowRight size={16} /></Link>
