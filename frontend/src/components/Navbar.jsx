@@ -7,6 +7,7 @@ import { useSiteConfig } from '../contexts/SiteConfigContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import SearchModal from './SearchModal';
+import TierBadge from './TierBadge';
 import { api } from '../lib/api';
 
 const Navbar = () => {
@@ -18,10 +19,12 @@ const Navbar = () => {
   const [userMenu, setUserMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bal, setBal] = useState(null);
+  const [tier, setTier] = useState(null);
   const nav = useNavigate();
   useEffect(() => {
-    if (!user) { setBal(null); return; }
+    if (!user) { setBal(null); setTier(null); return; }
     api.walletGet().then(w => setBal(w?.balance ?? 0)).catch(() => setBal(null));
+    api.mySubscription().then(s => setTier(s?.tier)).catch(() => setTier(null));
   }, [user]);
   useEffect(() => {
     const onKey = (e) => {
@@ -67,6 +70,11 @@ const Navbar = () => {
                 <WalletIcon size={12} className="text-[var(--eh-green)]" />
                 <span className="eh-neon-soft font-bold">₹{Number(bal || 0).toLocaleString('en-IN')}</span>
               </Link>
+              {tier && tier.rank > 0 && (
+                <Link to="/subscribe" className="hidden sm:inline-flex" title={`${tier.name} pass active`} data-testid="nav-tier-badge">
+                  <TierBadge tier={tier} size="sm" />
+                </Link>
+              )}
               <div className="relative">
                 <button data-testid="nav-user-btn" onClick={() => setUserMenu(v => !v)} className="flex items-center gap-2 w-9 h-9 sm:w-auto sm:h-auto sm:px-2.5 sm:py-2 justify-center rounded border border-[var(--eh-border)] hover:border-[var(--eh-green)] transition-colors">
                   {user.picture ? <img src={user.picture} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full grid place-items-center text-[10px] eh-mono" style={{ background: 'rgba(0,255,157,.15)', color: 'var(--eh-green)' }}>{(user.name||user.email)[0].toUpperCase()}</div>}
@@ -75,6 +83,7 @@ const Navbar = () => {
                 {userMenu && (
                   <div onMouseLeave={() => setUserMenu(false)} className="absolute right-0 mt-2 w-44 eh-panel py-1 z-50" style={{ background: '#0d1115' }}>
                     <NavLink to="/me" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><User size={12} /> my_account</NavLink>
+                    <NavLink to="/subscribe" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><Sparkles size={12} className="text-[#ffd34d]" /> operative_pass</NavLink>
                     <NavLink to="/me/wallet" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><WalletIcon size={12} /> wallet</NavLink>
                     <NavLink to="/me/spin" onClick={() => setUserMenu(false)} className="flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><Sparkles size={12} className="text-[#ffd34d]" /> daily_spin</NavLink>
                     <button data-testid="nav-logout" onClick={async () => { setUserMenu(false); await logout(); nav('/'); }} className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs eh-mono hover:bg-white/5"><LogOut size={12} /> logout</button>

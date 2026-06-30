@@ -21,6 +21,18 @@ const BENEFITS = [
 ];
 
 const AuthShell = ({ kicker, title, subtitle, footer, children }) => {
+  // Mobile-only quality of life: tapping any benefit tile when the form is
+  // already off-screen scrolls back up to it. On desktop the tiles and form
+  // are side-by-side so this is a no-op (we don't bind the click handler).
+  const scrollToForm = (e) => {
+    if (typeof window === 'undefined' || window.innerWidth >= 1024) return;
+    const target = document.getElementById('auth-form-anchor');
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <section className="relative eh-grid-bg px-3 sm:px-6 py-8 sm:py-14 overflow-hidden">
       {/* Ambient gradient blobs — friendly, soft, never aggressive */}
@@ -53,9 +65,13 @@ const AuthShell = ({ kicker, title, subtitle, footer, children }) => {
           {/* Multi-color benefit tiles — stacked on desktop, 3-up strip on mobile */}
           <div className="grid grid-cols-3 lg:grid-cols-1 gap-2.5 sm:gap-3 max-w-md" data-testid="auth-benefits">
             {BENEFITS.map(({ Icon, color, title: t, sub }, i) => (
-              <div
+              <button
+                type="button"
                 key={i}
-                className="auth-benefit-tile relative overflow-hidden rounded-xl border p-3 lg:p-4 transition-all"
+                onClick={scrollToForm}
+                aria-label={`${t} — tap to go to the form`}
+                data-testid={`auth-benefit-${i}`}
+                className="auth-benefit-tile relative overflow-hidden rounded-xl border p-3 lg:p-4 transition-all text-left lg:cursor-default"
                 style={{
                   borderColor: `${color}55`,
                   background: `linear-gradient(135deg, ${color}12, transparent 65%)`,
@@ -76,7 +92,8 @@ const AuthShell = ({ kicker, title, subtitle, footer, children }) => {
                 </div>
                 <div className="text-[12px] sm:text-sm font-bold leading-tight" style={{ fontFamily: 'Inter,sans-serif' }}>{t}</div>
                 <div className="eh-mono text-[9px] sm:text-[10px] opacity-65 mt-0.5">{sub}</div>
-              </div>
+                <div className="lg:hidden eh-mono text-[9px] opacity-50 mt-1.5">↑ tap to sign in</div>
+              </button>
             ))}
           </div>
 
@@ -93,6 +110,7 @@ const AuthShell = ({ kicker, title, subtitle, footer, children }) => {
 
         {/* RIGHT — friendly form panel */}
         <div className="relative order-1 lg:order-2">
+          <div id="auth-form-anchor" aria-hidden className="absolute -top-3 left-0 right-0 h-0" />
           <div
             className="eh-panel eh-brackets p-5 sm:p-7"
             style={{ background: 'rgba(8,10,12,.92)', backdropFilter: 'blur(10px)' }}

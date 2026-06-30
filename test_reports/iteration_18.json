@@ -1,0 +1,35 @@
+{
+  "summary": "Iter-27 OPERATIVE PASS full E2E — backend (11 pytest tests, 100% pass) + frontend Playwright (dashboard, missions, subscribe flow, confetti modal, nav badge, mobile overflow, auth-benefit scroll fix). All 16 review requirements verified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Navbar tier badge after in-session subscribe", "issue": "nav-tier-badge only appears after a hard reload — Navbar.jsx fetches api.mySubscription() once on mount and does not re-fetch after the user activates a paid tier via the /subscribe → tier-up-celebration flow. Functional after reload but not real-time. Minor.", "affected_selectors": ["[data-testid=\"nav-tier-badge\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter27_operative_pass.py",
+    "/app/test_reports/pytest/iter27.xml"
+  ],
+  "action_items": [
+    "OPTIONAL/MINOR: Make Navbar re-fetch mySubscription after successful subscribe (e.g., emit a window event from Subscribe.jsx or expose a setTier via context) so nav-tier-badge appears immediately without a hard reload."
+  ],
+  "critical_code_review_comments": [
+    "tiers.py is the single source of truth — good. Consider exporting price/quota constants for tests so the test file does not duplicate magic numbers.",
+    "POST /api/me/subscribe: unknown tier_id silently falls back to rookie via get_tier() and then 400s with 'rookie' message — acceptable but a 400 with 'Unknown tier' would be clearer.",
+    "GET /api/me/dashboard does an `await db.list_collection_names()` per request (line 4516) just to decide whether to count recovery_cases — costly. Use try/except on count_documents instead.",
+    "/me/missions is static (_DAILY_MISSIONS in-memory) — fine for ship-today but flagged for future quest engine.",
+    "Navbar.jsx fetches tier only on mount → stale until reload after subscribe (see integration issue above)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter27_operative_pass.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (all 16 review items verified)"},
+  "test_credentials": "Created on the fly: TEST_iter27_* and e2e_iter27_* users (via /api/auth/register) and topped up via POST /api/admin/wallet/{user_id}/adjust with X-Admin-Token. Admin password admin123. Existing test1@example.com/hack123 still valid.",
+  "seed_data_creation": "Several disposable test users (prefixed TEST_iter27_/e2e_iter27_) were registered and wallet-credited via the admin endpoint. No cleanup performed (no DELETE endpoint).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter-27 endpoints live: GET /api/subscription/tiers (public), GET/POST /api/me/subscription, POST /api/me/subscribe, POST /api/me/subscription/cancel, GET /api/me/dashboard, POST /api/me/streak/checkin, GET /api/me/missions, POST /api/me/missions/claim. Admin wallet adjust path is POST /api/admin/wallet/{user_id}/adjust (singular wallet — main agent's note said /wallets/ which is wrong). user_id is in the register response at body.user.user_id, NOT directly on /auth/me (which wraps under {user:{...}}). Frontend testids verified: dashboard-hero/name/quote/stats, stat-orders/recovery/wallet/tools, dashboard-quick-actions, qa-smm/recovery/tools/wallet, dashboard-missions, mission-{id}/-claim/-claimed, dashboard-pass-card, dashboard-orders, dashboard-referral, dashboard-library, tier-badge, streak-fire, tier-expiry, subscribe-hero/wallet-bar/current-tier/tier-grid, sub-tier-{rookie/operative/shadow/ghost}, sub-cta-{tier_id}, tier-up-celebration, tier-up-dismiss, nav-tier-badge (appears only after reload following subscribe). Auth-benefit mobile bugfix verified: /login click scrolls 108→95, /signup click scrolls 662→95, desktop click is no-op (0→0).",
+  "rca of the issue": "No bugs found. Only one minor UX gap: Navbar's tier badge is fetched once on mount; after the user subscribes via /subscribe → tier-up-celebration → /me, the badge appears only after a full reload. Root cause: Navbar.jsx useEffect runs once with empty deps and there is no global tier-state subscription. Mitigation (P3): dispatch a CustomEvent('eh:tier-changed') from Subscribe.jsx and listen for it in Navbar, OR move tier state into a React context provider."
+}

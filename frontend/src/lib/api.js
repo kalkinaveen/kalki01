@@ -173,6 +173,15 @@ export const api = {
   whatsNewAdminCreate: (data) => req('/admin/whats-new', { method: 'POST', body: data, admin: true }),
   whatsNewAdminUpdate: (id, data) => req(`/admin/whats-new/${id}`, { method: 'PUT', body: data, admin: true }),
   whatsNewAdminDelete: (id) => req(`/admin/whats-new/${id}`, { method: 'DELETE', admin: true }),
+  // Operative Pass — subscription tiers + royal dashboard
+  subscriptionTiers: () => req('/subscription/tiers'),
+  mySubscription: () => req('/me/subscription', { auth: true }),
+  subscribe: (tier_id) => req('/me/subscribe', { method: 'POST', body: { tier_id }, auth: true }),
+  unsubscribe: () => req('/me/subscription/cancel', { method: 'POST', auth: true }),
+  myDashboard: () => req('/me/dashboard', { auth: true }),
+  myStreakCheckin: () => req('/me/streak/checkin', { method: 'POST', auth: true }),
+  myMissions: () => req('/me/missions', { auth: true }),
+  claimMission: (mission_id) => req('/me/missions/claim', { method: 'POST', body: { mission_id }, auth: true }),
   // users (admin)
   listUsers: () => req('/admin/users', { admin: true }),
   deleteUser: (uid) => req(`/admin/users/${uid}`, { admin: true, method: 'DELETE' }),

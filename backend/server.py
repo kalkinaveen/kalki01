@@ -4393,6 +4393,227 @@ async def me_wallet_txn_one(txn_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Receipt not found")
     return _clean(txn)
 
+# -------- OPERATIVE PASS (subscription tiers) --------------------------------
+from tiers import TIERS as TIER_DEFS, get_tier as _resolve_tier, user_tier as _user_tier, build_subscription_record  # noqa: E402
+
+@api.get("/subscription/tiers")
+async def list_subscription_tiers():
+    """Public — the 4-tier comparison page reads this."""
+    return {"tiers": TIER_DEFS}
+
+@api.get("/me/subscription")
+async def me_subscription(request: Request):
+    user = await require_user(request)
+    fresh = await db.users.find_one({"user_id": user["user_id"]})
+    fresh = _clean(fresh or {})
+    effective = _user_tier(fresh)
+    sub = fresh.get("subscription") or {}
+    return {
+        "tier": effective,
+        "subscription": sub,
+        "wallet_balance": (await _wallet_get_or_create(user["user_id"])).get("balance", 0),
+    }
+
+class SubscribeIn(BaseModel):
+    tier_id: str
+
+@api.post("/me/subscribe")
+async def me_subscribe(body: SubscribeIn, request: Request):
+    """Activate a 30-day OPERATIVE PASS by debiting the user's wallet.
+    Cashfree direct-card subscription tokens are a future enhancement —
+    this wallet-based flow ships today and reuses the existing top-up funnel."""
+    user = await require_user(request)
+    tier = _resolve_tier(body.tier_id)
+    if tier["id"] == "rookie":
+        raise HTTPException(status_code=400, detail="Rookie is the default tier — no purchase needed")
+    price = int(tier.get("price_inr") or 0)
+    if price <= 0:
+        raise HTTPException(status_code=400, detail="Tier has no price")
+    # Atomic wallet debit (raises 400 if insufficient)
+    txn = await _wallet_txn(
+        user["user_id"], "debit", float(price),
+        note=f"OPERATIVE PASS · {tier['name']} · 30 days",
+        ref={"type": "subscription", "tier_id": tier["id"]},
+    )
+    sub = build_subscription_record(tier["id"], price, days=30)
+    # Append to history (keep last 10) — useful for renewal audit
+    prev_user = await db.users.find_one({"user_id": user["user_id"]}) or {}
+    prev = prev_user.get("subscription") or {}
+    history = (prev.get("history") or [])[-9:]
+    history.append({"tier_id": tier["id"], "amount": price, "at": _now_iso(), "txn_id": txn["id"]})
+    sub["history"] = history
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"subscription": sub}})
+    updated_user = _clean(await db.users.find_one({"user_id": user["user_id"]}))
+    return {
+        "ok": True,
+        "tier": tier,
+        "subscription": sub,
+        "wallet_txn": txn,
+        "user": updated_user,
+    }
+
+@api.post("/me/subscription/cancel")
+async def me_subscription_cancel(request: Request):
+    """Mark subscription as cancelled — current period continues until expiry."""
+    user = await require_user(request)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"subscription.auto_renew": False, "subscription.cancelled_at": _now_iso()}},
+    )
+    return {"ok": True}
+
+# -------- DASHBOARD (single consolidated payload for /me) --------------------
+@api.get("/me/dashboard")
+async def me_dashboard(request: Request):
+    """One payload, one round-trip. Powers the royal dashboard at /me."""
+    user = await require_user(request)
+    uid = user["user_id"]
+    fresh = _clean(await db.users.find_one({"user_id": uid}) or {})
+    wallet = await _wallet_get_or_create(uid)
+    effective_tier = _user_tier(fresh)
+    sub = fresh.get("subscription") or {}
+
+    # Orders summary (last 10 + per-status counts)
+    orders_cursor = db.orders.find({"user_id": uid}).sort("createdAt", -1).limit(10)
+    recent_orders = [_clean(o) async for o in orders_cursor]
+    counts_pipeline = [
+        {"$match": {"user_id": uid}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]
+    status_counts = {row["_id"]: row["n"] async for row in db.orders.aggregate(counts_pipeline)}
+    total_orders = sum(status_counts.values())
+
+    # AI tool usage today (per-IP today + per-user today combined)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    tool_used_today = await db.tool_usage.count_documents({
+        "user_id": uid,
+        "day": today_str,
+    })
+
+    # Library — books the user owns
+    owned_books = []
+    try:
+        owned_books_cursor = db.purchases.find({"user_id": uid, "type": "book"}).sort("createdAt", -1).limit(8)
+        owned_books = [_clean(b) async for b in owned_books_cursor]
+    except Exception:
+        pass
+
+    # Login streak — derived from a simple `streak` field on the user we keep updated below
+    streak = fresh.get("streak") or {"current": 0, "best": 0, "last_login": None}
+
+    return {
+        "user": fresh,
+        "wallet": wallet,
+        "tier": effective_tier,
+        "subscription": sub,
+        "stats": {
+            "total_orders": total_orders,
+            "status_counts": status_counts,
+            "active_orders": (status_counts.get("paid", 0)
+                              + status_counts.get("received", 0)
+                              + status_counts.get("verified", 0)
+                              + status_counts.get("in_progress", 0)),
+            "recovery_cases": await db.recovery_cases.count_documents({"user_id": uid}) if "recovery_cases" in await db.list_collection_names() else 0,
+            "tool_uses_today": tool_used_today,
+            "tool_uses_quota": int(effective_tier.get("tool_uses_per_day", 3)),
+        },
+        "recent_orders": recent_orders,
+        "library": owned_books,
+        "streak": streak,
+    }
+
+# -------- LOGIN STREAK + DAILY MISSIONS -------------------------------------
+@api.post("/me/streak/checkin")
+async def me_streak_checkin(request: Request):
+    """Idempotent daily check-in. The frontend fires this once on /me load.
+    Streak resets to 1 if the user skipped a day, increments otherwise."""
+    user = await require_user(request)
+    uid = user["user_id"]
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    fresh = await db.users.find_one({"user_id": uid}) or {}
+    streak = fresh.get("streak") or {"current": 0, "best": 0, "last_login": None}
+    last = streak.get("last_login")
+    if last == today_iso:
+        return {"streak": streak, "credited": False}
+    # Gap check — yesterday continues, otherwise reset to 1
+    if last:
+        try:
+            d_last = datetime.fromisoformat(last).date()
+            gap = (datetime.now(timezone.utc).date() - d_last).days
+        except Exception:
+            gap = 999
+    else:
+        gap = 999
+    new_current = (streak["current"] + 1) if gap == 1 else 1
+    streak = {
+        "current": new_current,
+        "best": max(streak.get("best", 0), new_current),
+        "last_login": today_iso,
+    }
+    # Reward every 7th day with ₹25 wallet credit
+    credited = False
+    if new_current > 0 and new_current % 7 == 0:
+        await _wallet_txn(uid, "credit", 25.0, note=f"🔥 {new_current}-day streak bonus")
+        credited = True
+    await db.users.update_one({"user_id": uid}, {"$set": {"streak": streak}})
+    return {"streak": streak, "credited": credited}
+
+# Static daily missions — read-only for now. A real quest engine with state
+# tracking is a P2 follow-up. For ship-today we show the same list to everyone
+# and let the user explicitly claim a quest once per day per mission.
+_DAILY_MISSIONS = [
+    {"id": "login_daily",  "title": "Log in today",                "reward_inr": 5,  "icon": "calendar", "color": "#00ff9d", "auto": True},
+    {"id": "refer_friend", "title": "Invite a friend (any new signup with your code)", "reward_inr": 100, "icon": "gift",     "color": "#ff2d92"},
+    {"id": "place_smm",    "title": "Place an SMM order this week", "reward_inr": 50, "icon": "zap",      "color": "#4de0ff"},
+    {"id": "run_tool",     "title": "Run any AI tool today",        "reward_inr": 10, "icon": "stethoscope", "color": "#ffd34d"},
+    {"id": "spin",         "title": "Use your daily spin",          "reward_inr": 10, "icon": "sparkles", "color": "#c084fc"},
+]
+
+@api.get("/me/missions")
+async def me_missions(request: Request):
+    """Daily missions with claim-state for the current user."""
+    user = await require_user(request)
+    uid = user["user_id"]
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    claimed_today = [row["mission_id"] async for row in db.mission_claims.find({"user_id": uid, "day": today_str})]
+    # Detect "auto-completable" missions — for now only login_daily
+    items = []
+    for m in _DAILY_MISSIONS:
+        items.append({
+            **m,
+            "claimed_today": m["id"] in claimed_today,
+            "ready_to_claim": m.get("auto") and m["id"] not in claimed_today,
+        })
+    return {"items": items, "day": today_str}
+
+class MissionClaimIn(BaseModel):
+    mission_id: str
+
+@api.post("/me/missions/claim")
+async def me_missions_claim(body: MissionClaimIn, request: Request):
+    """Manual quest claim. Each mission can be claimed at most once per day per user."""
+    user = await require_user(request)
+    uid = user["user_id"]
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    mission = next((m for m in _DAILY_MISSIONS if m["id"] == body.mission_id), None)
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    existing = await db.mission_claims.find_one({"user_id": uid, "day": today_str, "mission_id": body.mission_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Already claimed today")
+    await _wallet_txn(uid, "credit", float(mission["reward_inr"]), note=f"Quest reward · {mission['title']}")
+    await db.mission_claims.insert_one({
+        "id": f"MC-{uuid.uuid4().hex[:10].upper()}",
+        "user_id": uid,
+        "mission_id": body.mission_id,
+        "day": today_str,
+        "reward_inr": mission["reward_inr"],
+        "createdAt": _now_iso(),
+    })
+    return {"ok": True, "mission_id": body.mission_id, "credited_inr": mission["reward_inr"]}
+
+
+
 @api.post("/me/wallet/deposit")
 async def me_wallet_deposit_request(body: WalletDepositRequestIn, request: Request):
     """Customer submits a deposit proof — admin must approve before crediting wallet.
