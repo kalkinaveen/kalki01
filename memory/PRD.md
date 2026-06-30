@@ -11,6 +11,21 @@ Hacker-themed marketplace (books, services, memberships, recovery) with admin CM
 - Live at: https://errorhacker.site
 
 ## Implemented (recent)
+- **Iter-31 · P1 Security Hardening · SEC-001 (bcrypt admin) + SEC-002 (CORS allow-list)** 🛡 (Feb 2026)
+  - **SEC-001 — Admin password is now bcrypt-hashed** (`/app/backend/server.py`):
+    - `_ensure_admin()` now seeds `password_hash` via bcrypt (`$2b$12$…`), and auto-migrates any legacy plaintext `password` field on first read — zero ops needed on existing installs.
+    - `admin_login` uses `_verify_pw()` (bcrypt compare) and `admin_change_password` writes via `_hash_pw()`. Plaintext `password` field is `$unset` everywhere.
+    - **Brute-force lockout**: per-IP throttle via `admin_login_attempts` collection. 5 failed logins → HTTP 429 for 15 min. Correct password is also blocked during lockout. Cleared on successful login.
+    - **Password change** now requires ≥ 8 chars (up from 4) and invalidates all active admin tokens (forces re-login).
+    - ENV `ADMIN_PASSWORD_FORCE=1` still works as a one-shot rotation gate.
+  - **SEC-002 — CORS allow-list** (`/app/backend/server.py` final lines):
+    - Replaced `allow_origin_regex=".*"` with explicit `allow_origins=[…]` parsed from comma-separated `CORS_ORIGINS` env.
+    - Wildcards (`*`) are explicitly stripped — credentialed CORS now requires explicit origin matches.
+    - `.env` `CORS_ORIGINS = https://errorhacker.site, https://www.errorhacker.site, https://functionality-139.preview.emergentagent.com, http://localhost:3000`
+    - User JWT cookie kept at `secure=True, samesite=none` (correct posture for cross-domain prod deploy; Lax would break the cross-domain frontend ↔ backend setup).
+  - **Verified by testing agent** (`/app/test_reports/iteration_21.json`): all 10 backend tests pass. Bcrypt hash present + plaintext gone on disk; brute-force at 5 fails returns 429; CORS echoes the allow-listed origin only for allowed origins. Customer auth + Iter-30 daily-missions anti-cheat regression checks both pass. Admin UI smoke test confirms /admin login → dashboard works end-to-end.
+  - **Files**: `/app/backend/server.py`, `/app/backend/.env` (CORS_ORIGINS), `/app/auth_testing.md` (test playbook), `/app/memory/test_credentials.md` (updated for bcrypt note), `/app/backend/tests/test_iter31_sec_admin_cors.py` (regression suite).
+
 - **Iter-30 · Daily Missions Anti-Cheat Fix** 🛡 (Feb 2026)
   - **Bug reported**: User noticed they could tap CLAIM on any daily mission and get credited without actually doing the action (refer a friend, place an SMM order, use a tool, spin the wheel). The old `/api/me/missions/claim` only checked "already claimed today".
   - **Root cause**: The endpoint never verified the mission was actually completed before crediting the wallet.
